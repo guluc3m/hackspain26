@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.sdd/work/
+.sdd/cache/
+*.sqlite
+*.db
+.nanobot/
+dist/
+.pytest_cache/
+.ruff_cache/
