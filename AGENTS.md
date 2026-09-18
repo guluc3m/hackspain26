@@ -228,9 +228,10 @@ que condicionan TODO lo que construyas:
   OTRO candidato, jamás respuesta automática; el humano decide en la cola de revisión
   (no bloqueante).
 - **PROHIBIDO (regla del usuario, NO NEGOCIABLE)**: los modelos **Qwen3.8-27B** y
-  **Qwen3.8-Flash-Next / qwen-next-flash** NO FUNCIONAN y están vetados en TODOS los
-  roles — incluido el preset `claude-opus-4-5` (que resuelve a un Qwen3.8-27B). Jamás
-  usarlos para rung 5, verificación, ni ningún otro propósito de este proyecto.
+  **Qwen3.8-Flash-Next / qwen-next-flash** están vetados en TODOS los roles — incluido
+  el preset `claude-opus-4-5` (que resuelve a un Qwen3.8-27B). Motivo: el servidor de
+  IA local del usuario está CAÍDO — no dependas de él para nada (ni rung 5, ni
+  verificación, ni embeddings). El rung 5 usa `deepseek-v4.1-flash`.
 - **Flota de agentes**: glm-5-3 (helmcode) por defecto; fallback glm-5-3-flash →
   deepseek-v4-1-flash → deepseek-v4-flash. Los extractores proponen; las REGLAS deciden.
 
