@@ -77,3 +77,4 @@ class EvidenceRow:
     confidence: float | None
     outcome: str
     detail: str
+    file_id: str = ""  # nombre EXACTO del PDF (join con la UI; T4)
