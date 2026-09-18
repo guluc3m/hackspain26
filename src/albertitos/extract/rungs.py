@@ -50,6 +50,8 @@ class RungContext:
     render_bgr: object  # np.ndarray | None, rendered page
     render_png: bytes | None
     render_png_path: object = None  # Path to the cached PNG (tesseract needs a file)
+    cloud: object = None  # CloudConfig | None (rung 5; None = not configured)
+    http_transport: object = None  # injectable transport for tests
     evidence: list[EvidenceRow] = field(default_factory=list)
 
     def add_evidence(self, **kw) -> None:

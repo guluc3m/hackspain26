@@ -182,9 +182,9 @@ class TestPageCache:
         second = lad.extract_file(f, invoice_id="inv-c")
 
         # evidence: first run has one row per rung; second run replays from cache
-        assert len(first[0].evidence) == 4  # rungs 1..4 evaluated
+        assert len(first[0].evidence) == 5  # rungs 1..5 evaluated (5 skipped: unconfigured)
         second_stages = [ev for ev in second[0].evidence if ev.outcome == "cache_hit"]
-        assert len(second_stages) == 3  # rungs 2, 3, 4 replayed
+        assert len(second_stages) == 4  # rungs 2, 3, 4, 5 replayed
         assert all(ev.latency_ms == 0 for ev in second_stages)
 
         # same features, no re-billing: skipped features still present

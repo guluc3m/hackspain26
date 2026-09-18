@@ -16,6 +16,7 @@ import pypdfium2 as pdfium
 from pypdf import PdfReader
 
 from albertitos.extract.cache import PageCache
+from albertitos.extract.cloud import prompt_sha256, run_cloud_vlm
 from albertitos.extract.config import ExtractionConfig
 from albertitos.extract.evidence import EvidenceLedger
 from albertitos.extract.raster import (
@@ -25,6 +26,7 @@ from albertitos.extract.raster import (
     page_sha256,
     render_page,
 )
+from albertitos.extract.review import ReviewQueue
 from albertitos.extract.rungs import (
     RungContext,
     run_raster_qr,
@@ -44,17 +46,19 @@ class PageExtraction:
     page_sha256: str
     features: list[ExtractionFeature] = dataclasses.field(default_factory=list)
     evidence: list[EvidenceRow] = dataclasses.field(default_factory=list)
-    # rung1_pdf_text | rung2_qr | rung3_ocr | rung4_vlm | unresolved
+    # rung1_pdf_text | rung2_qr | rung3_ocr | rung4_vlm | rung5_cloud | unresolved
     final_rung: str = "unresolved"
     qr_only: bool = False
+    escalated: bool = False  # entered the human review queue (never blocks)
 
 
 class ExtractionLadder:
-    """Runs rungs 1–4 per page. Skippable, cached, evidence-logged.
+    """Runs rungs 1–5 per page. Skippable, cached, evidence-logged.
 
-    Rung 5 (cloud VLM) is the escalation path and is deliberately NOT here:
-    its reading is one more candidate, never an automatic answer, and it is
-    wired at the parser/review layer (tickets T2/T5).
+    Rung 5 (cloud VLM) is the ESCALATION path: it fires only when tesseract
+    AND the local VLM left the page unresolved. Its reading is one more
+    candidate — never an automatic answer — and an escalated page enters the
+    human review queue without ever blocking the batch (AGENTS.md §3, §7).
     """
 
     def __init__(
@@ -62,20 +66,31 @@ class ExtractionLadder:
         cfg: ExtractionConfig | None = None,
         cache_root: Path | str | None = None,
         evidence_path: Path | str | None = None,
+        cloud: object | None = None,
+        http_transport: object | None = None,
+        review_dir: Path | str | None = None,
     ):
         self.cfg = cfg or ExtractionConfig()
         self.cache = PageCache(Path(cache_root or ".sdd/cache"))
         self.ledger = EvidenceLedger(Path(evidence_path) if evidence_path else None)
+        self.cloud = cloud
+        self.http_transport = http_transport
+        review_root = Path(review_dir) if review_dir else self.cache.root.parent / "review-queue"
+        self.review = ReviewQueue(review_root)
 
     # ------------------------------------------------------------- public API
 
     def extract_file(
-        self, pdf_path: str | Path, invoice_id: str | None = None
+        self,
+        pdf_path: str | Path,
+        invoice_id: str | None = None,
+        file_id: str | None = None,
     ) -> list[PageExtraction]:
         """Run the ladder over every page of one file. Per page, not per file:
         a PDF may mix pages of different kinds."""
         pdf_path = Path(pdf_path)
         invoice_id = invoice_id or pdf_path.name
+        file_id = file_id or pdf_path.name
         pdf_bytes = pdf_path.read_bytes()
         try:
             n_pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
@@ -95,12 +110,15 @@ class ExtractionLadder:
                 )
             )
             return []
-        return [self.extract_page(pdf_bytes, i, invoice_id) for i in range(n_pages)]
+        return [self.extract_page(pdf_bytes, i, invoice_id, file_id=file_id) for i in range(n_pages)]
 
-    def extract_page(self, pdf_bytes: bytes, page_index: int, invoice_id: str) -> PageExtraction:
+    def extract_page(
+        self, pdf_bytes: bytes, page_index: int, invoice_id: str, file_id: str | None = None
+    ) -> PageExtraction:
         dsha = doc_sha256(pdf_bytes)
         psha = page_sha256(dsha, page_index)
         page_no = page_index + 1
+        file_id = file_id or invoice_id
         out = PageExtraction(page=page_no, page_sha256=psha)
 
         pdfium_doc = pdfium.PdfDocument(pdf_bytes)
@@ -169,6 +187,40 @@ class ExtractionLadder:
             out.features.extend(r4.features)
             if r4.stop:
                 out.final_rung = "rung4_vlm"
+                return self._finish(out)
+
+            # ---- rung 5: cloud VLM escalation (cached; reading = candidate only)
+            r5 = self._rung_cached(
+                engine="cloud_vlm",
+                ev_version=self.cloud.model if self.cloud is not None else "unconfigured",
+                psha=psha,
+                invoice_id=invoice_id,
+                rung_fn=run_cloud_vlm,
+                ctx_factory=ctx34,
+                out=out,
+            )
+            out.features.extend(r5.features)
+            cloud_ok = any(
+                f.type == "cloud_vlm_text" and not f.skipped for f in r5.features
+            )
+            cloud_model = self.cloud.model if self.cloud is not None else ""
+            motivo = r5.detail or "escalated-after-rung4"
+            if cloud_ok:
+                out.final_rung = "rung5_cloud"
+            out.escalated = True
+            self.review.enqueue(
+                invoice_id=invoice_id,
+                file_id=file_id,
+                page=page_no,
+                page_sha256=psha,
+                motivo=motivo,
+                features=out.features,
+                cloud_ok=cloud_ok,
+                cloud_model=cloud_model,
+                config_version=self.cfg.config_version,
+                png_bytes=png_bytes,
+                extra_provenance={"prompt_sha256": prompt_sha256()},
+            )
             return self._finish(out)
         finally:
             pdfium_doc.close()
@@ -199,6 +251,8 @@ class ExtractionLadder:
             render_bgr=render_bgr,
             render_png=render_png,
             render_png_path=self.cache.root / "images" / f"{psha}.png",
+            cloud=self.cloud,
+            http_transport=self.http_transport,
             evidence=evidence,
         )
 
