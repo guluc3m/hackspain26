@@ -9,3 +9,13 @@ __pycache__/
 dist/
 .pytest_cache/
 .ruff_cache/
+# nanobot worker-workspace noise (agent session files, not project code)
+/HEARTBEAT.md
+/SOUL.md
+/USER.md
+/BOOT.md
+/LAUNCH.md
+/TOOLS.md
+/MEMORY.md
+/memory/
+/prompts/
