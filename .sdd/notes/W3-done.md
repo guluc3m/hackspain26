@@ -35,3 +35,17 @@
 - T1-T4 quedan abiertos (W1/W2). Cuando el pipeline produzca decisiones
   reales, `uv run python -m albertitos.report_data` + typst compile
   regenerará el informe con cifras medidas.
+
+## Sesión 2 — T9 cerrado (commit aba502e)
+
+- `albertitos.metrics`: métricas medidas por rung (media/p95), throughput
+  medido, límite secuencial estimado, hardware medido, fórmula de coste
+  explícita con términos separados y etiquetados (lo sin medir ⇒ «sin datos»).
+- Salidas: `.sdd/metrics/metrics.json` (regenerable) y
+  `docs/report/escalabilidad_datos.typ`, importado por `escalabilidad.typ`;
+  PDF de la plantilla compila con las tablas nuevas (10 páginas).
+- `python -m albertitos.validate`: validador de contrato de outcomes.jsonl
+  (exit 0/1, reporte de diferencias; probado con fixture de 500 facturas,
+  duplicados, file_id normalizados/con ruta y results inválidos).
+- Nota para quien integre: `.sdd/metrics/metrics.json` es estado regenerable
+  (no commitado); el binario typst no participa en tests.
