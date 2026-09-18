@@ -55,7 +55,7 @@
 ## Actualización 2: T7 · Rung 5 cloud + cola de revisión (commit en worker/w1)
 - `src/albertitos/extract/cloud.py`: CloudConfig SOLO por env
   (ALBERTITOS_ESCALATE_BASE_URL/_MODEL/_API_KEY; preset de referencia
-  claude-opus-4-5 → Qwen3.8-27B-Vision), prompt fijo + temp 0 (hash de prompt
+  deepseek-v4.1-flash (AGENTS §13: Qwen3.8 vetado)), prompt fijo + temp 0 (hash de prompt
   en evidencia y provenance), retry 429/5xx con Retry-After/backoff (4xx
   permanente falla sin reintentar), httpx con transporte inyectable.
 - `run_cloud_vlm`: el candidato cloud entra con extraction_method "cloud_vlm";
