@@ -27,8 +27,10 @@ longitud + término de cobertura de campos esperados.
 + *VLM local*: PaddleOCR-VL-1.6 q8_0 vía `llama-server` (decisión de modelo
 registrada en `docs/decisiones/DECISIONS.md`, D-001/D-002), temperatura 0,
 misma puerta de confianza de dos partes.
-+ *VLM nube* (>25B multimodal): solo escalada; su lectura es OTRO candidato,
-jamás respuesta automática.
++ *VLM nube* (rung 5): `deepseek-v4.1-flash`, SOLO para páginas que fallen
+tesseract + VLM local; su lectura es OTRO candidato con confianza, jamás
+respuesta automática. Los modelos Qwen3.8-27B y qwen-next-flash están VETADOS
+en todos los roles (servidor de IA local del usuario caído; AGENTS §13).
 
 == Estado, idempotencia y reanudación
 
@@ -49,3 +51,14 @@ desacuerdo resaltado), Reglas (set activo, umbrales y «¿qué pasaría si...?»
 Salud (fallos de proveedor, reintentos, estado degradado). La UI lee el _store_
 en SOLO LECTURA y jamás decide: las correcciones humanas se encolan como
 _overrides_ con _provenance_ y el motor determinista recalcula.
+
+== Estado de la implementación
+
+- Integrado y probado: escalera de extracción por páginas (T1), parser con
+  todas las candidatas (T2), motor de reglas + store idempotente + emisión
+  de `outcomes.jsonl` con validador de contrato (T3, T4, T9), rung 5 cloud
+  con cola de revisión (T7), UI (T5), métricas e informe (T6, T9).
+- *PENDIENTE-MEDICIÓN*: el _runner_ de lote end-to-end (T8) y el _dry-run_
+  sobre los 500 PDFs con calibración de umbrales (T10) aún no han corrido
+  en este nodo; mientras tanto, los números de throughput y coste del lote
+  se muestran como ESTIMADO o «sin datos medidos» — nunca como medidos.

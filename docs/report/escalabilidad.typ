@@ -82,11 +82,12 @@ hilos que los agentes no deben acaparar) y la cuota del proveedor en la nube,
 cuyos fallos (429, _timeouts_) se degradan a peldaños inferiores sin parar el
 lote — los reintentos y omisiones de la tabla lo reflejan.
 
-== Capacidad y coste estimados (a validar con lotes reales)
+== Capacidad y coste pendientes de medición (T8/T10)
 
-- Facturas por segundo y coste por factura: #facturasPorSegundo.at(0) /
-#costePorFactura.at(0) #emph[(#facturasPorSegundo.at(1))]. Se medirán con el
-lote real de 500 facturas; no se publican estimaciones como si fueran medidas.
+- Facturas por segundo del _runner_ de lote (T8) y resultados del _dry-run_
+  del corpus (T10): *PENDIENTE-MEDICIÓN*. La fórmula de coste de arriba ya
+  separa medido de estimado; cuando T8/T10 escriban su evidencia al ledger,
+  regenerar con `uv run python -m albertitos.metrics` rellena estos huecos.
 - Presupuesto de tiempo esperado por página OCR local en CPU (8 núcleos):
-10-30 s según complejidad (tablas son el caso lento) — #emph[estimado del
-fabricante, pendiente de medición en producción].
+  10-30 s según complejidad (tablas son el caso lento) — #emph[estimado del
+  fabricante, pendiente de medición en producción].
