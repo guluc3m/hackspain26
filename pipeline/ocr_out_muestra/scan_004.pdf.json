@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_004.pdf",
+ "origen": "ocr",
+ "ocr_conf": 64.1,
+ "campos": {
+  "num_factura": "FA-1308",
+  "fecha": "2026-07-05",
+  "pedido": "PO-2026-0480",
+  "total": "2498",
+  "iva_pct": 21,
+  "nif": null
+ },
+ "avisos": []
+}

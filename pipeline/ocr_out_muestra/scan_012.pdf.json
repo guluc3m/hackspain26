@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_012.pdf",
+ "origen": "ocr",
+ "ocr_conf": 61.5,
+ "campos": {
+  "num_factura": "2028/96063",
+  "fecha": "2028-05-06",
+  "pedido": "PO-2025-088",
+  "total": "877.83",
+  "iva_pct": 21,
+  "nif": null
+ },
+ "avisos": []
+}

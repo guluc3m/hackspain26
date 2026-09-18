@@ -1,0 +1,13 @@
+{
+ "file_id": "scan_001.pdf",
+ "origen": "ocr",
+ "ocr_conf": 56.7,
+ "campos": {
+  "num_factura": "2028/86248",
+  "fecha": "2028-03-08",
+  "pedido": "PO-2026-0477",
+  "total": "124084",
+  "nif": "A58231074"
+ },
+ "avisos": []
+}

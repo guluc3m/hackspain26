@@ -1,0 +1,12 @@
+{
+ "file_id": "scan_014.pdf",
+ "origen": "ocr",
+ "ocr_conf": 61.9,
+ "campos": {
+  "num_factura": "FAS328",
+  "fecha": "2076-05-03",
+  "total": "284436",
+  "nif": "A58231074"
+ },
+ "avisos": []
+}

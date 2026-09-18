@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_028.pdf",
+ "origen": "ocr",
+ "ocr_conf": 87.7,
+ "campos": {
+  "num_factura": "FA-9950",
+  "fecha": "2026-06-11",
+  "pedido": "PO-2026-0731",
+  "total": "2262.70",
+  "iva_pct": 21,
+  "nif": "B30455812"
+ },
+ "avisos": []
+}

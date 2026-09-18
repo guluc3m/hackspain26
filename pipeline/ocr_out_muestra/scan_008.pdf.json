@@ -1,0 +1,13 @@
+{
+ "file_id": "scan_008.pdf",
+ "origen": "ocr",
+ "ocr_conf": 68.3,
+ "campos": {
+  "num_factura": "FA7412",
+  "fecha": "2026-05-02",
+  "pedido": "PO-2076-0484",
+  "total": "2055.48",
+  "nif": null
+ },
+ "avisos": []
+}

@@ -1,0 +1,15 @@
+{
+ "file_id": "scan_017.pdf",
+ "origen": "ocr",
+ "ocr_conf": 43.3,
+ "campos": {
+  "num_factura": "FA-4102",
+  "pedido": "PO-2026-0717",
+  "iva_pct": 21,
+  "nif": null
+ },
+ "avisos": [
+  "conf_baja(43.3)",
+  "campos_criticos_perdidos"
+ ]
+}

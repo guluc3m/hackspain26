@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_009.pdf",
+ "origen": "ocr",
+ "ocr_conf": 64.5,
+ "campos": {
+  "num_factura": "FA-3080",
+  "fecha": "2028-03-08",
+  "pedido": "PO-2026-0485",
+  "total": "1009.43",
+  "iva_pct": 21,
+  "nif": null
+ },
+ "avisos": []
+}

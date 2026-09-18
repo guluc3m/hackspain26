@@ -1,0 +1,13 @@
+{
+ "file_id": "scan_003.pdf",
+ "origen": "ocr",
+ "ocr_conf": 70.5,
+ "campos": {
+  "num_factura": "2026/75050",
+  "fecha": "2076-07-17",
+  "total": "45933",
+  "iva_pct": 21,
+  "nif": "B98120774"
+ },
+ "avisos": []
+}

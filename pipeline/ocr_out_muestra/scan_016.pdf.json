@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_016.pdf",
+ "origen": "ocr",
+ "ocr_conf": 72.2,
+ "campos": {
+  "num_factura": "96038",
+  "fecha": "2026-08-18",
+  "pedido": "PO-2026-0498",
+  "total": "239580",
+  "iva_pct": 21,
+  "nif": "B90233808"
+ },
+ "avisos": []
+}

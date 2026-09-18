@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_018.pdf",
+ "origen": "ocr",
+ "ocr_conf": 86.6,
+ "campos": {
+  "num_factura": "FA-7788",
+  "fecha": "2026-06-19",
+  "pedido": "PO-2026-0719",
+  "total": "3000.80",
+  "iva_pct": 21,
+  "nif": "A41220987"
+ },
+ "avisos": []
+}

@@ -1,0 +1,13 @@
+{
+ "file_id": "scan_027.pdf",
+ "origen": "ocr",
+ "ocr_conf": 84.9,
+ "campos": {
+  "num_factura": "2026/31108",
+  "fecha": "2026-04-06",
+  "pedido": "PO-2026-0730",
+  "total": "477.95",
+  "nif": "J40112358"
+ },
+ "avisos": []
+}

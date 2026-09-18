@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_002.pdf",
+ "origen": "ocr",
+ "ocr_conf": 67.1,
+ "campos": {
+  "num_factura": "2026/50748",
+  "fecha": "2026-07-23",
+  "pedido": "PO-2026-0478",
+  "total": "156438",
+  "iva_pct": 21,
+  "nif": null
+ },
+ "avisos": []
+}

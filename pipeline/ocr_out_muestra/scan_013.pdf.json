@@ -1,0 +1,14 @@
+{
+ "file_id": "scan_013.pdf",
+ "origen": "ocr",
+ "ocr_conf": 65.6,
+ "campos": {
+  "num_factura": "FA-1915",
+  "fecha": "2026-06-11",
+  "pedido": "PO-2028-0483",
+  "total": "141074",
+  "iva_pct": 21,
+  "nif": "A58231074"
+ },
+ "avisos": []
+}

@@ -1,0 +1,13 @@
+{
+ "file_id": "fax_2026_0411.pdf",
+ "origen": "ocr",
+ "ocr_conf": 32.0,
+ "campos": {
+  "num_factura": null,
+  "nif": null
+ },
+ "avisos": [
+  "conf_baja(32.0)",
+  "campos_criticos_perdidos"
+ ]
+}
