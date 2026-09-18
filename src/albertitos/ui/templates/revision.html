@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titulo %}Revisión · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Revisión</h1>
+<p>Casos marcados para revisión humana. Puedes resolverlos con calma: el resto
+del lote sigue funcionando mientras tanto. Tu corrección se guarda con quién,
+cuándo y qué cambió; la decisión final la recalcula siempre el motor de reglas.</p>
+
+{% for c in cola %}
+<div class="tarjeta">
+  <h2>{{ c.decision.file_id }}</h2>
+  <p>Motivo: {{ c.motivo }} · Reglas dudosas:
+    {% for cod in c.codes %}<code>{{ cod }}</code> {% endfor %}
+    · {{ m.etq('medido') }}</p>
+  <div class="fila">
+    <div>
+      <h3>Imagen de la página</h3>
+      {% for pag, b64 in c.imagenes | dictsort %}
+        <img class="pagina" alt="Página {{ pag }}" src="data:image/png;base64,{{ b64 }}">
+        <p>Página {{ pag }} {{ m.etq('medido') }}</p>
+      {% else %}
+        <p class="aviso">Sin imagen almacenada para esta factura.</p>
+      {% endfor %}
+    </div>
+    <div>
+      <h3>Lecturas candidatas</h3>
+      {% for f in c.campos %}
+      <p class="{% if f.desacuerdo %}desacuerdo{% endif %}">
+        <strong>{{ f.tipo }}</strong>:
+        {% for cand in f.candidatos %}
+          {{ cand.value }} (<em>{{ cand.extractor }}</em>, confianza {{ '%.2f'|format(cand.confidence) }})
+          {% if not loop.last %} vs {% endif %}
+        {% endfor %}
+        {% if f.desacuerdo %}⚠️ los extractores discrepan{% endif %}
+      </p>
+      {% else %}
+      <p class="aviso">Sin lecturas estructuradas: consulta la
+        <a href="/facturas/{{ c.decision.invoice_id }}">cadena de evidencia</a>.</p>
+      {% endfor %}
+
+      <h3>Resolver</h3>
+      <form method="post" action="/revision/{{ c.decision.invoice_id }}/resolver">
+        <input type="hidden" name="file_id" value="{{ c.decision.file_id }}">
+        <label>Campo:<br>
+          <input name="campo" list="campos-{{ c.decision.invoice_id }}" required></label>
+        <datalist id="campos-{{ c.decision.invoice_id }}">
+          {% for f in c.campos %}<option value="{{ f.tipo }}">{% endfor %}
+        </datalist><br>
+        <label>Valor correcto:<br>
+          <input name="valor" required
+            {% if c.campos %}list="valores-{{ c.decision.invoice_id }}"{% endif %}></label>
+        <datalist id="valores-{{ c.decision.invoice_id }}">
+          {% for f in c.campos %}{% for cand in f.candidatos %}
+            <option value="{{ cand.value }}">{% endfor %}{% endfor %}
+        </datalist><br>
+        <label>Nota (opcional):<br><input name="nota" size="30"></label><br>
+        <button type="submit">Guardar corrección</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% else %}
+<p>No hay casos pendientes de revisión. 🎉</p>
+{% endfor %}
+
+{% if overrides %}
+<h2>Correcciones guardadas</h2>
+<table>
+  <tr><th>Cuándo</th><th>Factura</th><th>Campo</th><th>Valor</th><th>Nota</th></tr>
+  {% for o in overrides %}
+  <tr><td>{{ o.cuando }}</td><td>{{ o.file_id }}</td><td>{{ o.campo }}</td>
+      <td>{{ o.valor }}</td><td>{{ o.nota }}</td></tr>
+  {% endfor %}
+</table>
+<p>Cada corrección queda registrada con fecha y se puede auditar después.</p>
+{% endif %}
+{% endblock %}

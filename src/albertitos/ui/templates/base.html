@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Albertitos{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1c2733; background: #f6f8fa; }
+    nav { background: #1c2733; padding: .6rem 1rem; display: flex; gap: 1rem; }
+    nav a { color: #fff; text-decoration: none; font-weight: 600; }
+    nav a:hover { text-decoration: underline; }
+    main { max-width: 60rem; margin: 1rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 1.6rem; }
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td { border: 1px solid #d7dde3; padding: .45rem .6rem; text-align: left; font-size: .92rem; }
+    th { background: #eef2f5; }
+    .etq { display: inline-block; font-size: .7rem; font-weight: 700; padding: .1rem .4rem;
+           border-radius: .6rem; vertical-align: middle; }
+    .medido { background: #d9f2e3; color: #14532d; }
+    .estimado { background: #fdedd0; color: #7c4a03; }
+    .PAGAR { color: #14532d; font-weight: 700; }
+    .NO_PAGAR { color: #7f1d1d; font-weight: 700; }
+    .ESCALAR { color: #92400e; font-weight: 700; }
+    .EN_PROCESO { color: #334155; font-weight: 600; }
+    .tarjeta { background: #fff; border: 1px solid #d7dde3; border-radius: .5rem;
+               padding: .8rem 1rem; margin: .6rem 0; }
+    .fila { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .fila > div { flex: 1 1 12rem; }
+    .num { font-size: 1.5rem; font-weight: 700; }
+    .aviso { background: #fff7e6; border: 1px solid #e5c07b; border-radius: .4rem;
+             padding: .5rem .8rem; margin-bottom: 1rem; }
+    .desacuerdo { background: #fdecec; }
+    code { background: #eef2f5; padding: 0 .3rem; border-radius: .3rem; font-size: .85em; }
+    img.pagina { width: 100%; max-width: 22rem; border: 1px solid #d7dde3; }
+    form.inline { display: inline; }
+    button { cursor: pointer; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/">Operaciones</a>
+  <a href="/facturas">Facturas</a>
+  <a href="/revision">Revisión</a>
+  <a href="/reglas">Reglas</a>
+  <a href="/salud">Salud</a>
+</nav>
+<main>
+  {% if demo %}
+  <p class="aviso">Estás viendo <strong>datos de prueba</strong>: el registro de
+  actividad (.sdd/ledger) aún no tiene datos reales. En cuanto el pipeline
+  procese facturas, esta pantalla mostrará los datos de verdad.</p>
+  {% endif %}
+  {% block cuerpo %}{% endblock %}
+</main>
+</body>
+</html>

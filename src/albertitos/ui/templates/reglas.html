@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titulo %}Reglas · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Reglas</h1>
+<p>Versión activa:
+  {% if activas.version %}<strong>{{ activas.version }}</strong> {{ m.etq('medido') }}
+  {% else %}aún sin decisiones registradas{% endif %}</p>
+
+<h2>Umbrales de confianza vigentes</h2>
+<table>
+  <tr><th>Regla</th><th>Umbral</th></tr>
+  {% for cod, umbral in activas.umbrales | dictsort %}
+  <tr><td><code>{{ cod }}</code></td><td>{{ umbral }} {{ m.etq('medido') }}</td></tr>
+  {% else %}
+  <tr><td colspan="2">Sin umbrales registrados todavía.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>¿Qué pasaría si…?</h2>
+<p>Elige una regla y prueba otro umbral. Te decimos qué facturas cambiarían de
+veredicto <strong>según la evidencia ya medida</strong> (es una previsualización:
+la decisión real la recalcula el motor al reprocesar).</p>
+<form method="get" action="/reglas">
+  <label>Regla:
+    <select name="codigo">
+      <option value="">— elige una —</option>
+      {% for cod in activas.umbrales %}
+      <option value="{{ cod }}" {% if cod == codigo %}selected{% endif %}>{{ cod }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Nuevo umbral: <input name="nuevo_umbral" value="{{ nuevo_umbral }}" size="6"></label>
+  <button type="submit">Previsualizar cambio</button>
+</form>
+
+{% if error %}<p class="aviso">{{ error }}</p>{% endif %}
+{% if codigo and not error %}
+<h3>Resultado de la simulación</h3>
+{% if cambios %}
+<table>
+  <tr><th>Factura</th><th>Veredicto actual</th><th>Pasaría a</th>
+      <th>Confianza medida</th><th>Umbral actual</th></tr>
+  {% for c in cambios %}
+  <tr>
+    <td><a href="/facturas/{{ c.invoice_id }}">{{ c.file_id }}</a></td>
+    <td>{{ c.antes }}</td>
+    <td><strong>{{ c.despues }}</strong></td>
+    <td>{{ '%.2f'|format(c.confianza) }} {{ m.etq('medido') }}</td>
+    <td>{{ c.umbral_actual }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% elif codigo %}
+<p>Con ese umbral no cambiaría ningún veredicto ya evaluado (según la evidencia
+medida hasta ahora).</p>
+{% endif %}
+{% endif %}
+{% endblock %}

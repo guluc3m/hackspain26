@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block titulo %}No encontrado · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Factura no encontrada</h1>
+<p>No hay ningún registro de <code>{{ invoice_id }}</code> en el sistema.</p>
+<p><a href="/facturas">← Volver a Facturas</a></p>
+{% endblock %}
