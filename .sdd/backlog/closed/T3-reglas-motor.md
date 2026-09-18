@@ -42,3 +42,40 @@ fila P007 duplicada — deduplicar y dejarlo registrado.
   `pendiente_revisar` (PO-2026-0007, PO-2026-0141) ⇒ ESCALAR.
 - Test: misma entrada dos veces ⇒ output idéntico.
 - `uv run pytest` y `uv run ruff check .` en verde.
+
+---
+
+## Resolución (W2 — 2026-09-19)
+
+Implementado `src/albertitos/rules/` (`regla_v3.yaml`, `config.py`, `master.py`,
+`engine.py`) + `tests/test_rules.py` y fixture `tests/fixtures/maestro_fixture.xlsx`.
+
+Decisiones documentadas:
+- **Reglas como datos**: códigos, clase (gate/anomaly), umbrales, marcadores de
+  anomalías, estados pagables y hojas ignoradas viven en `regla_v3.yaml`; la v4
+  del sábado será cambiar ese yaml. Códigos sin implementación rechazan la carga.
+- **Política de resultado (AGENTS.md §6, orden vinculante)**: (1) UNKNOWN de
+  clase `anomaly` ⇒ ESCALAR; (2) FAIL de clase `gate` ⇒ NO_PAGAR; (3) cualquier
+  otro UNKNOWN ⇒ ESCALAR; (4) si no, PAGAR. Anomalía + violación definitiva ⇒
+  ESCALAR (ante duda razonable, escalar antes de NO_PAGAR).
+- **Reglas anomaly nuevas (datos, no código)**: `NO_EMBEDDED_INSTRUCTIONS`
+  (marcadores imperativos sobre el texto crudo — son datos, nunca comandos),
+  `PROVEEDOR_FANTASMA` (IBAN ES66…8877), `AMOUNT_OUTLIER` (>50000 EUR),
+  `PEDIDO_EN_REVISION` (pedidos de la hoja `pendiente_revisar` del maestro).
+- **Maestro**: SOLO `Proveedores` + `Pedidos_2026` + `pendiente_revisar`;
+  trampas ignoradas y registradas en snapshot; P007 duplicado deduplicado
+  (primera ocurrencia gana) y registrado en `duplicados_deducidos`. El
+  submódulo `caja-de-alberto/` permanece byte a byte intacto (test de solo
+  lectura incluido).
+- **NIF vacío en Pedidos**: se cruza por `ProveedorID → NIF del maestro`;
+  el NIF vacío del pedido no castiga si el proveedor cruza bien.
+- **Estados pagables**: la norma pide PENDIENTE; el maestro marca ABIERTO
+  (=pendiente de pago). Config `estados_pagables: [ABIERTO, PENDIENTE]`;
+  PAGADO nunca es pagable.
+- **Colapso de candidatos**: solo cuando una regla necesita un escalar; se
+  elige el de mayor confianza y se registra (elegido, por qué) en `consumed`.
+- **Pureza**: `fecha_referencia` se inyecta (el motor no lee el reloj);
+  misma entrada + misma config ⇒ output idéntico (test de bytes).
+- Verificación sobre el corpus real: PAGAR 347 / NO_PAGAR 108 / ESCALAR 45;
+  traps FA-8801 (duplicado), fantasmas, outlier 84700 y pendiente_revisar
+  (PO-2026-0007/0141) en el resultado esperado.
