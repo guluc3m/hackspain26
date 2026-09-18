@@ -62,3 +62,16 @@
   como PENDIENTE-MEDICIÓN/ESTIMADO; cuando escriban evidencia al ledger,
   regenerar con `uv run python -m albertitos.report_data` + `-m albertitos.metrics`
   y recompilar (`cd docs/report && ~/.local/bin/typst compile --font-path fonts albertitos_plan.typ`).
+
+## Sesión 4 — T12 cerrado (commit a943fab)
+
+- Drills de resiliencia (`albertitos.drills`, 4/4 PASS, medidos en
+  .sdd/metrics/drills.json): rung 5 caído → ESCALAR sin abortar; 429 con
+  Retry-After → backoff respetado y 0 llamadas extra; crash del runner real
+  (`run_batch` + Store) a mitad de lote → reanudación sin duplicados;
+  ledger corrupto → tolerado sin inventar nada. La defensa de resiliencia
+  (10 pts de la rúbrica) tiene ensayo real con números.
+- `scripts/stage_delivery.sh`: staging del repo de entrega (3 archivos,
+  idempotente, valida antes de copiar, escanea secretos, falla limpio).
+- Para la defensa: `uv run python -m albertitos.drills` reproduce los 4
+  ensayos en segundos, sin red.
