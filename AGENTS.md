@@ -191,3 +191,39 @@ An extraction change that breaks a trap fixture is a regression, not a trade-off
 - Do not write state to `/tmp`.
 - Do not add a stage that returns unstructured text with no evidence row.
 - Do not "fix" a failing trap by loosening a rule without an ADR.
+
+## 13 · Material externo y decisiones de modelo (leer antes de decidir nada)
+
+**El reto completo está en https://hackathon.maisa.ai/** (léelo si dudas del contrato). Hechos
+que condicionan TODO lo que construyas:
+
+- **Entrega**: repo público SEPARADO de esta solución, raíz con exactamente `outcomes.jsonl`,
+  `outcomes_lote2.jsonl`, `albertitos_plan.pdf`. Sin código, credenciales ni ejecutables en él.
+- **Contrato JSONL**: `{"file_id":"<nombre EXACTO del PDF>","result":"PAGAR"|"NO_PAGAR"|"ESCALAR"}`
+  — un objeto por factura, ambos lotes. Traza opcional pero puntúa.
+- **Rúbrica (100+10)**: producto/arquitectura/ADRs 35 · trazabilidad/observabilidad 20 ·
+  escala y coste 25 · resiliencia/recuperación 10 · ejecución 10 · bonus +10. Desempate:
+  escala/coste → resiliencia → bonus. La validación binaria decide elegibilidad.
+- **Calendario**: sábado 18:00 Madrid llega lote 2 (40 facturas + ERP actualizado + regla v4 —
+  el ERP está fuera de scope: mantén SOLO la costura de adaptador). Domingo 11:00 Madrid cierre.
+- **Defensa** (10 min): demo; arquitectura/ADRs; trazabilidad + capacidad/coste (medido vs
+  estimado, explícito); resiliencia (ensayo real de fallo de proveedor).
+- **Lunes imposible**: no habrá segunda pasada — el reprocesado tras cambio de datos (domingo)
+  debe funcionar desde el diseño, no como parche.
+
+**Decisiones de modelo ya tomadas** (log completo y verificable: `docs/decisiones/DECISIONS.md`):
+
+- **Rung 4 (OCR local)**: `PaddleOCR-VL-1.6` q8_0 — archivos `PaddleOCR-VL-1.6-q8_0.gguf`
+  (0.498 GB) + `PaddleOCR-VL-1.6-q8_0.mmproj` (0.598 GB) de `Mungert/PaddleOCR-VL-1.6-GGUF`,
+  servidos por `llama-server` (llama.cpp CPU, temp 0, ~2.5 GB RSS). Verificado contra los
+  repos HF primarios. La validación A/B q8 vs f16 mmproj es puerta de entrada (D-002).
+- **Rung 5 (escalada)**: modelo cloud >25B multimodal (preset `claude-opus-4-5` →
+  Qwen3.8-27B-Vision). SOLO para páginas que fallen tesseract+VLM; su lectura es OTRO
+  candidato, jamás respuesta automática; el humano decide en la cola de revisión (no bloqueante).
+- **Flota de agentes**: glm-5-3 (helmcode) por defecto; fallback glm-5-3-flash →
+  deepseek-v4-1-flash → deepseek-v4-flash. Los extractores proponen; las REGLAS deciden.
+
+**Higiene de secretos (no negociable)**: ninguna API key, token ni credencial en este repo.
+Las claves viven solo en `/home/deploy/.nanobot/*.json`. Si un test necesita un endpoint,
+pide la key por variable de entorno (`api_key_env`), nunca hardcodeada. Antes de cada commit:
+`grep -rn "apiKey\|sk-[A-Za-z0-9]" src tests .sdd` debe devolver vacío.
