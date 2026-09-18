@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from albertitos.extract import ExtractionConfig, ExtractionLadder
+from albertitos.extract import CONFIG_VERSION, ExtractionConfig, ExtractionLadder
 from albertitos.extract.plausibility import check_text_usability
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -184,7 +184,7 @@ class TestPageCache:
         # evidence: first run has one row per rung; second run replays from cache
         assert len(first[0].evidence) == 5  # rungs 1..5 evaluated (5 skipped: unconfigured)
         second_stages = [ev for ev in second[0].evidence if ev.outcome == "cache_hit"]
-        assert len(second_stages) == 4  # rungs 2, 3, 4, 5 replayed
+        assert len(second_stages) == 5  # rungs 1–5 replayed (rung 1 también en cache)
         assert all(ev.latency_ms == 0 for ev in second_stages)
 
         # same features, no re-billing: skipped features still present
@@ -207,7 +207,7 @@ class TestPageCache:
         lad.cfg = type(lad.cfg)(
             vlm_base_url="http://127.0.0.1:1",
             tesseract_bin="/nonexistent/tesseract",
-            config_version="extract-v2",
+            config_version=CONFIG_VERSION + "-bump",
         )
         second = lad.extract_file(f, invoice_id="inv-v")
         assert not any(ev.outcome == "cache_hit" for ev in second[0].evidence)

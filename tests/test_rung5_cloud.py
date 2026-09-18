@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from albertitos.extract import ExtractionConfig, ExtractionLadder
+from albertitos.extract import CONFIG_VERSION, ExtractionConfig, ExtractionLadder
 from albertitos.extract.cloud import (
     ENV_API_KEY,
     ENV_BASE_URL,
@@ -40,7 +40,7 @@ CLOUD_READING = (
 def make_cloud(**kw) -> CloudConfig:
     base = {
         "base_url": "https://cloud.example.test",
-        "model": "qwen3.8-27b-vision",
+        "model": "deepseek-v4.1-flash",
         "api_key": "test-key",
         "timeout_s": 5.0,
         "backoff_initial_s": 0.0,
@@ -131,7 +131,7 @@ class TestEvidenceAndCache:
         page = lad.extract_file(scan_path, invoice_id="inv-ev")[0]
         row = next(ev for ev in page.evidence if "rung5" in ev.stage)
         assert row.extractor == "cloud_vlm"
-        assert row.extractor_version == "qwen3.8-27b-vision"
+        assert row.extractor_version == "deepseek-v4.1-flash"
         assert row.outcome == "accept"
         assert f"prompt_sha256={prompt_sha256()}" in row.detail
         assert row.confidence is not None
@@ -154,7 +154,7 @@ class TestEvidenceAndCache:
         second = lad.extract_file(scan_path, invoice_id="inv-cache")[0]
         assert calls["n"] == 1  # cache: cero llamadas repetidas
         hit = next(ev for ev in second.evidence if ev.outcome == "cache_hit" and "cloud" in ev.stage)
-        assert hit.stage == "extract:cloud_vlm"
+        assert hit.stage == "extract:rung5_cloud_vlm"
         cloud = next(f for f in second.features if f.extraction_method == "cloud_vlm")
         assert cloud.data["raw"] == CLOUD_READING  # la lectura se reutiliza
 
@@ -169,7 +169,7 @@ class TestEvidenceAndCache:
         lad.extract_file(scan_path, invoice_id="inv-v")
         assert calls["n"] == 1
         lad.cfg = ExtractionConfig(
-            tesseract_bin="/nonexistent/tesseract", config_version="extract-v2"
+            tesseract_bin="/nonexistent/tesseract", config_version=CONFIG_VERSION + "-bump"
         )
         lad.extract_file(scan_path, invoice_id="inv-v")
         assert calls["n"] == 2
@@ -321,7 +321,7 @@ class TestReviewQueue:
             motivo="test",
             features=feats,
             cloud_ok=True,
-            cloud_model="qwen3.8-27b-vision",
+            cloud_model="deepseek-v4.1-flash",
             config_version="extract-v1",
             png_bytes=b"\x89PNG-fake",
         )
@@ -375,13 +375,13 @@ class TestEnvConfig:
     def test_cloud_config_from_env(self, monkeypatch):
         env = {
             ENV_BASE_URL: "https://api.example.test/v1",
-            ENV_MODEL: "qwen3.8-27b-vision",
+            ENV_MODEL: "deepseek-v4.1-flash",
             ENV_API_KEY: "secret-from-env",
         }
         cfg = cloud_config_from_env(env)
         assert cfg is not None
         assert cfg.base_url == "https://api.example.test/v1"
-        assert cfg.model == "qwen3.8-27b-vision"
+        assert cfg.model == "deepseek-v4.1-flash"
         assert cfg.api_key == "secret-from-env"
 
     def test_missing_env_returns_none(self):

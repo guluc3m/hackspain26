@@ -1,0 +1,310 @@
+{
+  "field_coverage_capas_texto": {
+    "mean": 0.954,
+    "p25": 1.0,
+    "p5": 0.8,
+    "p50": 1.0,
+    "p75": 1.0,
+    "p95": 1.0
+  },
+  "field_coverage_ocr": {
+    "mean": 0.483,
+    "p25": 0.2,
+    "p5": 0.0,
+    "p50": 0.4,
+    "p75": 0.6,
+    "p95": 1.0
+  },
+  "kind": "calibracion-rung3",
+  "ocr_pages": [
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "copia_2026_0518.pdf",
+      "n_words": 57,
+      "page_sha256": "a3fd245ccbf3c3732bf23f9e83f27dc36ac32e0b50f5246a997df0571995d9eb",
+      "word_conf": 61.48
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.2,
+      "invoice_id": "fax_2026_0411.pdf",
+      "n_words": 18,
+      "page_sha256": "3bc26640a39ea06ca2f8bca684ed3ad91a44ba83245f3eddec71a279eb6bf810",
+      "word_conf": 16.99
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.0,
+      "invoice_id": "reimpresion_0712.pdf",
+      "n_words": 753,
+      "page_sha256": "8a7f304c41a7d064662c7fd7b3e24bf649c476defc9c452077881a108023d5f4",
+      "word_conf": 26.01
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_001.pdf",
+      "n_words": 33,
+      "page_sha256": "963c46ca3423e76b0c2e19b44ba9e05e41f526e6b76c8d4eb665e05e65f1d5e7",
+      "word_conf": 46.27
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.8,
+      "invoice_id": "scan_002.pdf",
+      "n_words": 32,
+      "page_sha256": "bc05b0fa0600cc46191cbbcf1c62f8f3271253cac545e32588215027d1a8b963",
+      "word_conf": 62.82
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_003.pdf",
+      "n_words": 35,
+      "page_sha256": "e3d40e5e6ebaa9348560dde8a00603489daedab35058f24c1e76f543f6e93dc0",
+      "word_conf": 56.11
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_004.pdf",
+      "n_words": 33,
+      "page_sha256": "e4977558b7380ada813c683a1d79375565674cbe6b8eab7e5af3af39720e03dd",
+      "word_conf": 48.47
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_005.pdf",
+      "n_words": 35,
+      "page_sha256": "23c996c2f697dbdae91fce2cff7fb70f7de3475980eb1a3b599b0b8805e2ae54",
+      "word_conf": 43.48
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_006.pdf",
+      "n_words": 33,
+      "page_sha256": "c38a6666914b748db16ea4090737482b3565106249539aa1cf8396a65d4022a1",
+      "word_conf": 53.66
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_007.pdf",
+      "n_words": 30,
+      "page_sha256": "56a2210e9ddfd0004292af3cf49a6c76b4172dfe7470fc793230b779060ad8c8",
+      "word_conf": 61.83
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_008.pdf",
+      "n_words": 32,
+      "page_sha256": "1552cf80250e7292de207663cc14cd31a9b75b5986214c13563a51d781ec49af",
+      "word_conf": 58.95
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_009.pdf",
+      "n_words": 32,
+      "page_sha256": "e95d69456fec24885ef5c4aca1e2a4c70f4055d371a6b58433afa641a5e013c4",
+      "word_conf": 42.98
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.8,
+      "invoice_id": "scan_010.pdf",
+      "n_words": 36,
+      "page_sha256": "f4250d4d8c86c2557cb1c8026869e3ad67c952bf87d5437a9be4c66c5fd0e3a2",
+      "word_conf": 50.33
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_011.pdf",
+      "n_words": 36,
+      "page_sha256": "b95e47dc0ce8ad9e8787586b1d78cf356a25d16bb7655ce1ae570159c6051ce5",
+      "word_conf": 47.57
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.2,
+      "invoice_id": "scan_012.pdf",
+      "n_words": 33,
+      "page_sha256": "85e53ba20e1b9b9ae1073cc9804a6693ced60b0c523a432b512a3acc370ee49c",
+      "word_conf": 47.1
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_013.pdf",
+      "n_words": 36,
+      "page_sha256": "3957cc98000f17730c3dc91bf792bf68d5def5e390dac1c7f730fc224e8076f7",
+      "word_conf": 52.71
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.2,
+      "invoice_id": "scan_014.pdf",
+      "n_words": 36,
+      "page_sha256": "3b3c8dfdf5a0c427732e7213f55bd89b42cb9a1f162d235cead4b16c69ef3e80",
+      "word_conf": 42.55
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_015.pdf",
+      "n_words": 31,
+      "page_sha256": "4e95f5fc0b33e52d3f6d546bceac295922351f025cdd537b3e2614e4df713155",
+      "word_conf": 58.05
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.8,
+      "invoice_id": "scan_016.pdf",
+      "n_words": 39,
+      "page_sha256": "893cb854ab8e8d81b2a645b8d767398b5586f369485287b78c20a63705778abd",
+      "word_conf": 55.21
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.2,
+      "invoice_id": "scan_017.pdf",
+      "n_words": 35,
+      "page_sha256": "4d357591d292156ee3f7423234c52fa7e05614f8939d9627ea339c4ac8f0a071",
+      "word_conf": 63.24
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 1.0,
+      "invoice_id": "scan_018.pdf",
+      "n_words": 54,
+      "page_sha256": "bab9da4ff5154197e6cc1adaedc5855d02d6ae000262ca1cd6af17c0b57fee3e",
+      "word_conf": 92.06
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.6,
+      "invoice_id": "scan_021.pdf",
+      "n_words": 143,
+      "page_sha256": "9027ad616165d501d3237005d561faa4b9f4688fac4c6615efd2c9064ea33c2f",
+      "word_conf": 55.67
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.2,
+      "invoice_id": "scan_022.pdf",
+      "n_words": 25,
+      "page_sha256": "d1c7dc60b1ee5865b639ed5f4b6bc575159b12464f2fca2ba45997cd9fedf574",
+      "word_conf": 22.83
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.4,
+      "invoice_id": "scan_023.pdf",
+      "n_words": 37,
+      "page_sha256": "201dd2c0aa12a1949b189569300017d825158aebd901f3a23275fddeaf096aec",
+      "word_conf": 76.66
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.0,
+      "invoice_id": "scan_025.pdf",
+      "n_words": 20,
+      "page_sha256": "a4d70b4ac7e8ec7c946765d8ca6bd6c5d09543e2ba7b161c218f5c86a025cbd8",
+      "word_conf": 87.19
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.0,
+      "invoice_id": "scan_026.pdf",
+      "n_words": 3,
+      "page_sha256": "27b81fbe929f57d931e88bf83d852b1d9e2860d92d35f3df0d41e5eb0ee92c2d",
+      "word_conf": 42.98
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 1.0,
+      "invoice_id": "scan_027.pdf",
+      "n_words": 44,
+      "page_sha256": "c47b9c263a6c90dd6251de390a4652c136a5ec3903c1a9987be0a5b256512d37",
+      "word_conf": 89.23
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 1.0,
+      "invoice_id": "scan_028.pdf",
+      "n_words": 58,
+      "page_sha256": "df2029fa8c459014e9620fb09a7c02bac25f9aab3c16de5b8a4a0e23eb8459de",
+      "word_conf": 89.71
+    },
+    {
+      "causa_texto": "text-unusable:too-short:0<20",
+      "field_coverage": 0.8,
+      "invoice_id": "scan_029.pdf",
+      "n_words": 61,
+      "page_sha256": "5687670b96dc2ddab8dd1c766ec448ea2c37e07ae29abc3710cfe05d2a37e807",
+      "word_conf": 93.17
+    }
+  ],
+  "ocr_pages_measured": 29,
+  "psm": 6,
+  "tabla_umbral_cobertura": {
+    "0.2": {
+      "pct_capas_texto_arriba": 100.0,
+      "pct_ocr_arriba": 89.7
+    },
+    "0.4": {
+      "pct_capas_texto_arriba": 100.0,
+      "pct_ocr_arriba": 72.4
+    },
+    "0.5": {
+      "pct_capas_texto_arriba": 100.0,
+      "pct_ocr_arriba": 44.8
+    },
+    "0.6": {
+      "pct_capas_texto_arriba": 100.0,
+      "pct_ocr_arriba": 44.8
+    },
+    "0.8": {
+      "pct_capas_texto_arriba": 100.0,
+      "pct_ocr_arriba": 24.1
+    }
+  },
+  "tabla_umbral_word_conf": {
+    "40.0": {
+      "pct_ocr_arriba": 89.7,
+      "pct_texto_arriba": null
+    },
+    "50.0": {
+      "pct_ocr_arriba": 62.1,
+      "pct_texto_arriba": null
+    },
+    "60.0": {
+      "pct_ocr_arriba": 34.5,
+      "pct_texto_arriba": null
+    },
+    "70.0": {
+      "pct_ocr_arriba": 20.7,
+      "pct_texto_arriba": null
+    },
+    "80.0": {
+      "pct_ocr_arriba": 17.2,
+      "pct_texto_arriba": null
+    }
+  },
+  "tessdata_lang": "spa+eng",
+  "tesseract": "tesseract 5.5.1\n leptonica-1.85.0\n  libjpeg 6b (libjpeg-turbo 1.5.3) : libpng 1.6.34 : libtiff 4.0.9 : zlib 1.2.11 : libwebp 1.0.0",
+  "text_layers_measured": 493,
+  "word_conf_ocr": {
+    "mean": 56.7,
+    "p25": 46.27,
+    "p5": 22.83,
+    "p50": 55.21,
+    "p75": 62.82,
+    "p95": 92.06
+  }
+}
