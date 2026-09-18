@@ -43,6 +43,7 @@ RE_NUM_FB = re.compile(r"\b((?:FA|F26)[-/ ]?\d{3,5}|2026/\d{4,6}|FAB?\d{3,4})\b"
 ZW = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), None)
 
 def _norm_num(s: str) -> str:
+    """'2.489,99' / '2.967,25' / '61269' / '1.135.20' (OCR) -> '2967.25' etc."""
     s = s.translate(ZW).replace(" ", "").replace("\u00a0", "")
     if "," in s and "." in s:
         if s.rfind(",") > s.rfind("."):   # español 1.234,56
@@ -51,6 +52,10 @@ def _norm_num(s: str) -> str:
             s = s.replace(",", "")
     elif "," in s:
         s = s.replace(".", "").replace(",", ".")
+    elif s.count(".") > 1:
+        # OCR que pega miles con punto y decimales con punto: '1.135.20'
+        partes = s.split(".")
+        s = "".join(partes[:-1]) + "." + partes[-1]
     return s
 
 def extract_fields(text: str) -> dict:
@@ -64,7 +69,10 @@ def extract_fields(text: str) -> dict:
     m = RE_FECHA.search(text)
     if m:
         try:
-            campos["fecha"] = f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            dd, mm, aa = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            # guarda anti-OCR: anhos corruptos (2076, 7900...) se descartan
+            if 1 <= mm <= 12 and 1 <= dd <= 31 and 2020 <= aa <= 2027:
+                campos["fecha"] = f"{aa:04d}-{mm:02d}-{dd:02d}"
         except ValueError:
             pass
     if not campos.get("fecha"):
@@ -76,7 +84,12 @@ def extract_fields(text: str) -> dict:
         campos["pedido"] = f"PO-{m.group(1)}-{m.group(2)}"
     m = RE_TOTAL.search(text)
     if m:
-        campos["total"] = _norm_num(m.group(1))
+        total = _norm_num(m.group(1))
+        # guarda anti-OCR: entero sospechosamente largo -> coma decimal perdida
+        # (Caja: totales ~50-9500; "61269" son 612,69)
+        if "." not in total and len(total.split(".")[0]) > 4:
+            total = total[:-2] + "." + total[-2:]
+        campos["total"] = total
     m = RE_IVA.search(text)
     if m:
         campos["iva_pct"] = int(m.group(1))
