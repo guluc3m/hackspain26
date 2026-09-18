@@ -93,3 +93,21 @@
   (75.9%) se resuelven en rung 3 y 7 escalan al VLM.
 - Tests: dry-run reproducible byte a byte (salvo wall), 0 re-procesos,
   rutas cuadradas, fallos sin abortar, workers capados a 2. 105 tests verde.
+
+## Actualización 4: T14 · Corrida real lote 1 → outcomes.jsonl
+- Corrida completa (relanzada por el supervisor tras morir el runner; done=500,
+  fallos=0, outcomes.jsonl validado con `albertitos.validate`: 500/500).
+- Resultados MEDIDOS: 347 PAGAR / 108 NO_PAGAR / 45 ESCALAR; 4.162 files/s
+  (120,1 s de pared), rung 4 serializado (llama-server up; 9 invocaciones,
+  media 15,8 s, máx 33,7 s), rung 5: 9 invocaciones (5× status-404 del
+  proveedor, 5 sin credenciales aún) ⇒ coste cloud facturado 0,00 €.
+- `.sdd/metrics/lote1.json` (generado con tools/lote1_metrics.py desde
+  store/ledger/runner.json) + triage documentado en
+  `.sdd/metrics/triage-revision.md`: 45 ESCALAR por motivo dominante —
+  RUNNER_TIMEOUT 20 (timeout 20 s/archivo, hallazgo de seguimiento), mixto 14,
+  instrucciones embebidas 5, fecha 3, pedido en revisión 2, IBAN 1. Las 10
+  páginas de extracción del rung 5 están dentro de los 45; review.jsonl lleva
+  imagen + candidatas para las 10. Nada decidido: humano decide (§6/§7).
+- NOTA límite del ticket (runner final): los escaneos con timeout quedaron
+  ESCALAR — correcto según política (ante duda, ESCALAR), y re-procesable
+  barato vía cache cuando se revise el timeout o llegue lote 2.
