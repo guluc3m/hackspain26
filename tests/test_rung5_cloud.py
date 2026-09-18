@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from albertitos.extract import ExtractionConfig, ExtractionLadder
+from albertitos.extract import CONFIG_VERSION, ExtractionConfig, ExtractionLadder
 from albertitos.extract.cloud import (
     ENV_API_KEY,
     ENV_BASE_URL,
@@ -154,7 +154,7 @@ class TestEvidenceAndCache:
         second = lad.extract_file(scan_path, invoice_id="inv-cache")[0]
         assert calls["n"] == 1  # cache: cero llamadas repetidas
         hit = next(ev for ev in second.evidence if ev.outcome == "cache_hit" and "cloud" in ev.stage)
-        assert hit.stage == "extract:cloud_vlm"
+        assert hit.stage == "extract:rung5_cloud_vlm"
         cloud = next(f for f in second.features if f.extraction_method == "cloud_vlm")
         assert cloud.data["raw"] == CLOUD_READING  # la lectura se reutiliza
 
@@ -169,7 +169,7 @@ class TestEvidenceAndCache:
         lad.extract_file(scan_path, invoice_id="inv-v")
         assert calls["n"] == 1
         lad.cfg = ExtractionConfig(
-            tesseract_bin="/nonexistent/tesseract", config_version="extract-v2"
+            tesseract_bin="/nonexistent/tesseract", config_version=CONFIG_VERSION + "-bump"
         )
         lad.extract_file(scan_path, invoice_id="inv-v")
         assert calls["n"] == 2

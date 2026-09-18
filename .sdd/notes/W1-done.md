@@ -71,3 +71,25 @@
 - Nueva dependencia: httpx (justificada: MockTransport del ticket + cliente
   HTTP con retry/Retry-After).
 - 38 tests verde, ruff limpio.
+
+## Actualización 3: T10 · Dry-run del corpus (500 PDFs) + calibración rung 3
+- `src/albertitos/extract/dryrun.py` + CLI (`python -m albertitos.extract.dryrun`):
+  idempotente (rung 1 también cacheado ahora; latencias medidas viven en el
+  cache y sobreviven al re-run), `--limit`/`--only`, timeout por archivo
+  (registrar y seguir), concurrencia capada a 2, métricas en
+  `.sdd/metrics/corpus-dryrun.json`, evidencia en
+  `.sdd/metrics/evidence-dryrun.jsonl`. No decide resultados (test anti-DECIDE).
+- Resultado MEDIDO (500 archivos, 3,57 s, 0 errores): 471 (94,2 %) con capa de
+  texto usable; 29 (5,8 %) caen a raster/QR (los 26 sin texto + 3 escaneos
+  ilegibles de la doctrina); 0 solo-QR; 493 páginas únicas (duplicados
+  detectados). rung 1: 2 636 archivos/s, media 0,4 ms, p95 2,0 ms; rung 2:
+  media 42,1 ms, p95 73,0 ms. Suma de rutas cuadra (471+29=500).
+- Calibración rung 3 con OCR REAL (tesserocr/libtesseract 5.5.1 user-space,
+  NO en pyproject; --no-sync): 29 páginas OCRizadas + 493 capas de texto.
+  Distribución bimodal: ilegibles en [17.0, 26.0], legible mínima 42.6.
+  Decisión: word_conf 60→40 y cobertura 0.5→0.4 (config extract-v2), con
+  porcentajes citados en `.sdd/metrics/calibracion.md` (evidencia ADR D-001):
+  89.7% del rung-3 pasa, las 3 debajo son exactamente los ilegibles; 22/29
+  (75.9%) se resuelven en rung 3 y 7 escalan al VLM.
+- Tests: dry-run reproducible byte a byte (salvo wall), 0 re-procesos,
+  rutas cuadradas, fallos sin abortar, workers capados a 2. 105 tests verde.

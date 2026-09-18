@@ -123,10 +123,20 @@ class ExtractionLadder:
 
         pdfium_doc = pdfium.PdfDocument(pdf_bytes)
         try:
-            # ---- rung 1: text layer (cheap + deterministic, no cache needed)
+            # ---- rung 1: text layer (deterministic; cached so re-runs are no-ops)
             pdf_text = self._extract_text(pdf_bytes, page_index)
-            ctx1 = self._ctx(invoice_id, page_no, psha, pdf_text, None, None, out.evidence)
-            r1 = run_text_layer(ctx1)
+            r1 = self._rung_cached(
+                engine="pdf_text",
+                ev_version=engine_version("pypdf"),
+                psha=psha,
+                invoice_id=invoice_id,
+                rung_fn=run_text_layer,
+                ctx_factory=lambda: self._ctx(
+                    invoice_id, page_no, psha, pdf_text, None, None, out.evidence
+                ),
+                out=out,
+                stage="extract:rung1_pdf_text",
+            )
             out.features.extend(r1.features)
             if r1.stop:
                 out.final_rung = "rung1_pdf_text"
@@ -151,6 +161,7 @@ class ExtractionLadder:
                 rung_fn=run_raster_qr,
                 ctx_factory=ctx2,
                 out=out,
+                stage="extract:rung2_raster_qr",
             )
             out.features.extend(r2.features)
             out.qr_only = r2.stop
@@ -168,6 +179,7 @@ class ExtractionLadder:
                 rung_fn=run_tesseract,
                 ctx_factory=ctx34,
                 out=out,
+                stage="extract:rung3_tesseract",
             )
             out.features.extend(r3.features)
             if r3.stop:
@@ -183,6 +195,7 @@ class ExtractionLadder:
                 rung_fn=run_vlm,
                 ctx_factory=ctx34,
                 out=out,
+                stage="extract:rung4_vlm",
             )
             out.features.extend(r4.features)
             if r4.stop:
@@ -198,6 +211,7 @@ class ExtractionLadder:
                 rung_fn=run_cloud_vlm,
                 ctx_factory=ctx34,
                 out=out,
+                stage="extract:rung5_cloud_vlm",
             )
             out.features.extend(r5.features)
             cloud_ok = any(
@@ -266,14 +280,18 @@ class ExtractionLadder:
         png_path.write_bytes(png)
         return png
 
-    def _rung_cached(self, *, engine, ev_version, psha, invoice_id, rung_fn, ctx_factory, out):
+    def _rung_cached(
+        self, *, engine, ev_version, psha, invoice_id, rung_fn, ctx_factory, out,
+        stage=None,
+    ):
         """Run one rung through the page cache (key: page/engine/version/config)."""
+        stage = stage or f"extract:{engine}"
         cached = self.cache.get(psha, engine, ev_version, self.cfg.config_version)
         if cached is not None:
             out.evidence.append(
                 EvidenceRow(
                     invoice_id=invoice_id,
-                    stage=f"extract:{engine}",
+                    stage=stage,
                     extractor=engine,
                     extractor_version=ev_version,
                     config_version=self.cfg.config_version,
