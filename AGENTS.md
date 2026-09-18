@@ -204,12 +204,18 @@ que condicionan TODO lo que construyas:
 - **Rúbrica (100+10)**: producto/arquitectura/ADRs 35 · trazabilidad/observabilidad 20 ·
   escala y coste 25 · resiliencia/recuperación 10 · ejecución 10 · bonus +10. Desempate:
   escala/coste → resiliencia → bonus. La validación binaria decide elegibilidad.
-- **Calendario**: sábado 18:00 Madrid llega lote 2 (40 facturas + ERP actualizado + regla v4 —
-  el ERP está fuera de scope: mantén SOLO la costura de adaptador). Domingo 11:00 Madrid cierre.
-- **Defensa** (10 min): demo; arquitectura/ADRs; trazabilidad + capacidad/coste (medido vs
-  estimado, explícito); resiliencia (ensayo real de fallo de proveedor).
-- **Lunes imposible**: no habrá segunda pasada — el reprocesado tras cambio de datos (domingo)
-  debe funcionar desde el diseño, no como parche.
+- **Lote 2**: llegará un segundo lote (40 facturas) y la **regla v4 se cargará como DATOS**
+  (sin tocar el motor); podría cambiar además un dato del maestro — el reprocesado y su diff
+  deben funcionar desde el diseño, no como parche. ERP fuera de scope: SOLO la costura de
+  adaptador. **No hay plazos para los workers: el usuario interviene, re-prioriza y decide;
+  calidad y trazabilidad siempre por delante de la velocidad.**
+- **Escalabilidad es criterio de primera clase (25/100)**: el sistema debe demostrar capacidad
+  y límites MEDIDOS (archivos/s, coste por archivo y por lote, hardware, latencias), fórmula
+  de coste explícita y un plan para incorporar más volumen y NUEVOS tipos de archivo (emails,
+  imágenes, Excel) sin tocar el motor de reglas. La plantilla del informe tiene sección
+  `escalabilidad.typ`: se rellena con datos del store, nunca con supuestos.
+- **Defensa**: demo; arquitectura/ADRs; trazabilidad + capacidad/coste (medido vs estimado,
+  explícito); resiliencia (ensayo real de fallo de proveedor).
 
 **Decisiones de modelo ya tomadas** (log completo y verificable: `docs/decisiones/DECISIONS.md`):
 
