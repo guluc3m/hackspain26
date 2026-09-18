@@ -75,3 +75,17 @@
   idempotente, valida antes de copiar, escanea secretos, falla limpio).
 - Para la defensa: `uv run python -m albertitos.drills` reproduce los 4
   ensayos en segundos, sin red.
+
+## Sesión 5 — T15 cerrado (commit ba3c7dc)
+
+- Informe con TODA la evidencia medida disponible: T10 (dry-run 471/29/0-QR,
+  calibración extract-v2), T12 (drills 4/4) — fuente citada archivo a archivo
+  en escalabilidad.typ y en los ADRs (extracción, pipeline, rung 5/revisión).
+- Placeholders SOLO para T14 (corrida real: resultados, exactitud, cola de
+  revisión, llamadas cloud) vía bindings PENDIENTE-MEDICIÓN(T14); impacto
+  T13 igual. Fórmula de coste: CPU gratis salvo electricidad (estimada).
+- PDF compilado (13 páginas) en el worktree, no commitado.
+- Cuando T14 escriba outcomes.jsonl y su evidencia: regenerar con
+  `uv run python -m albertitos.report_data && uv run python -m albertitos.metrics`
+  y recompilar (`cd docs/report && ~/.local/bin/typst compile --font-path fonts albertitos_plan.typ`).
+  El flujo data→.typ ya lee esos orígenes (tests en verde).
