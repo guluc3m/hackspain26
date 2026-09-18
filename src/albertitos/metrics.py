@@ -327,6 +327,7 @@ def metricas_t10_t12(metrics_dir: Path | None = None) -> dict[str, Any]:
         )
     else:
         out["drillsResumen"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+        out["drillsPorNombre"] = ()
 
     # ---- T13: reprocesado/impacto (si existe)
     out["impactoReprocesado"] = (
