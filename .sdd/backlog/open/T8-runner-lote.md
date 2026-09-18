@@ -1,5 +1,5 @@
 # T8 · Runner de lote: los 500 PDFs end-to-end
-assignee: TBD (primer worker libre)
+assignee: W2
 priority: p0
 
 ## Objetivo
