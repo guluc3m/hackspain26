@@ -223,9 +223,14 @@ que condicionan TODO lo que construyas:
   (0.498 GB) + `PaddleOCR-VL-1.6-q8_0.mmproj` (0.598 GB) de `Mungert/PaddleOCR-VL-1.6-GGUF`,
   servidos por `llama-server` (llama.cpp CPU, temp 0, ~2.5 GB RSS). Verificado contra los
   repos HF primarios. La validación A/B q8 vs f16 mmproj es puerta de entrada (D-002).
-- **Rung 5 (escalada)**: modelo cloud >25B multimodal (preset `claude-opus-4-5` →
-  Qwen3.8-27B-Vision). SOLO para páginas que fallen tesseract+VLM; su lectura es OTRO
-  candidato, jamás respuesta automática; el humano decide en la cola de revisión (no bloqueante).
+- **Rung 5 (escalada)**: modelo cloud de visión = **`deepseek-v4.1-flash`** (preset
+  existente @ vercel). SOLO para páginas que fallen tesseract+VLM local; su lectura es
+  OTRO candidato, jamás respuesta automática; el humano decide en la cola de revisión
+  (no bloqueante).
+- **PROHIBIDO (regla del usuario, NO NEGOCIABLE)**: los modelos **Qwen3.8-27B** y
+  **Qwen3.8-Flash-Next / qwen-next-flash** NO FUNCIONAN y están vetados en TODOS los
+  roles — incluido el preset `claude-opus-4-5` (que resuelve a un Qwen3.8-27B). Jamás
+  usarlos para rung 5, verificación, ni ningún otro propósito de este proyecto.
 - **Flota de agentes**: glm-5-3 (helmcode) por defecto; fallback glm-5-3-flash →
   deepseek-v4-1-flash → deepseek-v4-flash. Los extractores proponen; las REGLAS deciden.
 
