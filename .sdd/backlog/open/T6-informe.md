@@ -1,25 +1,31 @@
-# T6 · Generador de albertitos_plan.pdf
+# T6 · Informe de entrega: albertitos_plan.pdf vía plantilla Typst
 assignee: W3
-priority: p2
+priority: p1
 
 ## Objetivo
-`src/albertitos/report.py`: generar `albertitos_plan.pdf` (Arquitectura + 2–5
-ADRs) desde datos medidos en `.sdd/`, no desde texto hardcodeado.
+Rellenar la plantilla Typst del equipo (`docs/report/` — `albertitos_plan.typ`,
+`lib.typ`, fuentes incluidas) con contenido real medido, y compilar
+`albertitos_plan.pdf`. NO crear un generador PDF paralelo desde cero: la
+plantilla ya existe (commit 51e39b8, "template para el report").
 
-## Secciones requeridas (hackathon.maisa.ai)
-- **Arquitectura**: componentes, flujo de datos y estado, reparto agentes/
-  modelos/personas, trazabilidad y recuperación de fallos.
-- **ADRs / trade-offs** (2–5): contexto, alternativas, decisión, consecuencias,
-  evidencia. ADRs previstos: D-001 escalera de extracción, D-002 PaddleOCR-VL q8
-  en CPU, D-03 reglas-como-datos (v3→v4), D-04 política NO_PAGAR/ESCALAR,
-  D-05 revisión humana no bloqueante.
-
-## Reglas duras
-- Los números de coste/throughput salen de evidencia medida; lo estimado va
-  marcado como estimado.
-- El PDF se regenera con un comando: `uv run python -m albertitos.report`.
+## Cómo
+- Compilación: `typst compile --font-path fonts albertitos_plan.typ` dentro de
+  `docs/report/`. El binario `typst` (≥0.13) NO está instalado y no hay root:
+  descárgalo de los releases de GitHub (typst-<ver>-x86_64-unknown-linux-musl.tar.xz)
+  a `~/.local/bin/` — un solo binario estático, sin dependencias.
+- Contenido: completa `implementation.typ` y `escalabilidad.typ` y el bloque de
+  ADRs del `albertitos_plan.typ` con datos REALES de `.sdd/` (medidos, no
+  inventados; lo estimado va marcado). Los ADRs previstos están en AGENTS.md §13
+  y en `docs/decisiones/DECISIONS.md` (úsalo como ADR D-001/D-002 ya escrito).
+- Los números (throughput, coste/archivo, latencias) deben salir del store:
+  genera un `.typ` de datos desde el store si hace falta, pero no hardcodees.
 
 ## Criterios de aceptación
-- Genera un PDF válido de prueba con datos sembrados.
-- Test: el PDF se genera y tiene ≥2 páginas y las secciones Arquitectura/ADRs.
+- `albertitos_plan.pdf` se compila desde la plantilla y contiene: arquitectura,
+  implementación, escalabilidad y 2–5 ADRs con contexto/alternativas/decisión/
+  consecuencias/evidencia.
+- Test: el flujo que genera los datos del informe desde el store funciona con
+  datos sembrados (el binario typst NO va en tests).
 - `uv run pytest` y `uv run ruff check .` en verde.
+- No subas el PDF compilado a la solución; el PDF va SOLO al repo de entrega
+  (lo prepara el supervisor).

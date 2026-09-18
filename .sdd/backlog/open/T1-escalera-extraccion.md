@@ -20,7 +20,7 @@ Implementar `src/albertitos/extract/` — la escalera de extracción **por pági
    Confianza = media de confianza de palabras ponderada por longitud + término
    de cobertura de campos esperados. Ambos deben superar umbral para parar aquí.
 4. **vlm local** — cliente `llama-server` OpenAI-compatible (ver
-   `/home/deploy/.nanobot/DECISIONS.md` D-002: Mungert q8_0, temp 0). Puede
+   `docs/decisiones/DECISIONS.md` D-002: Mungert q8_0, temp 0). Puede
    quedar `skipped:llama-server-not-running` de momento; la interfaz debe existir.
 
 ## Reglas duras
