@@ -72,21 +72,23 @@ def test_coste_formula_explicita(ledger_sembrado: Path):
     # cloud: 2 llamadas emitidas (1 ok + 1 error) × 0.004 = 0.008
     assert terminos["llamadas_cloud"]["n_llamadas"] == 2
     assert terminos["llamadas_cloud"]["valor_eur"] == 0.008
-    # cpu: rungs locales (100+200+150+300) ms = 750 ms = 750/3.6e6 h × 0.12 €/h
-    # (las latencias del rung cloud no son tiempo de CPU)
-    esperado_cpu = (750 / 3.6e6) * 0.12
-    assert terminos["extraccion_cpu"]["valor_eur"] == round(esperado_cpu, 6)
+    # electricidad (estimada): horas CPU medidas (750 ms; rung5 excluido)
+    # × potencia 0.1 kW × 0.25 €/kWh — el CPU local es gratis salvo luz
+    esperado_cpu = round((750 / 3.6e6) * 0.1 * 0.25, 6)
+    assert terminos["electricidad_cpu"]["valor_eur"] == esperado_cpu
+    assert terminos["electricidad_cpu"]["etiqueta"] == "estimado"
     # agentes: sin telemetría ⇒ sin datos, jamás cifra inventada
     assert terminos["tokens_agentes"]["etiqueta"] == "sin datos"
     assert terminos["tokens_agentes"]["valor_eur"] is None
-    # total = cpu + cloud, por archivo repartido entre 2 decisiones
-    total = round(esperado_cpu + 0.008, 6)
+    # total = electricidad + cloud, por archivo repartido entre 2 decisiones
+    total = round((750 / 3.6e6) * 0.1 * 0.25 + 0.008, 6)
     assert m["coste_lote"]["total_eur"] == total
     assert m["coste_lote"]["coste_por_archivo"]["valor_eur"] == round(
-        (esperado_cpu + 0.008) / 2, 6
+        ((750 / 3.6e6) * 0.1 * 0.25 + 0.008) / 2, 6
     )
     # cada precio de la config lleva su etiqueta
     assert m["coste_lote"]["precios"]["cloud"]["etiqueta_precio"] == "estimado"
+    assert m["coste_lote"]["precios"]["electricidad"]["etiqueta_precio"] == "estimado"
 
 
 def test_throughput_y_limite(ledger_sembrado: Path):
@@ -127,11 +129,14 @@ def test_salidas_json_y_typ(ledger_sembrado: Path):
     try:
         jdest2, tdest2 = generar_escalabilidad_datos(ledger_sembrado, jdest, tdest)
         datos = json.loads(jdest2.read_text(encoding="utf-8"))
-        assert datos["n_decisiones"] == 2
+        assert datos["escalabilidad"]["n_decisiones"] == 2
+        assert "t10_t12" in datos
         texto = tdest2.read_text(encoding="utf-8")
         assert '#let latenciasPorRung = (' in texto
         assert '"rung5": ("500 ms", "500 ms", "medido"' in texto
         assert '#let costePorLote = (' in texto
+        assert '#let dryrunTextoUsable' in texto  # origen T10
+        assert '#let drillsResumen' in texto  # origen T12
         assert "medido" in texto
     finally:
         jdest.unlink(missing_ok=True)

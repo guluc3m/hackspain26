@@ -34,13 +34,13 @@
   evidencia: [Cada decisión registra rule_verdicts con códigos y consumed, config_snapshot con rule_set_version y umbrales (T3/T4); la pantalla Reglas previsualiza el efecto de cambiar un umbral sobre evidencia ya medida (T5); el validador de contrato (T9) comprueba el outcomes.jsonl contra los PDF exactos.],
 )
 
-#adr([Extracción en dos bloques: _features_ y _parser_],
+#adr([Extracción en dos bloques: _features_ y _parser_ — calibrada con el corpus (T10)],
   status: "ACEPTADA",
-  contexto: [Las facturas llegan como PDF nativos y escaneados, con QRs en algunas legislaciones. Cada campo debe poder rastrearse hasta su origen en el documento.],
-  alternativas: [Un único modelo end-to-end que devuelva los campos con trazabilidad; OCR monolítico con plantillas fijas por proveedor.],
-  decision: [Bloque de extracción produce _features_ tipadas (texto, tablas, QR, OCR) y un _parser_ independiente las convierte en campos con valores múltiples, cada uno con extractor y nivel de confianza. Los campos son dinámicos para soportar legislaciones distintas.],
-  consecuencias: [Más piezas que operar, pero cada extractor es sustituible y comparable; se puede reemplazar todo el bloque por un modelo si demuestra trazabilidad equivalente.],
-  evidencia: [`ExtractionFeature` y `ExtractionField` con lista de valores por campo (extractor, valor, confianza).],
+  contexto: [Las facturas llegan como PDF nativos y escaneados, con QRs en algunas legislaciones. Cada campo debe poder rastrearse hasta su origen en el documento. Los umbrales iniciales del rung 3 (word-conf 60, cobertura 0.5) se fijaron SIN medición.],
+  alternativas: [Un único modelo end-to-end que devuelva los campos con trazabilidad; OCR monolítico con plantillas fijas por proveedor; mantener los umbrales a ojo.],
+  decision: [Bloque de extracción produce _features_ tipadas (texto, tablas, QR, OCR) y un _parser_ independiente las convierte en campos con valores múltiples, cada uno con extractor y nivel de confianza. Umbrales del rung 3 CALIBRADOS con el corpus real: `tesseract_min_word_conf = 40.0` y `tesseract_min_field_coverage = 0.4` (config `extract-v2`), elegidos en el hueco bimodal de las distribuciones medidas.],
+  consecuencias: [Más piezas que operar, pero cada extractor es sustituible y comparable; el 94,2 % del corpus resuelve por texto (peldaño casi gratis) y el 89,7 % de las páginas OCR pasa el gate con los 3 escaneos ilegibles (§11) a revisión — exactamente los que la doctrina anuncia.],
+  evidencia: [`.sdd/metrics/corpus-dryrun.json` (T10): 471/500 texto usable (94,2 %), 29 a raster, 0 solo-QR, 0 errores; latencias rung 1 media 0,4 ms / p95 2,0 ms y rung 2 media 42,1 ms / p95 73,0 ms; throughput rung 1 medido 2 636 archivos/s. `.sdd/metrics/calibracion/calibracion-rung3.json`: word-conf 40.0 deja debajo solo los 3 ilegibles (89,7 % pasa), cobertura 0.4 deja el 100 % de las capas de texto por encima. Explotación en la sección Escalabilidad (generada desde el store).],
 )
 
 #adr([Pipeline Python desacoplada; ERP fuera de scope con costura de adaptador],
@@ -49,7 +49,7 @@
   alternativas: [Monolito secuencial; repartir en microservicios desde el inicio; integrar el ERP de verdad dentro del pipeline.],
   decision: [Pipeline en Python con colas entre bloques de extracción, _parser_ y decisión, de modo que cada bloque escale horizontalmente de forma independiente y un fallo del proveedor de LLM no bloquee el resto. El ERP se toca SOLO a través de una costura de adaptador (`ERP_STATE_PENDING` consulta el estado del pedido vía interfaz intercambiable); ningún módulo del pipeline conoce el ERP concreto.],
   consecuencias: [Infraestructura algo mayor que un script secuencial; a cambio, escalado por bloque, reintentos aislados y recuperación sin duplicados (idempotencia por _invoice id_ y por (sha256, stage, versión)), y el día de mañana se conecta un ERP real sin tocar reglas ni extracción.],
-  evidencia: [Store SQLite + ledger JSONL idempotente (T4): re-procesar el mismo lote es un no-op que reutiliza evidencia; un crash a mitad de lote pierde como mucho el ítem en vuelo. Métricas de archivos/s y coste por lote generadas desde el ledger (T9).],
+  evidencia: [Store SQLite + ledger JSONL idempotente (T4): re-procesar el mismo lote es un no-op que reutiliza evidencia; un crash a mitad de lote pierde como mucho el ítem en vuelo. DRILL MEDIDO (`.sdd/metrics/drills.json`, T12): crash del runner real en el ítem 2 ⇒ reanudación completa del lote, 0 duplicados, reutilizados por caché = decididos pre-crash; drill `backoff-429`: Retry-After respetado, 0 llamadas extra. Métricas de archivos/s y coste por lote generadas desde el ledger (T9).],
 )
 
 #adr([Trazabilidad e histórico en base de datos],
@@ -67,5 +67,5 @@
   alternativas: [Qwen3.8-27B-Vision (preset `claude-opus-4-5`) — vetado: servidor caído; mantener todo local y degradar; bloquear el ítem hasta que un humano lea.],
   decision: [Rung 5 = modelo cloud de visión `deepseek-v4.1-flash`, SOLO para páginas que fallen tesseract + VLM local. Su lectura es OTRO candidato con confianza, jamás respuesta automática: los extractores proponen, las REGLAS deciden. El ítem resuelve ESCALAR y entra en una cola de revisión asíncrona en la UI; la corrección humana es un override con provenance que solo afecta a la extracción, y el motor determinista recalcula.],
   consecuencias: [El lote avanza mientras el humano duerme; coste marginal solo en las páginas difíciles, cacheado por página para no re-facturar. La calidad depende de un proveedor externo, cuyos fallos (429, timeouts) degradan sin parar y se reflejan en Salud.],
-  evidencia: [Cola de revisión en la UI con imagen de página junto a cada lectura candidata y desacuerdo resaltado (T5/T7); overrides encolados con provenance en `.sdd/review-queue/`; fallos y reintentos de proveedor medidos en la sección Salud; decisión registrada en `docs/decisiones/DECISIONS.md` y AGENTS §13.],
+  evidencia: [DRILLS MEDIDOS (`.sdd/metrics/drills.json`, T12): `rung5-provider-caido` PASS — el proveedor no responde tras 3 intentos y la página entra en cola de revisión con motivo en evidencia, el lote sigue; `backoff-429` PASS — Retry-After respetado, 0 llamadas extra. Cola de revisión en la UI con imagen de página junto a cada lectura candidata y desacuerdo resaltado (T5/T7); overrides encolados con provenance en `.sdd/review-queue/`; números de la cola de revisión de la corrida real: PENDIENTE-MEDICIÓN(T14). Decisión registrada en `docs/decisiones/DECISIONS.md` y AGENTS §13.],
 )

@@ -26,23 +26,27 @@ mano). Cada cifra indica si es #emph[medida] o si aún #emph[sin datos medidos]
 == Reparto de coste por extractor
 
 La fórmula de coste es explícita (datos de `escalabilidad_datos.typ`,
-generados por `uv run python -m albertitos.metrics`):
+generados por `uv run python -m albertitos.metrics`). La CPU local es gratis
+salvo electricidad (estimada: kWh = horas × potencia × €/kWh); el coste real
+por llamada cloud (nº × €/llamada) se mide en la corrida (T14):
 
-$ "coste lote" = "extracción CPU" ("horas" × "€/h") + "llamadas cloud" ("nº" × "€/llamada") + "tokens agentes" ("1k" × "€") $
+$ "coste lote" = "electricidad" ("h" × "kW" × "€/kWh"; "estimado") + "llamadas cloud" ("nº" × "€/llamada") + "tokens agentes" ("1k" × "€") $
 
 #import "escalabilidad_datos.typ": *
 
 #table(
   columns: (auto, auto, auto),
   table.header([Término], [Valor], [Estado]),
-  [Extracción CPU (horas × €/h)], [#formulaCoste.extraccion_cpu.at(0)], [#formulaCoste.extraccion_cpu.at(1)],
+  [Electricidad CPU (h × kW × €/kWh)], [#formulaCoste.electricidad_cpu.at(0)], [#formulaCoste.electricidad_cpu.at(1)],
   [Llamadas cloud (nº × €/llamada)], [#formulaCoste.llamadas_cloud.at(0)], [#formulaCoste.llamadas_cloud.at(1)],
   [Tokens de agentes], [#formulaCoste.tokens_agentes.at(0)], [#formulaCoste.tokens_agentes.at(1)],
   [Coste por archivo], [#costePorArchivo.at(0)], [#costePorArchivo.at(1)],
   [Coste del lote de referencia], [#costePorLote.at(0)], [#costePorLote.at(1)],
 )
 
-Los precios unitarios viven en la configuración de métricas (no en código de
+Las llamadas cloud del lote real se medirán en la corrida (T14) — el dry-run
+(T10) no las factura porque solo cubre rungs 1–2. Los precios unitarios viven
+en la configuración de métricas (no en código de
 decisión) y cada uno lleva su etiqueta de origen. El coste marginal se
 concentra en el peldaño de VLM en la nube (rung 5), que solo se factura para
 páginas que no superan tesseract + VLM local; su resultado se cachea por
@@ -54,16 +58,17 @@ en CPU) tienen coste marginal nulo.
 #table(
   columns: (auto, auto),
   table.header([Extractor], [Registros de evidencia]),
-  ..extractores.keys().map(k => ([#k], [#extractores.at(k).at(0) #emph[(#extractores.at(k).at(1))]])),
+  ..extractores.keys().map(k => ([#k], [#extractores.at(k).at(0) #emph[(#extractores.at(k).at(1))]])).flatten(),
 )
 ]
 
+#if latenciasPorRung.len() > 0 [
 == Rendimiento medido por rung
 
 #table(
   columns: (auto, auto, auto, auto),
   table.header([Rung], [Latencia media], [p95], [Estado]),
-  ..latenciasPorRung.pairs().map(((k, v)) => ([#k], [#v.at(0)], [#v.at(1)], [#v.at(2)])),
+  ..latenciasPorRung.pairs().map(p => ([#p.at(0)], [#p.at(1).at(0)], [#p.at(1).at(1)], [#p.at(1).at(2)])).flatten(),
 )
 
 Throughput medido: #archivosPorSegundo.at(0) archivos/s
@@ -71,6 +76,59 @@ Throughput medido: #archivosPorSegundo.at(0) archivos/s
 lento (#rungMasLento.at(0)): #limiteThroughput.at(0)
 #emph[(#limiteThroughput.at(1))]. Hardware: #hardware.at(0),
 #hardwareRam.at(0) #emph[(#hardwareRam.at(1))].
+]
+
+== Dry-run del corpus real (T10, medido)
+
+Fuente citada: `.sdd/metrics/corpus-dryrun.json` (+ evidencia línea a línea en
+`.sdd/metrics/evidence-dryrun.jsonl`). Dry-run de los 500 PDFs reales, rungs
+1–2, idempotente, concurrencia 2 — *el dry-run no decide, solo mide extracción*.
+
+#table(
+  columns: (auto, auto),
+  table.header([Ruta de la escalera], [Archivos]),
+  ..dryrunRutas.pairs().map(p => ([#p.at(0)], [#p.at(1) #emph[(medido)]])).flatten(),
+)
+
+- Capa de texto usable (rung 1): #dryrunTextoUsable.at(0) #emph[(#dryrunTextoUsable.at(1))].
+- Latencia rung 1: media #dryrunLatenciaRung1.at(0), p95 #dryrunLatenciaRung1.at(1).
+- Latencia rung 2 (raster+QR): media #dryrunLatenciaRung2.at(0), p95 #dryrunLatenciaRung2.at(1).
+- Throughput rung 1: #dryrunThroughput.at(0) archivos/s (2 workers)
+  #emph[(#dryrunThroughput.at(1))]; pared total #dryrunWall.at(0)
+  #emph[(#dryrunWall.at(1))].
+
+== Calibración del rung 3 (T10, medido sobre el corpus)
+
+Fuente citada: `.sdd/metrics/calibracion/calibracion-rung3.json` (motivación
+completa en `.sdd/metrics/calibracion.md`). Se midieron las DOS partes del
+gate sobre las 29 páginas OCR y las 493 capas de texto únicas.
+
+- Cobertura de campos: #calibracionCoberturaTexto.at(0) —
+  #calibracionCoberturaOcr.at(0) #emph[(#calibracionCoberturaOcr.at(1))].
+- Decisión calibrada (config `extract-v2`): #calibracionDecision.at(0)
+  #emph[(#calibracionDecision.at(1))]. La distribución de word-conf es
+  bimodal: con umbral 40.0 pasan las 26 páginas legibles y quedan debajo
+  exactamente los 3 escaneos ilegibles que anuncia la doctrina (§11).
+
+== Drills de resiliencia (T12, medidos sin red real)
+
+Fuente citada: `.sdd/metrics/drills.json`. Resumen: #drillsResumen.at(0)
+#emph[(#drillsResumen.at(1))].
+
+#table(
+  columns: (auto, auto),
+  table.header([Drill], [Resultado]),
+  ..drillsPorNombre.pairs().map(p => ([#p.at(0)], [#p.at(1)])).flatten(),
+)
+
+== Lote 1 y reprocesado (T14/T13)
+
+- Resultados del lote 1 (500 PDFs, corrida completa): #resultadosLote1.at(0)
+  #emph[(#resultadosLote1.at(1))].
+- Exactitud sobre la referencia privada: #exactitudLote1.at(0)
+  #emph[(#exactitudLote1.at(1))].
+- Reprocesado tras cambio de reglas/datos: #impactoReprocesado.at(0)
+  #emph[(#impactoReprocesado.at(1))].
 
 == Escalado
 
@@ -82,12 +140,10 @@ hilos que los agentes no deben acaparar) y la cuota del proveedor en la nube,
 cuyos fallos (429, _timeouts_) se degradan a peldaños inferiores sin parar el
 lote — los reintentos y omisiones de la tabla lo reflejan.
 
-== Capacidad y coste pendientes de medición (T8/T10)
+== Capacidad y coste pendientes de medición (T8/T14)
 
-- Facturas por segundo del _runner_ de lote (T8) y resultados del _dry-run_
-  del corpus (T10): *PENDIENTE-MEDICIÓN*. La fórmula de coste de arriba ya
-  separa medido de estimado; cuando T8/T10 escriban su evidencia al ledger,
-  regenerar con `uv run python -m albertitos.metrics` rellena estos huecos.
-- Presupuesto de tiempo esperado por página OCR local en CPU (8 núcleos):
-  10-30 s según complejidad (tablas son el caso lento) — #emph[estimado del
-  fabricante, pendiente de medición en producción].
+- Facturas por segundo del _runner_ de lote (T8) y coste por factura del lote
+  real: #facturasPorSegundo.at(0) / #costePorFactura.at(0)
+  #emph[(#facturasPorSegundo.at(1))]. Se medirán en la corrida real (T14).
+- Presupuesto de tiempo por página OCR local en CPU: 10-30 s según complejidad
+  — #emph[estimado del fabricante, pendiente de medición en producción].

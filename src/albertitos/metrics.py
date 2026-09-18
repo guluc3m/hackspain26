@@ -31,10 +31,15 @@ TYP_DEFECTO = Path("docs/report/escalabilidad_datos.typ")
 LOTE_REFERENCIA = 500
 
 # Precios unitarios (config — cada precio lleva su etiqueta de origen).
-# rung5/cloud: nº de llamadas × €/llamada. CPU: tiempo × €/h (amortización).
-# Agentes: 1k tokens × € (sin telemetría de tokens aún ⇒ «sin datos»).
+# CPU local: gratis salvo electricidad (estimada): kWh = horas × potencia_kw,
+# EUR = kWh × €/kWh. Cloud: nº de llamadas × €/llamada. Agentes: sin
+# telemetría de tokens aún ⇒ «sin datos».
 PRECIOS: dict[str, dict[str, Any]] = {
-    "cpu": {"eur_por_hora": 0.12, "etiqueta_precio": "estimado"},
+    "electricidad": {
+        "potencia_kw": 0.1,  # estimado: caja CPU 8 núcleos a media carga
+        "eur_por_kwh": 0.25,  # estimado: tarifa doméstica media
+        "etiqueta_precio": "estimado",
+    },
     "cloud": {"eur_por_llamada": 0.004, "etiqueta_precio": "estimado"},
     "agentes": {"eur_por_1k_tokens": 0.0, "etiqueta_precio": "sin datos"},
 }
@@ -150,6 +155,7 @@ def metricas_escalabilidad(
         rung_lento, limite_max = None, {"valor": None, "etiqueta": "sin datos", "nota": ""}
 
     # ---- coste por archivo y fórmula de coste del lote
+    # CPU local: gratis salvo electricidad (estimada): kWh = horas × potencia_kw.
     cpu_ms = sum(
         lat
         for rung, ls in latencias.items()
@@ -157,10 +163,11 @@ def metricas_escalabilidad(
         for lat in ls
     )
     cpu_h = cpu_ms / 3.6e6
-    precio_cpu = float(p["cpu"]["eur_por_hora"])
+    potencia_kw = float(p["electricidad"]["potencia_kw"])
+    eur_kwh = float(p["electricidad"]["eur_por_kwh"])
     llamadas_cloud = llamadas.get("rung5", 0) + llamadas.get("cloud_vlm", 0)
     precio_cloud = float(p["cloud"]["eur_por_llamada"])
-    coste_cpu_eur = cpu_h * precio_cpu
+    coste_cpu_eur = cpu_h * potencia_kw * eur_kwh
     coste_cloud_eur = llamadas_cloud * precio_cloud
     n_archivos = len(decididas) if decididas else len(lat_por_invoice)
     coste_total = coste_cpu_eur + coste_cloud_eur
@@ -171,13 +178,14 @@ def metricas_escalabilidad(
     )
     coste_lote = {
         "lote": LOTE_REFERENCIA,
-        "formula": "extraccion_CPU(horas×EUR/h) + llamadas_cloud(nº×EUR/llamada) + tokens_agentes(1k×EUR)",
+        "formula": "electricidad_cpu(horas×kW×€/kWh, estimada) + llamadas_cloud(nº×€/llamada) + tokens_agentes(1k×€)",
         "terminos": {
-            "extraccion_cpu": {
+            "electricidad_cpu": {
                 "horas": round(cpu_h, 6),
-                "eur_por_hora": precio_cpu,
+                "potencia_kw": potencia_kw,
+                "eur_por_kwh": eur_kwh,
                 "valor_eur": round(coste_cpu_eur, 6),
-                "etiqueta": "estimado",  # latencias medidas × precio estimado
+                "etiqueta": "estimado",  # horas medidas × potencia y precio estimados
             },
             "llamadas_cloud": {
                 "n_llamadas": llamadas_cloud,
@@ -219,19 +227,140 @@ def _typ(valor: Any) -> str:
     return str(valor).replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _pareja(metrica: tuple[str, str]) -> str:
+    """Binding Typst de una métrica (valor, etiqueta)."""
+    return f'("{_typ(metrica[0])}", "{metrica[1]}")'
+
+
+def _cargar_json(ruta: Path) -> dict[str, Any] | None:
+    try:
+        return json.loads(Path(ruta).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def metricas_t10_t12(metrics_dir: Path | None = None) -> dict[str, Any]:
+    """Lee los orígenes de evidencia medidos en `.sdd/metrics/`:
+    - corpus-dryrun.json + calibracion/calibracion-rung3.json (T10)
+    - drills.json (T12)
+    - impacto.json (T13, si existe)
+    Cada valor sale como (texto, etiqueta). Lo ausente ⇒ «sin datos» o
+    «PENDIENTE-MEDICIÓN(T14)» según corresponda; nada hardcodeado.
+    """
+    base = Path(metrics_dir) if metrics_dir is not None else Path(".sdd") / "metrics"
+    dry = _cargar_json(base / "corpus-dryrun.json")
+    cali = _cargar_json(base / "calibracion" / "calibracion-rung3.json")
+    drills = _cargar_json(base / "drills.json")
+    impacto = _cargar_json(base / "impacto.json")
+
+    out: dict[str, Any] = {}
+
+    # ---- T10: dry-run del corpus (rutas de la escalera + latencias por rung)
+    if dry:
+        rutas = dry.get("rutas", {})
+        n = int(dry.get("n_files", 0) or 0)
+        texto = int(rutas.get("rung1_pdf_text", 0) or 0)
+        raster = int(rutas.get("raster_no_qr", 0) or 0)
+        qr = int(rutas.get("rung2_qr_only", 0) or 0)
+        pct = f"{100 * texto / n:.1f}" if n else "—"
+        out["dryrunTextoUsable"] = (f"{texto} / {n} ({pct} %)", "medido")
+        out["dryrunRutas"] = (
+            ("rung1 texto usable", str(texto)),
+            ("raster sin QR", str(raster)),
+            ("solo QR", str(qr)),
+            ("errores / timeouts", f"{rutas.get('error', 0)} / {rutas.get('timeout', 0)}"),
+        )
+        l1 = dry.get("rung1_pdf_text", {}).get("latencia", {})
+        l2 = dry.get("rung2_raster_qr", {}).get("latencia", {})
+        out["dryrunLatenciaRung1"] = (
+            (f'{l1.get("mean_ms", "—")} ms', f'{l1.get("p95_ms", "—")} ms'),
+        )
+        out["dryrunLatenciaRung2"] = (
+            (f'{l2.get("mean_ms", "—")} ms', f'{l2.get("p95_ms", "—")} ms'),
+        )
+        out["dryrunThroughput"] = (str(dry.get("rung1_files_per_s", "—")), "medido")
+        out["dryrunWall"] = (f'{dry.get("wall_seconds", "—")} s para {n} archivos', "medido")
+    else:
+        out["dryrunTextoUsable"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+
+    # ---- T10: calibración de umbrales del rung 3
+    if cali:
+        cov_txt = cali.get("field_coverage_capas_texto", {})
+        cov_ocr = cali.get("field_coverage_ocr", {})
+        umbral_cov = cali.get("tabla_umbral_cobertura", {})
+        umbral_wc = cali.get("tabla_umbral_word_conf", {})
+        out["calibracionCobertura"] = (
+            (
+                f"texto: media {cov_txt.get('mean', '—')}, p5 {cov_txt.get('p5', '—')}"
+                " (n=" + str(cali.get("text_layers_measured", "—")) + ")",
+                "medido",
+            ),
+            (
+                f"OCR: media {cov_ocr.get('mean', '—')}, p50 {cov_ocr.get('p50', '—')}"
+                " (n=" + str(cali.get("ocr_pages_measured", "—")) + ")",
+                "medido",
+            ),
+        )
+        # decisión de calibración registrada en extract-v2: word_conf 40, cobertura 0.4
+        t40 = umbral_wc.get("40.0", {})
+        t04 = umbral_cov.get("0.4", {})
+        out["calibracionDecision"] = (
+            (
+                f"word_conf 40.0: {t40.get('pct_ocr_arriba', '—')} % OCR pasa"
+                f" (cobertura 0.4: {t04.get('pct_ocr_arriba', '—')} % OCR,"
+                f" {t04.get('pct_capas_texto_arriba', '—')} % texto)"
+            ),
+            "calibrado con corpus (T10)",
+        )
+    else:
+        out["calibracionDecision"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+
+    # ---- T12: drills de resiliencia
+    if drills:
+        resumen = drills.get("resumen", {})
+        out["drillsResumen"] = (
+            f"{resumen.get('pass', 0)} pass / {resumen.get('fail', 0)} fail",
+            "medido (drills automatizados, sin red real)",
+        )
+        out["drillsPorNombre"] = tuple(
+            (d.get("drill", "?"), "PASS" if d.get("pass") else "FAIL") for d in drills.get("drills", [])
+        )
+    else:
+        out["drillsResumen"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+
+    # ---- T13: reprocesado/impacto (si existe)
+    out["impactoReprocesado"] = (
+        (str(impacto.get("resumen", impacto))[:120], "medido") if impacto
+        else ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+    )
+
+    # ---- T14: corrida real del lote 1
+    out["resultadosLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+    out["exactitudLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+    return out
+
+
 def generar_escalabilidad_datos(
     store_dir: Path | None = None,
     json_destino: Path | None = None,
     typ_destino: Path | None = None,
+    metrics_dir: Path | None = None,
 ) -> tuple[Path, Path]:
     """Escribe metrics.json y escalabilidad_datos.typ. Devuelve ambas rutas."""
     datos = metricas_escalabilidad(store_dir)
+    extra = metricas_t10_t12(metrics_dir)
     jdest = Path(json_destino) if json_destino is not None else JSON_DEFECTO
     tdest = Path(typ_destino) if typ_destino is not None else TYP_DEFECTO
     jdest.parent.mkdir(parents=True, exist_ok=True)
     tdest.parent.mkdir(parents=True, exist_ok=True)
     jdest.write_text(
-        json.dumps(datos, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            {"escalabilidad": datos, "t10_t12": extra},
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -279,6 +408,35 @@ def generar_escalabilidad_datos(
         f' "{n[1] if isinstance(n, tuple) else "medido"}")'
     )
     lineas.append(f'#let hardwareRam = ("{_typ(hw["ram"][0])}", "{hw["ram"][1]}")')
+
+    # ---- orígenes T10/T12/T13/T14 (fuente citada: .sdd/metrics/)
+    lineas.append("// — T10: dry-run del corpus (.sdd/metrics/corpus-dryrun.json)")
+    lineas.append(f'#let dryrunTextoUsable = {_pareja(extra["dryrunTextoUsable"])}')
+    lineas.append("#let dryrunRutas = (")
+    for nombre, valor in extra["dryrunRutas"]:
+        lineas.append(f'  "{_typ(nombre)}": "{_typ(valor)}",')
+    lineas.append(")")
+    l1, l2 = extra["dryrunLatenciaRung1"][0], extra["dryrunLatenciaRung2"][0]
+    lineas.append(f'#let dryrunLatenciaRung1 = ("{_typ(l1[0])}", "{_typ(l1[1])}")')
+    lineas.append(f'#let dryrunLatenciaRung2 = ("{_typ(l2[0])}", "{_typ(l2[1])}")')
+    lineas.append(f'#let dryrunThroughput = {_pareja(extra["dryrunThroughput"])}')
+    lineas.append(f'#let dryrunWall = {_pareja(extra["dryrunWall"])}')
+    lineas.append("// — T10: calibración rung 3 (.sdd/metrics/calibracion/calibracion-rung3.json)")
+    cal_txt, cal_txt_e = extra["calibracionCobertura"][0]
+    cal_ocr, cal_ocr_e = extra["calibracionCobertura"][1]
+    lineas.append(f'#let calibracionCoberturaTexto = ("{_typ(cal_txt)}", "{cal_txt_e}")')
+    lineas.append(f'#let calibracionCoberturaOcr = ("{_typ(cal_ocr)}", "{cal_ocr_e}")')
+    lineas.append(f'#let calibracionDecision = {_pareja(extra["calibracionDecision"])}')
+    lineas.append("// — T12: drills de resiliencia (.sdd/metrics/drills.json)")
+    lineas.append(f'#let drillsResumen = {_pareja(extra["drillsResumen"])}')
+    lineas.append("#let drillsPorNombre = (")
+    for nombre, estado in extra["drillsPorNombre"]:
+        lineas.append(f'  "{_typ(nombre)}": "{estado}",')
+    lineas.append(")")
+    lineas.append("// — T13/T14: pendientes de corrida")
+    lineas.append(f'#let impactoReprocesado = {_pareja(extra["impactoReprocesado"])}')
+    lineas.append(f'#let resultadosLote1 = {_pareja(extra["resultadosLote1"])}')
+    lineas.append(f'#let exactitudLote1 = {_pareja(extra["exactitudLote1"])}')
     tdest.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     return jdest, tdest
 

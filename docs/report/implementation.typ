@@ -54,11 +54,16 @@ _overrides_ con _provenance_ y el motor determinista recalcula.
 
 == Estado de la implementación
 
-- Integrado y probado: escalera de extracción por páginas (T1), parser con
+- Integrado y probado: escalera de extracción por páginas con umbrales
+  CALIBRADOS sobre el corpus (T1 + T10, config `extract-v2`), parser con
   todas las candidatas (T2), motor de reglas + store idempotente + emisión
   de `outcomes.jsonl` con validador de contrato (T3, T4, T9), rung 5 cloud
-  con cola de revisión (T7), UI (T5), métricas e informe (T6, T9).
-- *PENDIENTE-MEDICIÓN*: el _runner_ de lote end-to-end (T8) y el _dry-run_
-  sobre los 500 PDFs con calibración de umbrales (T10) aún no han corrido
-  en este nodo; mientras tanto, los números de throughput y coste del lote
-  se muestran como ESTIMADO o «sin datos medidos» — nunca como medidos.
+  con cola de revisión (T7), runner de lote (T8), UI (T5), métricas e
+  informe (T6, T9), drills de resiliencia (T12).
+- Medido y citado: dry-run del corpus real (T10): 471/500 texto usable,
+  29 a raster, 0 QR; calibración rung 3 (word-conf 40, cobertura 0.4);
+  drills de resiliencia 4/4 PASS (T12).
+- *PENDIENTE-MEDICIÓN(T14)*: la corrida real del lote 1 (outcomes.jsonl
+  definitivo) y con ella la exactitud, los números de la cola de revisión y
+  las llamadas cloud reales; el reprocesado de impacto (T13) se mide en la
+  misma corrida. Los placeholders del informe están etiquetados como tales.
