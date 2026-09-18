@@ -19,3 +19,12 @@ dist/
 /MEMORY.md
 /memory/
 /prompts/
+
+# runtime state del runner (W2/T8) — evidencia en disco, no en git
+.sdd/ledger/
+.sdd/state/
+.sdd/review-queue/
+.sdd/store.db
+.sdd/store.db-wal
+.sdd/store.db-shm
+.sdd/smoke_outcomes.jsonl

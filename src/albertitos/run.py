@@ -1,0 +1,445 @@
+"""Runner de lote end-to-end (T8): los 500 PDFs → outcomes.jsonl.
+
+Orquesta el stack completo: escalera de extracción por página (T1) → parser
+(T2) → motor de reglas (T3) → store + evidencia (T4) → emisión + validador
+de contrato (T9). Es producto, no glue de debug.
+
+Reglas duras (ticket T8):
+- `caja-de-alberto/` NUNCA se toca (solo lectura).
+- Timeout por archivo: un archivo colgado ⇒ ESCALAR con motivo `timeout` +
+  evidencia, y el lote sigue. Presupuesto medido desde la entrada en cola
+  (procesando o esperando slot tras un colgado).
+- Concurrencia: máximo 2 archivos en vuelo. Si llama-server (rung 4) está
+  UP tras health-check, TODO el lote va en cola SECUENCIAL (1 en vuelo):
+  el rung 4 nunca corre en paralelo con el resto (8 cores compartidos).
+- Reanudable: salta lo completado (fila de decisión + cache por file_id);
+  crash a mitad ⇒ re-run completa sin duplicados.
+- Progreso visible en `.sdd/state/runner.json` (la UI T5 lo lee).
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import fnmatch
+import json
+import os
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+
+from albertitos.emit import emit_outcomes, list_pdf_files
+from albertitos.extract.cloud import cloud_config_from_env
+from albertitos.extract.config import ExtractionConfig
+from albertitos.extract.ladder import ExtractionLadder
+from albertitos.parse.parser import parse_invoice
+from albertitos.rules import BatchContext, decide, load_config, load_master
+from albertitos.rules.config import EngineConfig
+from albertitos.rules.master import Maestro
+from albertitos.store import Store, invoice_uuid
+from albertitos.types import Decision, EvidenceRow, ExtractionFeature, RuleVerdict
+
+ENGINE_VERSION = "runner-1.0.0"
+STAGE_RUN = "run"
+CODE_TIMEOUT = "RUNNER_TIMEOUT"
+
+DEFAULT_FACTURAS = "caja-de-alberto/facturas"
+DEFAULT_MAESTRO = "caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"
+DEFAULT_RULES = "src/albertitos/rules/regla_v3.yaml"
+
+
+@dataclass(frozen=True)
+class RunnerConfig:
+    facturas_dir: Path
+    outcomes_path: Path
+    store_root: Path
+    rules_yaml: Path
+    master_path: Path
+    fecha_referencia: str
+    timeout_por_archivo_s: float = 120.0
+    max_in_flight: int = 2
+    limit: int | None = None
+    only: str | None = None  # glob sobre el basename exacto
+    use_rung4: bool = True  # False = tests / degradación manual (no billing)
+
+
+@dataclass
+class RunReport:
+    total: int = 0
+    procesados: int = 0
+    reutilizados: int = 0
+    timeout: int = 0
+    fallos: int = 0
+    resultados: dict[str, str] = field(default_factory=dict)
+    elapsed_s: float = 0.0
+    files_per_second: float = 0.0  # medido
+    workers: int = 1
+    rung4_secuencial: bool = False
+    validacion: dict | None = None
+
+
+def _vlm_up(base_url: str, timeout_s: float = 2.0) -> bool:
+    """Health-check de llama-server (rung 4). Down no es error: degrada."""
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            base_url.rstrip("/") + "/v1/models", timeout=timeout_s
+        ) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+        return False
+
+
+class Runner:
+    """Runner end-to-end, reanudable y medido. Nunca escribe en el corpus."""
+
+    def __init__(self, cfg: RunnerConfig) -> None:
+        self.cfg = cfg
+        self.ecfg: EngineConfig = load_config(
+            cfg.rules_yaml, fecha_referencia=cfg.fecha_referencia
+        )
+        self.master: Maestro = load_master(
+            cfg.master_path, hojas_ignoradas=self.ecfg.hojas_ignoradas
+        )
+        self.store = Store(cfg.store_root)
+        self.state_path = cfg.store_root / "state" / "runner.json"
+        xcfg = ExtractionConfig()
+        if not cfg.use_rung4:
+            # Puerto que rechaza al instante: el health-check del rung 4
+            # falla sin esperar (degradación determinista en tests).
+            xcfg = dataclasses.replace(xcfg, vlm_base_url="http://127.0.0.1:1")
+        cloud = cloud_config_from_env()  # None si env incompleto ⇒ skip reason
+        self.ladder = ExtractionLadder(
+            cfg=xcfg,
+            cache_root=cfg.store_root / "cache",
+            review_dir=cfg.store_root / "review-queue",
+            cloud=cloud,
+        )
+        self.rung4_disponible = cfg.use_rung4 and _vlm_up(xcfg.vlm_base_url)
+        # Costuras de prueba (None en producción): un hook que lanza simula
+        # crash; un hook que duerme simula archivo colgado.
+        self.fail_hook = None
+        self.sleep_hook = None
+        self._deadline: dict[str, float] = {}
+
+    # ------------------------------------------------------------ enumeración
+
+    def files(self) -> list[Path]:
+        files = list_pdf_files(self.cfg.facturas_dir)
+        if self.cfg.only:
+            files = [p for p in files if fnmatch.fnmatch(p.name, self.cfg.only)]
+        if self.cfg.limit is not None:
+            files = files[: self.cfg.limit]
+        return files
+
+    def max_workers(self) -> int:
+        # Rung 4 UP ⇒ cola SECUENCIAL (una página cada vez, nunca en paralelo).
+        return 1 if self.rung4_disponible else max(1, min(2, self.cfg.max_in_flight))
+
+    # ------------------------------------------------------------ ejecución
+
+    def run(self) -> RunReport:
+        report = RunReport()
+        files = self.files()
+        report.total = len(files)
+        workers = self.max_workers()
+        report.workers = workers
+        report.rung4_secuencial = self.rung4_disponible
+
+        # Contexto previo del lote (reanudación): determinismo por orden de
+        # file_id ascendente; la DECISIÓN se toma siempre en el hilo principal.
+        prev_num = {d.numero_factura: d.file_id
+                    for d in self.store.all_decisions() if d.numero_factura}
+        prev_pedidos = {d.pedido for d in self.store.all_decisions()
+                        if d.result == "PAGAR" and d.pedido}
+
+        started = time.monotonic()
+        pool = ThreadPoolExecutor(max_workers=workers)
+        futures: dict[str, Future] = {}
+        try:
+            # Presupuesto de timeout desde la ENTRADA EN COLA (documentado en
+            # el ticket): un colgado no retrasa infinitamente a la cola.
+            t_submit = time.monotonic()
+            for path in files:
+                self._deadline[path.name] = t_submit + self.cfg.timeout_por_archivo_s
+                futures[path.name] = pool.submit(self._task, path)
+            for path in files:
+                sha256 = _sha256_file(path)
+                invoice_id = invoice_uuid(sha256)
+                done = self.store.decision_for(path.name)
+                if done and done.engine_version == ENGINE_VERSION \
+                        and done.config_version == self.ecfg.config_version:
+                    report.reutilizados += 1
+                    report.resultados[path.name] = done.result
+                    self._tick_state(files, report, started)
+                    continue
+                fut = futures[path.name]
+                remaining = self._deadline.get(path.name, 0.0) - time.monotonic()
+                try:
+                    if remaining <= 0:
+                        raise FuturesTimeout()
+                    extracted = fut.result(timeout=remaining)
+                    resultado = self._decide_and_record(
+                        path, extracted, prev_num, prev_pedidos)[0]
+                    report.procesados += 1
+                except FuturesTimeout:
+                    resultado = self._record_timeout(path, sha256, invoice_id)
+                    report.timeout += 1
+                    report.procesados += 1
+                report.resultados[path.name] = resultado
+                self._tick_state(files, report, started)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+            report.elapsed_s = time.monotonic() - started
+            done_count = report.procesados + report.reutilizados
+            report.files_per_second = (
+                round(done_count / report.elapsed_s, 3)
+                if report.elapsed_s > 0 else 0.0
+            )
+            self._write_state(files, report)
+        return report
+
+    # ------------------------------------------------------------ etapas
+
+    def _task(self, path: Path):
+        """Trabajo pesado (extracción): puede colgar ⇒ timeout lo captura."""
+        if self.sleep_hook is not None:
+            self.sleep_hook(path.name)
+        if self.fail_hook is not None:
+            self.fail_hook(path.name)
+        return self._extract(path)
+
+    def _extract(self, path: Path) -> dict:
+        sha256 = _sha256_file(path)
+        invoice_id = invoice_uuid(sha256)
+        pages = self.ladder.extract_file(
+            path, invoice_id=invoice_id, file_id=path.name
+        )
+        features: list[ExtractionFeature] = []
+        evidence: list[EvidenceRow] = []
+        for pg in pages:
+            features.extend(pg.features)
+            for row in pg.evidence:
+                row.file_id = path.name
+                evidence.append(row)
+        rungs_usados = ",".join(sorted({pg.final_rung for pg in pages}))
+        return {
+            "sha256": sha256,
+            "invoice_id": invoice_id,
+            "features": features,
+            "evidence": evidence,
+            "rungs": rungs_usados,
+        }
+
+    def _decide_and_record(self, path: Path, extracted: dict,
+                           prev_num: dict, prev_pedidos: set) -> tuple[str, str]:
+        sha256 = extracted["sha256"]
+        invoice_id = extracted["invoice_id"]
+        features = extracted["features"]
+        for row in extracted["evidence"]:
+            self.store.record_evidence(row)
+
+        started = time.monotonic()
+        fields = parse_invoice(features)
+        self.store.record_evidence(EvidenceRow(
+            file_id=path.name, invoice_id=invoice_id, stage="parse",
+            extractor="parser", extractor_version=ENGINE_VERSION,
+            config_version=self.ecfg.config_version, sha256=sha256,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            confidence=None, outcome="ok" if fields else "empty",
+            detail=",".join(sorted(f.type for f in fields)),
+        ))
+
+        textos = tuple(str(f.data) for f in features if isinstance(f.data, str))
+        decision = decide(
+            fields, textos, self.master, self.ecfg,
+            BatchContext(facturas_vistas=dict(prev_num),
+                         pedidos_pagados=frozenset(prev_pedidos)),
+            invoice_id=invoice_id, file_id=path.name,
+        )
+        numero = _mejor_valor(fields, "numero_factura")
+        pedido = _mejor_valor(fields, "pedido")
+        self.store.record_decision(
+            decision, sha256, numero_factura=numero, pedido=pedido,
+            engine_version=ENGINE_VERSION,
+        )
+        self.store.record_evidence(EvidenceRow(
+            file_id=path.name, invoice_id=invoice_id, stage="decision",
+            extractor="rule-engine", extractor_version=ENGINE_VERSION,
+            config_version=self.ecfg.config_version, sha256=sha256,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            confidence=None, outcome=decision.result,
+            detail=",".join(f"{v.code}:{v.outcome}" for v in decision.rule_verdicts),
+        ))
+        self.store.put_cached(sha256, STAGE_RUN, ENGINE_VERSION,
+                              self.ecfg.config_version,
+                              {"result": decision.result,
+                               "invoice_id": invoice_id,
+                               "rungs": extracted["rungs"]})
+        if decision.result == "PAGAR" and pedido:
+            prev_pedidos.add(pedido)
+        if numero:
+            prev_num[numero] = path.name
+        return decision.result, decision.config_snapshot.get("motivo", "")
+
+    def _record_timeout(self, path: Path, sha256: str, invoice_id: str) -> str:
+        """Timeout ⇒ ESCALAR con motivo `timeout` + evidencia. El lote sigue."""
+        verdict = RuleVerdict(
+            code=CODE_TIMEOUT, outcome="UNKNOWN",
+            reason=f"timeout del archivo ({self.cfg.timeout_por_archivo_s:.0f}s)",
+            consumed={"budget_desde_cola": self.cfg.timeout_por_archivo_s},
+        )
+        snapshot = self.ecfg.snapshot()
+        snapshot["motivo"] = "timeout"
+        decision = Decision(
+            invoice_id=invoice_id, file_id=path.name, result="ESCALAR",
+            rule_verdicts=[verdict], config_snapshot=snapshot,
+        )
+        self.store.record_decision(
+            decision, sha256, numero_factura="", pedido="",
+            engine_version=ENGINE_VERSION,
+        )
+        self.store.record_evidence(EvidenceRow(
+            file_id=path.name, invoice_id=invoice_id, stage="decision",
+            extractor="runner", extractor_version=ENGINE_VERSION,
+            config_version=self.ecfg.config_version, sha256=sha256,
+            latency_ms=int(self.cfg.timeout_por_archivo_s * 1000),
+            confidence=None, outcome="ESCALAR",
+            detail="timeout: presupuesto por archivo agotado",
+        ))
+        return "ESCALAR"
+
+    # ------------------------------------------------------------ estado UI
+
+    def _tick_state(self, files: list[Path], report: RunReport,
+                    started: float) -> None:
+        self._write_state(files, report, started)
+
+    def _write_state(self, files: list[Path], report: RunReport,
+                     started: float | None = None) -> None:
+        """Estado para la UI (T5): números medidos, nunca estimados."""
+        resultados: dict[str, int] = {"PAGAR": 0, "NO_PAGAR": 0, "ESCALAR": 0}
+        done = 0
+        for path in files:
+            d = self.store.decision_for(path.name)
+            if d is None:
+                continue
+            done += 1
+            if d.result in resultados:
+                resultados[d.result] += 1
+        elapsed = time.monotonic() - started if started else report.elapsed_s
+        state = {
+            "actualizado": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            "medido": True,
+            "total_archivos": len(files),
+            "done": done,
+            "pendientes": max(0, len(files) - done),
+            "fallos": report.fallos,
+            "timeout": report.timeout,
+            "resultados": resultados,
+            "files_per_second": (round(done / elapsed, 3) if elapsed > 0 else None),
+            "concurrency": report.workers,
+            "rung4_llama_server": "up" if self.rung4_disponible else "down",
+            "rung4_secuencial": report.rung4_secuencial,
+            "timeout_por_archivo_s": self.cfg.timeout_por_archivo_s,
+            "engine_version": ENGINE_VERSION,
+            "config_version": self.ecfg.config_version,
+            "facturas_dir": str(self.cfg.facturas_dir),
+        }
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.state_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True),
+                       encoding="utf-8")
+        os.replace(tmp, self.state_path)
+
+
+# ------------------------------------------------------------ helpers
+
+
+def _hoy_iso() -> str:
+    """Fecha de referencia por defecto: hoy UTC (el motor sigue siendo puro)."""
+    return datetime.now(tz=UTC).date().isoformat()
+
+
+def _sha256_file(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _mejor_valor(fields: list, tipo: str) -> str:
+    for f in fields:
+        if f.type == tipo and f.values:
+            best = max(f.values, key=lambda c: c.confidence)
+            return str(best.value)
+    return ""
+
+
+# ------------------------------------------------------------ CLI
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="albertitos.run",
+        description="Runner de lote end-to-end: PDFs → outcomes.jsonl (T8).",
+    )
+    parser.add_argument("--facturas", default=DEFAULT_FACTURAS)
+    parser.add_argument("--outcomes", default="outcomes.jsonl")
+    parser.add_argument("--store-root", default=".sdd")
+    parser.add_argument("--rules", default=DEFAULT_RULES)
+    parser.add_argument("--maestro", default=DEFAULT_MAESTRO)
+    parser.add_argument("--fecha-referencia", default=_hoy_iso(),
+                        help="fecha contra la que se juzga 'futura' (motor puro)")
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--only", default=None, help="glob sobre el basename")
+    parser.add_argument("--timeout", type=float, default=120.0,
+                        help="timeout por archivo en segundos")
+    parser.add_argument("--max-in-flight", type=int, default=2)
+    args = parser.parse_args(argv)
+
+    cfg = RunnerConfig(
+        facturas_dir=Path(args.facturas),
+        outcomes_path=Path(args.outcomes),
+        store_root=Path(args.store_root),
+        rules_yaml=Path(args.rules),
+        master_path=Path(args.maestro),
+        fecha_referencia=args.fecha_referencia,
+        timeout_por_archivo_s=args.timeout,
+        max_in_flight=args.max_in_flight,
+        limit=args.limit,
+        only=args.only,
+    )
+    runner = Runner(cfg)
+    report = runner.run()
+
+    # Emisión final + validador de contrato (T9) en verde.
+    emit_outcomes(runner.store, cfg.outcomes_path)
+    lote_completo = report.total == len(list_pdf_files(cfg.facturas_dir))
+    validacion = None
+    if lote_completo:
+        from albertitos.validate import validar
+
+        validacion = validar(Path(cfg.outcomes_path), Path(cfg.facturas_dir))
+
+    # Resumen en español llano, números medidos (AGENTS.md §9).
+    print(f"Lote: {report.total} archivos · done {report.procesados + report.reutilizados} "
+          f"(reutilizados {report.reutilizados}) · timeouts {report.timeout} · "
+          f"medido {report.files_per_second} files/s")
+    print(f"Rung 4 (llama-server): {'UP — lote secuencial' if report.rung4_secuencial else 'down — degradado a rung 3'}")
+    if validacion is not None:
+        errores = validacion.get("errores", [])
+        print(f"Validador de contrato: {'OK' if not errores else f'{len(errores)} errores'}")
+        runner.store.close()
+        return 0 if not errores else 1
+    print("Validador: OMITIDO (lote parcial — --limit/--only)")
+    runner.store.close()
+    return 0
+
+
+if __name__ == "__main__":  # python -m albertitos.run
+    raise SystemExit(main())
