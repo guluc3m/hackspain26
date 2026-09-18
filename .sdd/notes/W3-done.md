@@ -49,3 +49,16 @@
   duplicados, file_id normalizados/con ruta y results inválidos).
 - Nota para quien integre: `.sdd/metrics/metrics.json` es estado regenerable
   (no commitado); el binario typst no participa en tests.
+
+## Sesión 3 — T11 cerrado (commit 02ec526)
+
+- PDF de entrega compilado con la plantilla Typst del equipo (11 páginas,
+  5 ADRs) y SIN commitarlo: va solo al repo de entrega (lo prepara el
+  supervisor con docs/report/albertitos_plan.pdf ya compilado en el worktree).
+- ADRs reflejan decisiones reales: reglas-como-datos v3→v4, ERP fuera de
+  scope (costura de adaptador), rung 5 = deepseek-v4.1-flash (Qwen vetado),
+  revisión humana no bloqueante.
+- T8 (runner) y T10 (dry-run) aún sin datos: sus huecos en el informe quedan
+  como PENDIENTE-MEDICIÓN/ESTIMADO; cuando escriban evidencia al ledger,
+  regenerar con `uv run python -m albertitos.report_data` + `-m albertitos.metrics`
+  y recompilar (`cd docs/report && ~/.local/bin/typst compile --font-path fonts albertitos_plan.typ`).
