@@ -423,6 +423,19 @@ def run_vlm(ctx: RungContext) -> RungOutcome:
         time.sleep(pausa)
         backoff = min(backoff * 2, ctx.cfg.vlm_health_backoff_cap_s)
         reintentos += 1
+        # T33-M4: cada reintento deja huella (pantalla Salud de la UI lo lee).
+        ctx.add_evidence(
+            stage="extract:rung4_health",
+            extractor="vlm",
+            extractor_version=ctx.cfg.vlm_model,
+            config_version=ctx.cfg.config_version,
+            sha256=ctx.page_sha,
+            latency_ms=int((time.monotonic() - t0) * 1000),
+            confidence=None,
+            outcome="retry",
+            detail=f"intento {reintentos} tras {estado} ({motivo}); "
+                   f"esperado {pausa:.2f}s",
+        )
         estado, motivo, retry_after = _vlm_probe(ctx.cfg)
     if estado != "up":
         feat = ExtractionFeature(
