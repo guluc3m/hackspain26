@@ -17,7 +17,7 @@ import os
 import sqlite3
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from albertitos.types import Decision, EvidenceRow
@@ -38,6 +38,7 @@ class StoredDecision:
     engine_version: str
     nif: str = ""
     iban: str = ""
+    extra: dict = field(default_factory=dict)
 
 
 def invoice_uuid(sha256: str) -> str:
@@ -78,7 +79,8 @@ class Store:
                 engine_version TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 nif TEXT DEFAULT '',
-                iban TEXT DEFAULT ''
+                iban TEXT DEFAULT '',
+                extra TEXT DEFAULT '{}'
             );
             CREATE TABLE IF NOT EXISTS decision_runs (
                 file_id TEXT NOT NULL,
@@ -91,11 +93,18 @@ class Store:
                 pedido TEXT,
                 nif TEXT DEFAULT '',
                 iban TEXT DEFAULT '',
+                extra TEXT DEFAULT '{}',
                 config_version TEXT NOT NULL,
                 engine_version TEXT NOT NULL,
                 motivo TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 PRIMARY KEY (file_id, run_id)
+            );
+            CREATE TABLE IF NOT EXISTS invoice_attrs (
+                file_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (file_id, key)
             );
             CREATE TABLE IF NOT EXISTS evidence (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +144,16 @@ class Store:
         self._migrate()
 
     def _migrate(self) -> None:
-        """Migraciones idempotentes de esquema (stores creados antes de T13)."""
+        """Migraciones idempotentes de esquema (stores creados antes de T13).
+
+        Esquema DINÁMICO: la columna `extra` (JSON) y la tabla `invoice_attrs`
+        se añaden bajo demanda también a stores antiguos, sin perder datos."""
+        for table in ("invoices", "decision_runs"):
+            cols = {r["name"] for r in self._conn.execute(
+                f"PRAGMA table_info({table})").fetchall()}
+            if cols and "extra" not in cols:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN extra TEXT DEFAULT '{{}}'")
         cols = {r["name"] for r in self._conn.execute(
             "PRAGMA table_info(invoices)").fetchall()}
         for col in ("nif", "iban"):
@@ -194,15 +212,31 @@ class Store:
     def record_decision(self, decision: Decision, sha256: str, *,
                         numero_factura: str, pedido: str,
                         engine_version: str, run_id: str = "base",
-                        nif: str = "", iban: str = "") -> bool:
+                        nif: str = "", iban: str = "",
+                        extra: dict | None = None) -> bool:
         """UPSERT de la decisión (estado actual) + fila de histórico en
         `decision_runs` (file_id, run_id) — T13: cada decisión nueva COEXISTE
         con la anterior (run_id distinto), jamás se sobreescribe el histórico.
-        Devuelve True si el estado actual cambió (y se escribe en el ledger)."""
+        Devuelve True si el estado actual cambió (y se escribe en el ledger).
+
+        Esquema dinámico: `extra` son campos no previstos según país/administración
+        (ej. Perú: {"ruc": "20123456789", "moneda": "PEN", "monto_soles": 1250.5}).
+        Se guardan: (a) íntegros en la columna JSON `extra` de invoices y
+        decision_runs, y (b) como variables con nombre en `invoice_attrs`
+        (clave-valor por factura) para filtrar después con SQL plano:
+
+            store.record_decision(d, sha, numero_factura="F001", pedido="P01",
+                                  extra={"ruc": "20123456789", "moneda": "PEN"})
+            store.files_with_attr("moneda", "PEN")  # -> [file_id, ...]
+        La primera vez que aparece una variable nueva se anota en el ledger
+        (evento "new_field", trazabilidad §5). Los campos fijos (total, nif,
+        iban, iva_amount, fecha, result...) y las queries existentes no cambian."""
         codes = ",".join(
             f"{v.code}:{v.outcome}" for v in decision.rule_verdicts
         )
         motivo = str(decision.config_snapshot.get("motivo", ""))
+        extra = dict(extra or {})
+        extra_json = json.dumps(extra, sort_keys=True, ensure_ascii=False)
         row = self._conn.execute(
             "SELECT result, rule_codes FROM invoices WHERE file_id=?",
             (decision.file_id,),
@@ -212,28 +246,29 @@ class Store:
         self._conn.execute(
             "INSERT INTO invoices (file_id, invoice_id, sha256, result, "
             "rule_codes, numero_factura, pedido, config_version, engine_version, "
-            "updated_at, nif, iban) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+            "updated_at, nif, iban, extra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(file_id) DO UPDATE SET invoice_id=excluded.invoice_id, "
             "sha256=excluded.sha256, result=excluded.result, "
             "rule_codes=excluded.rule_codes, numero_factura=excluded.numero_factura, "
             "pedido=excluded.pedido, config_version=excluded.config_version, "
             "engine_version=excluded.engine_version, updated_at=excluded.updated_at, "
-            "nif=excluded.nif, iban=excluded.iban",
+            "nif=excluded.nif, iban=excluded.iban, extra=excluded.extra",
             (decision.file_id, decision.invoice_id, sha256, decision.result,
              codes, numero_factura, pedido,
              decision.config_snapshot.get("config_version", ""),
-             engine_version, _now(), nif, iban),
+             engine_version, _now(), nif, iban, extra_json),
         )
         self._conn.execute(
             "INSERT OR REPLACE INTO decision_runs (file_id, run_id, invoice_id, "
             "sha256, result, rule_codes, numero_factura, pedido, nif, iban, "
-            "config_version, engine_version, motivo, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "extra, config_version, engine_version, motivo, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (decision.file_id, run_id, decision.invoice_id, sha256,
              decision.result, codes, numero_factura, pedido, nif, iban,
-             decision.config_snapshot.get("config_version", ""),
+             extra_json, decision.config_snapshot.get("config_version", ""),
              engine_version, motivo, _now()),
         )
+        self._register_attrs(decision.file_id, extra)
         self._conn.commit()
         if changed:
             self._ledger({
@@ -262,6 +297,7 @@ class Store:
             engine_version=row["engine_version"],
             nif=_row_val(row, "nif"),
             iban=_row_val(row, "iban"),
+            extra=_row_json(row, "extra"),
         )
 
     def all_decisions(self) -> list[StoredDecision]:
@@ -277,6 +313,7 @@ class Store:
                 pedido=r["pedido"] or "",
                 config_version=r["config_version"], engine_version=r["engine_version"],
                 nif=_row_val(r, "nif"), iban=_row_val(r, "iban"),
+                extra=_row_json(r, "extra"),
             )
             for r in rows
         ]
@@ -295,6 +332,7 @@ class Store:
             numero_factura=row["numero_factura"] or "",
             pedido=row["pedido"] or "",
             config_version=row["config_version"], engine_version=row["engine_version"],
+            extra=_row_json(row, "extra"),
         )
 
     def resultados_por_file(self, file_ids: list[str]) -> dict[str, str]:
@@ -338,11 +376,59 @@ class Store:
                 pedido=r["pedido"] or "",
                 config_version=r["config_version"], engine_version=r["engine_version"],
                 nif=_row_val(r, "nif"), iban=_row_val(r, "iban"),
+                extra=_row_json(r, "extra"),
             )
             for r in rows
         ]
 
-    # ---------------------------------------------------------------- feedback
+    # ---------------------------------------------------------------- attrs
+
+    def _register_attrs(self, file_id: str, extra: dict) -> None:
+        """Registra variables nuevas con nombre cuando aparecen (esquema
+        dinámico): `invoice_attrs` es clave-valor por factura, así cualquier
+        campo nuevo es filtrable con SQL sin tocar el esquema fijo. La primera
+        vez que se ve un nombre de variable se anota en el ledger."""
+        for key, val in sorted(extra.items()):
+            nuevo = self._conn.execute(
+                "SELECT 1 FROM invoice_attrs WHERE key=? LIMIT 1", (key,)
+            ).fetchone() is None
+            self._conn.execute(
+                "INSERT OR REPLACE INTO invoice_attrs (file_id, key, value) "
+                "VALUES (?,?,?)",
+                (file_id, key, str(val)),
+            )
+            if nuevo:
+                self._ledger({"event": "new_field", "file_id": file_id, "key": key})
+
+    def attrs_for(self, file_id: str) -> dict[str, str]:
+        """Variables dinámicas registradas para una factura (clave → valor)."""
+        rows = self._conn.execute(
+            "SELECT key, value FROM invoice_attrs WHERE file_id=? ORDER BY key",
+            (file_id,),
+        ).fetchall()
+        return {r["key"]: r["value"] for r in rows}
+
+    def files_with_attr(self, key: str, value: str | None = None) -> list[str]:
+        """file_ids con una variable dinámica dada (filtro opcional por valor)."""
+        if value is None:
+            rows = self._conn.execute(
+                "SELECT file_id FROM invoice_attrs WHERE key=? ORDER BY file_id",
+                (key,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT file_id FROM invoice_attrs WHERE key=? AND value=? "
+                "ORDER BY file_id",
+                (key, str(value)),
+            ).fetchall()
+        return [r["file_id"] for r in rows]
+
+    def known_attr_keys(self) -> list[str]:
+        """Nombres de variables dinámicas vistas hasta ahora."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT key FROM invoice_attrs ORDER BY key"
+        ).fetchall()
+        return [r["key"] for r in rows]
 
     def save_resolution(self, file_id: str, invoice_id: str, resolved_by: str,
                         before: str, after: str, note: str = "") -> None:
@@ -387,6 +473,20 @@ class Store:
 
     def close(self) -> None:
         self._conn.close()
+
+
+def _row_json(row, col: str) -> dict:
+    """Dict JSON de columna tolerante a esquemas antiguos (sin la columna)."""
+    try:
+        raw = row[col]
+    except IndexError:
+        return {}
+    if not raw:
+        return {}
+    try:
+        return dict(json.loads(raw))
+    except (TypeError, ValueError):
+        return {}
 
 
 def _row_val(row, col: str) -> str:
