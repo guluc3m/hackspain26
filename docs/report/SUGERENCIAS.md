@@ -271,3 +271,72 @@ propuesta y coste · por qué NO se implementó ya · prioridad y responsable.
   entrega sin necesidad.
 - **Prioridad**: baja. Quién: W2 (con Alberto decidiendo si entra en la defensa).
 >>>>>>> worker/w2
+
+---
+
+## · Panel «Trabajo pendiente» en Salud (trazabilidad, 20 pts) — W2
+
+- **Categoría**: trazabilidad / observabilidad.
+- **Problema**: la rúbrica pide mostrar «estado, evidencia, versiones, latencia,
+  errores, reintentos y TRABAJO PENDIENTE» (hackathon.maisa.ai, 20 pts). Hoy la
+  evidencia registra ese trabajo disperso: los reintentos de health del rung 4
+  (stage `extract:rung4_health`, outcome `retry`, T33-M4), los skips
+  transitorios de proveedor (`outcome='skipped'` con detail
+  `skipped:llama-server-{loading,hung}` — por definición de T29 NO se cachean,
+  así que son trabajo que queda por hacer), la cola de revisión (n entradas) y
+  los timeouts de runner. Salud los muestra parcialmente y dispersos; no existe
+  una cifra única de «esto es lo que queda».
+- **Propuesta**: tarjeta «Trabajo pendiente» en Salud con 4 contadores medidos
+  de la evidencia real: (a) páginas con skip transitorio no resuelto, (b)
+  reintentos de health de la última corrida, (c) escalados en cola de revisión,
+  (d) timeouts del runner. Cada contador enlaza a su pantalla (Revisión, runner
+  state). ~60 líneas en `ui/ledger.py` + `salud.html` (W3) + un test con ledger
+  sembrado. Es puro aggregation sobre evidencia existente: cero cambios de
+  decisión y cache.
+- **Por qué NO se implementó ya**: la pantalla Salud es de W3 y su telemetría
+  está en curso (T31); el ciclo de implementación de W2 ya tenía 3 mejoras.
+- **Prioridad**: alta (rúbrica 20 pts, barato). Quién: W3 con W2 (la agregación
+  de evidencia es del store, mío).
+
+## · Exportador de asientos al ERP: cerrar la costura de verdad (bonus +10) — W2
+
+- **Categoría**: producto.
+- **Problema**: la norma dice «NUNCA pagar sin cruzar con el ERP» y el manual
+  del bridge de 2009 (caja-de-alberto/MANUAL_ERP_2009.md) soporta cargar un
+  export: `python3 alberto_erp.py --lote2 ruta/al/erp_export_lote2.csv`. Hoy
+  la costura ERP es de LECTURA (ORDER_PENDING consulta el estado); no existe el
+  camino de VUELTA: los PAGAR del lote tendrían que teclearse a mano en el ERP
+  — exactamente el trabajo que el sistema debe ahorrar a Alberto (bonus: mejora
+  original implementada, no maqueta).
+- **Propuesta**: `python -m albertitos.erp_export` — lee del store los PAGAR
+  validados (result + reglas + evidencia) y produce `erp_export_lote2.csv` en
+  el formato que `alberto_erp.py` ingiere (leyendo su parser en
+  caja-de-alberto/, SOLO LECTURA), con columnas de trazabilidad opcionales.
+  Idempotente por (file_id, sha256): re-ejecutar no duplica asientos. ~100
+  líneas + test contra el formato real del parser del ERP.
+- **Por qué NO se implementó ya**: el ERP es fuera de scope salvo la costura y
+  este cambio produce un ENTREGABLE de producto nuevo — hay que aprobarlo con
+  el supervisor y con Alberto (¿el CSV entra como asiento pendiente o como
+  pagado?). Requiere leer el formato exacto del parser del bridge.
+- **Prioridad**: alta como CANDIDATO DE BONUS (+10 máx, desempate 3º). Quién:
+  W2 con supervisor.
+
+## · Ingesta de NUEVOS TIPOS de archivo: email .eml con adjuntos — W2
+
+- **Categoría**: escalabilidad.
+- **Problema**: la rúbrica (25 pts) exige «plan para incorporar más volumen y
+  NUEVOS TIPOS de archivo». El plan existe a nivel de discurso (parser
+  extensible, motor de reglas data-driven), pero no hay ni un tipo no-PDF
+  demostrado. La pieza barata y honesta: email .eml (el flujo real de Alberto:
+  facturas llegan por correo) → `ExtractionFeature` de texto del cuerpo + los
+  adjuntos PDF van DIRECTOS a la escalera existente por página.
+- **Propuesta**: `extract/email.py` — `ExtractionFeature(type="email_text")`
+  con remitente/asunto/cuerpo (stdin o rutas) + reenvío de los adjuntos
+  application/pdf a `ladder.extract_file`. El parser ya ignora tipos que no
+  sabe y el motor no cambia. Sin QR ni OCR nuevos. ~80 líneas + fixture .eml
+  sintética con adjunto de los fixtures reales (nada inventado).
+- **Por qué NO se implementó ya**: el reto solo trae PDFs; sin corpus de
+  emails real no hay fixture representativa (misma doctrina que la sugerencia
+  del QR estructurado). Como PLAN para la defensa puntúa (25 pts) aunque se
+  demuestre con fixture sintética etiquetada como tal.
+- **Prioridad**: media (25 pts de rúbrica). Quién: W2 (extract es mío/W1).
