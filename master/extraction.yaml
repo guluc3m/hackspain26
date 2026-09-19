@@ -21,7 +21,6 @@ rungs:
       min_printable_ratio: 0.85
       min_alnum_ratio: 0.35
       min_words: 5
-      min_known_words: 2
 
   # Escalón 2: rasterizado + QR (zxing).
   # qr_only_confidence decide si la página ES solo QR(s): por encima del

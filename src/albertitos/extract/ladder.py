@@ -1,4 +1,4 @@
-"""Escalera de extracción, por página y en orden:
+"""Escalera de extracción, por página y en orden (PDF), o de una pieza (imágenes):
 
 1. Capa de texto (pypdf) — solo si pasa el chequeo de plausibilidad.
 2. Rasterizado + QR (pypdfium2 + zxing) — página solo-QR ⇒ el payload es el contenido, parar.
@@ -76,22 +76,25 @@ class ExtractionLadder:
         self.config = config
         self.pages_dir = pages_dir  # imágenes de página para la cola de revisión
 
-    def extract_page(self, pdf_path: Path, page_index: int) -> PageExtraction:
+    def extract_page_any(self, path: Path, page_index: int, start: int = 1) -> PageExtraction:
+        """Ejecuta la escalera desde el escalón `start` (0-index).
+
+        Una imagen (png/jpg/...) entra directo en el escalón 2: no hay capa
+        de texto que comprobar; el rasterizado es la propia imagen.
+        """
         out = PageExtraction(page=page_index)
         ctx = PageContext(
-            pdf_path=pdf_path,
+            pdf_path=path,
             page_index=page_index,
             cache=self.cache,
             config=self.config,
             pages_dir=self.pages_dir,
         )
-
-        for name, rung_extract, auto_stop, adapter in _RUNGS:
+        for name, rung_extract, auto_stop, adapter in _RUNGS[start:]:
             result = rung_extract(ctx)
             if isinstance(result, RungResult):
                 rr = result
             elif isinstance(result, qr.QrRungResult):
-                # el QR-only es la única resolución que no pasa por _wrap_text:
                 # el payload ES el contenido (dato no confiado, nunca instrucciones)
                 rr = RungResult(result.features, content=result.content, resolved=result.qr_only)
             else:
@@ -105,6 +108,12 @@ class ExtractionLadder:
                 return out
         return out
 
+    def extract_page(self, pdf_path: Path, page_index: int) -> PageExtraction:
+        return self.extract_page_any(pdf_path, page_index, start=0)
+
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+
 
 def extract_document(
     pdf_path: Path,
@@ -113,8 +122,26 @@ def extract_document(
     pages_dir: Path | None = None,
 ) -> list[PageExtraction]:
     """Escalera por página (un PDF puede mezclar páginas de distinto tipo)."""
+    return extract_file(pdf_path, cache, config, pages_dir)
+
+
+def extract_file(
+    path: Path,
+    cache: FeatureCache,
+    config: dict[str, Any],
+    pages_dir: Path | None = None,
+) -> list[PageExtraction]:
+    """Escalera sobre un fichero: PDF por página, imagen de una pieza.
+
+    El tipo de fichero se decide AQUÍ; los escalones y el motor de reglas
+    no saben nada de formatos (architecture.typ §4).
+    """
+    suffix = path.suffix.lower()
+    if suffix in IMAGE_SUFFIXES:
+        return [ExtractionLadder(cache, config, pages_dir).extract_page_any(path, 0, start=1)]
+    if suffix != ".pdf":
+        raise ValueError(f"formato no soportado: {suffix}")
     from pypdf import PdfReader
 
     ladder = ExtractionLadder(cache, config, pages_dir)
-    n_pages = len(PdfReader(pdf_path).pages)
-    return [ladder.extract_page(pdf_path, i) for i in range(n_pages)]
+    return [ladder.extract_page(path, i) for i in range(len(PdfReader(path).pages))]

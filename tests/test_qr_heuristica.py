@@ -16,7 +16,7 @@ pypdfium2 = pytest.importorskip("pypdfium2")
 pytest.importorskip("zxingcpp")
 
 from albertitos.extract.cache import FeatureCache
-from albertitos.extract.ladder import extract_document
+from albertitos.extract.ladder import extract_document, extract_file
 from albertitos.extract.rungs.qr import _page_qr_confidence, _signal_payload_shape
 
 _QR_PAYLOAD = (
@@ -115,3 +115,22 @@ def test_escalera_texto_para_en_rung1(tmp_path):
     _pdf_with_text(pdf, _TEXTO)
     pages = extract_document(pdf, FeatureCache(tmp_path / "cache"), cfg.extraction_config())
     assert pages[0].stopped_at == "pypdf"
+
+
+def test_imagen_entra_directo_en_rung2(tmp_path):
+    """png/jpg no tienen capa de texto: la escalera empieza en el escalón 2."""
+    from albertitos.config import AppConfig
+
+    qr_img = qrcode.QRCode(border=4, box_size=10)
+    qr_img.add_data("https://example.com/verifactu?id=abc&x=1")
+    img = qr_img.make_image(image_factory=PilImage).convert("RGB")
+    img_path = tmp_path / "factura_qr.png"
+    img.save(img_path)
+    cfg = AppConfig(tmp_path / "data")
+    pages = extract_file(img_path, FeatureCache(tmp_path / "cache"), cfg.extraction_config())
+    assert len(pages) == 1
+    # ninguna feature pypdf: el escalón 1 se saltó por completo
+    assert all(f.extraction_method != "pypdf" for f in pages[0].features)
+    # el QR se leyó y su payload es el contenido de la "página"
+    qr = [f for f in pages[0].features if f.type == "qr_payload"]
+    assert qr and pages[0].content
