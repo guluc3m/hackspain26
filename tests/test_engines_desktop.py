@@ -6,11 +6,12 @@ La ventana nativa no se abre en tests (degrada a navegador, extra desktop).
 
 from __future__ import annotations
 
+import os
 import sys
 
 import pytest
 
-from filemaid.desktop.app import Api, _gui_backend, ui_destino
+from filemaid.desktop.app import Api, _gui_backend, _StderrArranque, ui_destino
 from filemaid.engines import DecisionEngine, ExtractionEngine
 from filemaid.types import ExtractionField
 
@@ -50,6 +51,26 @@ def test_gui_backend_qt_en_linux_y_auto_en_otras(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setitem(sys.modules, "qtpy", object())
     assert _gui_backend() is None
+
+
+def test_stderr_arranque_captura_sondas_y_restaura(tmp_path):
+    destino = tmp_path / "err.txt"
+    viejo = os.dup(2)
+    f = os.open(destino, os.O_WRONLY | os.O_CREAT)
+    os.dup2(f, 2)
+    try:
+        arranque = _StderrArranque()
+        with arranque:
+            os.write(2, b"vkDebug: sonda del sistema")
+            arranque.restaurar()
+            os.write(2, b"post-carga")
+    finally:
+        os.dup2(viejo, 2)
+        os.close(viejo)
+        os.close(f)
+    # la sonda queda capturada; tras restaurar, stderr fluye normal
+    assert "vkDebug" in arranque.texto()
+    assert destino.read_text() == "post-carga"
 
 
 def test_ui_destino_url_de_dev_tiene_prioridad(monkeypatch, tmp_path):

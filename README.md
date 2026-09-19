@@ -75,9 +75,11 @@ sigue consumiendo la referencia sintética. En dev, con `dev_syncth` corriendo:
 `ALBERTITOS_UI_URL=http://127.0.0.1:5173 uv run albertitos-desktop`.
 
 El lanzador fuerza el backend QT cuando está disponible (sin sondeo GTK).
-Según la máquina, el arranque puede imprimir unas líneas de sondeo del sistema
-(Vulkan «Failed to detect any valid GPUs», libva): son inofensivas y no
-afectan al funcionamiento.
+Las sondas del sistema que escriben en stderr durante el arranque (Vulkan
+«Failed to detect any valid GPUs», libva) se capturan y se descartan; solo se
+muestran como diagnóstico si la ventana no llega a abrirse. En máquinas con
+ICD de Vulkan instalados (p. ej. mesa-vulkan-drivers, paquete del sistema)
+la sonda ni siquiera se produce.
 
 La UI consume los datos de la base de datos (sqlite) que expone el backend.
 Mientras esa conexión no existe, los targets `*_syncth` ejecutan la interfaz

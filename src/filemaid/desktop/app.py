@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
+from typing import Self
 
 from filemaid.engines import DecisionEngine, ExtractionEngine
 
@@ -87,25 +89,91 @@ def _gui_backend() -> str | None:
     return "qt"
 
 
+class _StderrArranque:
+    """stderr bajo llave durante el arranque de la ventana.
+
+    Algunas sondas del sistema (Vulkan, VA-API) escriben directamente en
+    fd 2 al inicializar la ventana y no se pueden silenciar por
+    configuración. Durante el arranque se capturan; cuando la página carga
+    (o vence un plazo de seguridad) stderr vuelve a la normalidad. Si el
+    arranque falla, lo capturado acompaña al error como diagnóstico.
+    """
+
+    PLAZO_S = 15.0
+    TOPE_BYTES = 16384
+
+    def __init__(self) -> None:
+        self._restaurado = False
+        self._lock = threading.Lock()
+        self._captura = bytearray()
+
+    def __enter__(self) -> Self:
+        self._viejo = os.dup(2)
+        self._r, self._w = os.pipe()
+        os.dup2(self._w, 2)
+        self._cerrado = threading.Event()
+        self._drenador = threading.Thread(target=self._drenar, daemon=True)
+        self._drenador.start()
+        # plazo de seguridad: si la página nunca carga, stderr vuelve igual
+        vigilante = threading.Timer(self.PLAZO_S, self.restaurar)
+        vigilante.daemon = True
+        vigilante.start()
+        return self
+
+    def _drenar(self) -> None:
+        while not self._cerrado.is_set():
+            try:
+                trozo = os.read(self._r, 4096)
+            except OSError:
+                break
+            if not trozo:
+                break
+            with self._lock:
+                if len(self._captura) < self.TOPE_BYTES:
+                    self._captura.extend(trozo)
+
+    def restaurar(self) -> None:
+        with self._lock:
+            if self._restaurado:
+                return
+            self._restaurado = True
+        os.dup2(self._viejo, 2)
+        os.close(self._w)
+        self._cerrado.set()
+        self._drenador.join(timeout=1.0)
+
+    def __exit__(self, *exc: object) -> None:
+        self.restaurar()
+        os.close(self._r)
+        os.close(self._viejo)
+
+    def texto(self) -> str:
+        with self._lock:
+            return self._captura.decode(errors="replace")
+
+
 def main() -> int:
     try:
         import webview
     except ImportError:
         raise SystemExit("falta pywebview: uv sync --extra desktop")
 
-    webview.create_window(
+    ventana = webview.create_window(
         "albertitos — decisión de facturas",
         ui_destino(),
         js_api=Api(),
         width=1280,
         height=860,
     )
-    try:
-        webview.start(gui=_gui_backend())
-    except Exception as exc:
-        # sin GTK/QT con extensiones Python en el sistema (p.ej. entorno sin
-        # raíz), la ventana nativa no puede abrirse
-        raise SystemExit(f"la ventana nativa no pudo arrancar: {exc}")
+    with _StderrArranque() as arranque:
+        ventana.events.loaded += lambda *_: arranque.restaurar()
+        try:
+            webview.start(gui=_gui_backend())
+        except Exception as exc:
+            # sin GTK/QT con extensiones Python en el sistema (p.ej. entorno
+            # sin raíz), la ventana nativa no puede abrirse; el ruido capturado
+            # puede incluir el diagnóstico de la sonda que falló
+            raise SystemExit(f"la ventana nativa no pudo arrancar: {exc}\n{arranque.texto()}")
     return 0
 
 
