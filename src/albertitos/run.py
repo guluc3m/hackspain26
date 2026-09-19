@@ -136,7 +136,7 @@ class RunnerConfig:
     use_rung4: bool = True  # False = tests / degradación manual (no billing)
     force: bool = False  # T13: re-ejecutar aunque la decisión exista
     run_id: str = "base"  # T13: run del histórico en decision_runs
-    emit_scope: str = "todo"  # "todo" (lote 1) | "lote" (lote 2: solo sus file_id)
+    emit_scope: str = "todo"  # "todo" (store completo) | "lote" (solo los file_id de este directorio)
     maestro_patch: Path | None = None  # T13: parche de maestro EN MEMORIA
     # T24 (drill): config de extracción inyectable (vlm_base_url del stub,
     # umbrales que fuerzan tráfico al rung 4). None ⇒ la default.
@@ -601,15 +601,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--only", default=None, help="glob sobre el basename")
     parser.add_argument("--run-id", default="base",
-                        help="run del histórico (lote 2 ⇒ lote2)")
+                        help="run del histórico (usa un run_id distinto por lote)")
     parser.add_argument("--timeout", type=float, default=120.0,
                         help="timeout por archivo en segundos")
     parser.add_argument("--max-in-flight", type=int, default=2)
     parser.add_argument("--recursivo", action="store_true",
                         help="escanear --facturas en profundidad (subcarpetas)")
     parser.add_argument("--emit-scope", default="todo", choices=["todo", "lote"],
-                        help="emisión: 'todo' el store (lote 1) o solo este "
-                             "lote (lote 2 → outcomes_lote2.jsonl)")
+                        help="emisión: 'todo' el store o solo los file_id de "
+                             "este directorio (un lote concreto)")
     args = parser.parse_args(argv)
 
     cfg = RunnerConfig(
@@ -631,7 +631,7 @@ def main(argv: list[str] | None = None) -> int:
     report = runner.run()
 
     # Emisión final + validador de contrato (T9) en verde. Con scope 'lote'
-    # el JSONL queda limitado a los file_id de ESTE directorio (lote 2).
+    # el JSONL queda limitado a los file_id de ESTE directorio.
     scope = ({p.name for p in runner.files()}
              if args.emit_scope == "lote" else None)
     emit_outcomes(runner.store, cfg.outcomes_path, only_files=scope)

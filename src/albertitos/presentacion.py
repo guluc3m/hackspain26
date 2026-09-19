@@ -204,7 +204,7 @@ def generar_datos(metrics_dir: Path | None = None,
         "cierre": {
             "entregables": [
                 "outcomes.jsonl (500/500 validado)",
-                "outcomes_lote2.jsonl (cuando llegue el lote 2)",
+                "outcomes_lote2.jsonl (segundo lote, si procede)",
                 "albertitos_plan.pdf (13 páginas, cifras del store)",
             ],
             "bonus": bonus,
