@@ -37,4 +37,6 @@ dist/
 /outcomes.jsonl
 /outcomes_lote2.jsonl
 .sdd/lote1
-.sdd/metrics
+# runtime pesado regenerable (W1): imágenes de revisión, tessdata, workdir drills
+.sdd/tessdata/
+.sdd/drills/
