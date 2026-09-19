@@ -15,6 +15,7 @@ Reglas duras (T5):
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
@@ -24,8 +25,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from albertitos.emit import list_pdf_files_recursivo
@@ -530,6 +531,22 @@ def create_app(
                 overrides=vista.overrides,
             ),
         )
+
+    @aplicacion.get("/revision/imagen/{invoice_id}/{pagina}")
+    def revision_imagen(invoice_id: str, pagina: int):
+        """PNG de la página servido aparte (NO base64 en el HTML): con imágenes
+        de ~1-6 MB por página, el HTML de /revision pesaba decenas de MB y el
+        navegador tardaba o colgaba. Así la página es ligera y la imagen la
+        pide el <img> de una en una. SOLO LECTURA."""
+        b64 = (aplicacion.state.view.images_by_invoice.get(invoice_id) or {}).get(pagina)
+        if not b64:
+            raise HTTPException(status_code=404, detail="sin imagen almacenada")
+        try:
+            png = base64.b64decode(b64)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=404, detail="imagen corrupta") from None
+        return Response(content=png, media_type="image/png",
+                        headers={"Cache-Control": "max-age=86400"})
 
     @aplicacion.post("/revision/{invoice_id}/resolver")
     async def resolver(

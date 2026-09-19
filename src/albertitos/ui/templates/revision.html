@@ -24,7 +24,7 @@ página {{ pagina }} de {{ n_paginas }}.
     <div>
       <h3>Imagen de la página</h3>
       {% for pag, b64 in c.imagenes | dictsort %}
-        <img class="pagina" alt="Página {{ pag }}" src="data:image/png;base64,{{ b64 }}">
+        <img class="pagina" alt="Página {{ pag }}" src="/revision/imagen/{{ c.decision.invoice_id }}/{{ pag }}" loading="lazy">
         <p>Página {{ pag }}</p>
       {% else %}
         <p class="aviso">Sin imagen almacenada para esta factura.</p>
