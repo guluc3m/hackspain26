@@ -122,18 +122,7 @@ def _pendiente_alberto(store_root: Path) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — sin maestro el resumen degrada, no rompe
         datos = None
     if not datos:
-        # Sin maestro (clon fresco / nodo sin submodule): misma FORMA que el
-        # camino con datos — claves presentes a None. El guard de la plantilla
-        # usa `is not none`; sobre una clave AUSENTE (Undefined) daría True y
-        # el render de `/` moriría en 500 (el lanzador diría «No arrancó»).
-        return {
-            "n": None,
-            "euros": None,
-            "pagado_n": None,
-            "pagado_total": None,
-            "no_pago_n": None,
-            "nota": "PENDIENTE: sin maestro en este nodo",
-        }
+        return {"n": None, "euros": None, "nota": "PENDIENTE: sin maestro en este nodo"}
     return {
         "n": datos["revisar"]["n"],
         "euros": datos["riesgo"]["total_en_riesgo_eur"],
