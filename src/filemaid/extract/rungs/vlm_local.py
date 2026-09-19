@@ -62,6 +62,7 @@ def extract(ctx: PageContext) -> ExtractionFeature:
                     ],
                 }],
                 "temperature": 0,
+                "max_tokens": 1024,
             },
         )
         r.raise_for_status()
