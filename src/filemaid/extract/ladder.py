@@ -4,11 +4,12 @@
 2. Rasterizado + QR (pypdfium2 + zxing) — página solo-QR ⇒ el payload es el contenido, parar.
 3. Tesseract (OCR) — confianza = media ponderada de palabras + cobertura de campos.
 4. VLM local (PaddleOCR-VL Q8 vía llama-server, temp 0) — misma doble puerta.
-5. TypeSafe System One Jev (HTTP POST https://api.typesafe.ai/v1/systemone) — penúltimo escalón.
-6. VLM cloud (>25B, multimodal / OpenAI-compatible endpoint) — vía de escalado; su lectura es otro candidato, nunca respuesta automática.
+5. TypeSafe System One Jev — juicios tipados sobre texto previo, nunca OCR ni parada.
+6. Firecrawl — parser documental de respaldo.
+7. VLM cloud (>25B, multimodal / OpenAI-compatible endpoint) — vía de escalado; su lectura es otro candidato, nunca respuesta automática.
 Cada escalón registra ExtractionFeatures (engine+version+latencia+hash) y es
 skippable: dependencia ausente ⇒ `skipped:<reason>` y se sigue; degrada calidad,
-nunca para el lote. Escalones 2–5 cachean en (page_sha256, extractor_version,
+nunca para el lote. Escalones 2–7 cachean en (page_sha256, extractor_version,
 config_version).
 
 La interfaz es uniforme: cada escalón es `extract(PageContext) -> RungResult`
@@ -25,7 +26,7 @@ from typing import Any
 from filemaid.types import ExtractionFeature
 
 from .cache import FeatureCache
-from .rungs import cloud_vlm, qr, tesseract, text_layer, typesafe_jev, vlm_local
+from .rungs import cloud_vlm, firecrawl, qr, tesseract, text_layer, typesafe_jev, vlm_local
 from .rungs.context import PageContext
 
 
@@ -55,13 +56,19 @@ def _wrap_text(feat: ExtractionFeature) -> RungResult:
     return RungResult([feat], content=data, resolved=ok)
 
 
+def _wrap_evidence(feat: ExtractionFeature) -> RungResult:
+    """Los juicios tipados no son texto de factura ni resuelven la página."""
+    return RungResult([feat])
+
+
 _RUNGS: list[tuple[str, Callable[[PageContext], Any], bool, Callable[[ExtractionFeature], RungResult] | None]] = [
     # (name, módulo.extract, auto_stop, adaptador opcional)
     (text_layer.NAME, text_layer.extract, True, _wrap_text),
     (qr.NAME, qr.extract, True, None),  # QrRungResult ya trae resolved implícito vía qr_only
     (tesseract.NAME, tesseract.extract, True, _wrap_text),
     (vlm_local.NAME, vlm_local.extract, True, _wrap_text),
-    (typesafe_jev.NAME, typesafe_jev.extract, True, _wrap_text),
+    (typesafe_jev.NAME, typesafe_jev.extract, False, _wrap_evidence),
+    (firecrawl.NAME, firecrawl.extract, True, _wrap_text),
     (cloud_vlm.NAME, cloud_vlm.extract, False, _wrap_text),  # el cloud nunca es respuesta automática
 ]
 
@@ -106,6 +113,7 @@ class ExtractionLadder:
             out.features.extend(rr.features)
             if rr.content:
                 out.content = rr.content
+                ctx.ocr_text = rr.content
             if rr.resolved and auto_stop:
                 out.stopped_at = name
                 return out

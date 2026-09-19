@@ -18,10 +18,11 @@ import httpx
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
+from ..preprocess import enhance_scan_image
 from .context import PageContext, threshold
 
 NAME = "vlm"
-VERSION = "1"
+VERSION = "vlm-2"
 
 _PROMPT = "OCR:"  # contrato del modelo (docs/decisiones/DECISIONS.md D-001)
 _MIN_TEXT_WORDS = 5
@@ -49,31 +50,50 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     png = _page_png(ctx)
     if png is None:
         return _skip("no-page-png", latency_ms=int((time.monotonic() - t0) * 1000))
-    try:
-        r = httpx.post(
-            f"{mgr.base_url}/v1/chat/completions",
-            timeout=120.0,
-            json={
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}},
-                        {"type": "text", "text": _PROMPT},
-                    ],
-                }],
-                "temperature": 0,
-                "max_tokens": 1024,
-            },
-        )
-        r.raise_for_status()
-        text = r.json()["choices"][0]["message"]["content"]
-    except (httpx.HTTPError, KeyError, IndexError):
+    min_conf = threshold(ctx, "vlm_local", "min_field_coverage", 0.5)
+
+    def _query_vlm(img_bytes: bytes) -> str | None:
+        try:
+            r = httpx.post(
+                f"{mgr.base_url}/v1/chat/completions",
+                timeout=120.0,
+                json={
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(img_bytes).decode()}},
+                            {"type": "text", "text": _PROMPT},
+                        ],
+                    }],
+                    "temperature": 0,
+                    "max_tokens": 1024,
+                },
+            )
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"]
+        except (httpx.HTTPError, KeyError, IndexError):
+            return None
+
+    text = _query_vlm(png)
+    if text is None:
         return _skip("vlm-error", latency_ms=int((time.monotonic() - t0) * 1000))
+
+    confidence = _field_coverage(text) if (text and text_is_plausible(text) and len(text.split()) >= _MIN_TEXT_WORDS) else 0.0
+
+    # Multi-pass: si la cobertura de campos es baja o falla plausibilidad, reintentar con imagen preprocesada/mejorada
+    if confidence < min_conf:
+        enhanced_png = enhance_scan_image(png)
+        if enhanced_png != png:
+            text_retry = _query_vlm(enhanced_png)
+            if text_retry and text_is_plausible(text_retry) and len(text_retry.split()) >= _MIN_TEXT_WORDS:
+                conf_retry = _field_coverage(text_retry)
+                if conf_retry > confidence:
+                    text = text_retry
+                    confidence = conf_retry
 
     if not text or not text_is_plausible(text) or len(text.split()) < _MIN_TEXT_WORDS:
         return _skip("vlm-empty", latency_ms=int((time.monotonic() - t0) * 1000))
-    confidence = _field_coverage(text)
-    min_conf = threshold(ctx, "vlm_local", "min_field_coverage", 0.5)
+
     feat = ExtractionFeature(
         type="pdf_text",
         extraction_method=NAME if confidence >= min_conf else f"skipped:low-confidence-{confidence:.2f}",

@@ -10,7 +10,7 @@ from ..plausibility import text_is_plausible
 from .context import PageContext
 
 NAME = "pypdf"
-VERSION = "1"
+VERSION = "pypdf-1"
 
 try:
     from pypdf import PdfReader

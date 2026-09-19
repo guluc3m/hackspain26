@@ -29,7 +29,7 @@ from ..plausibility import text_is_plausible
 from .context import PageContext
 
 NAME = "cloud_vlm"
-VERSION = "1"
+VERSION = "cloud_vlm-1"
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_MODEL = "gpt-4o-mini"

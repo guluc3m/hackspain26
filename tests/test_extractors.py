@@ -128,6 +128,30 @@ class TestIvaExtractors:
         assert val is None and conf == 0.0
         val, conf = _iva_amount("Factura sin cuota")
         assert val is None and conf == 0.0
+    @pytest.mark.parametrize(
+        ("text", "expected_rate", "expected_amount"),
+        [
+            ("IVA21%27150", 21, 271.50),
+            ("IVA 21%215.35", 21, 215.35),
+            ("IVA215/27150", 21, 271.50),
+            ("IV/A 21%215.35", 21, 215.35),
+            ("IVA 21K 197,02", 21, 197.02),
+            ("IV.A.21%91,11", 21, 91.11),
+            ("IVA 21% 50000", 21, 50000.0),
+            ("IVA 21% 10000.00", 21, 10000.0),
+            ("IVA 21% 12345,67", 21, 12345.67),
+        ],
+    )
+    def test_iva_ocr_fused_artifacts(
+        self, text: str, expected_rate: int | None, expected_amount: float | None
+    ):
+        rate_val, rate_conf = _iva_rate(text)
+        amt_val, amt_conf = _iva_amount(text)
+        assert rate_val == expected_rate
+        assert rate_conf > 0.0
+        assert amt_val == expected_amount
+        assert amt_conf > 0.0
+
 
 
 class TestIbanExtractor:
@@ -169,6 +193,20 @@ class TestIbanExtractor:
         assert conf > 0.0
         assert FORMAT_TESTS["IBAN_FORMAT"](val)
 
+    @pytest.mark.parametrize(
+        ("text", "expected_iban"),
+        [
+            ("GAN E5441465/0100/9517/0430/2211", "ES4414650100951704302211"),
+            ("IBAN: ES44/1465/0100/9517/0430/2211", "ES4414650100951704302211"),
+            ("IDAN: E544 1465 0100 9517 0430 2211", "ES4414650100951704302211"),
+        ],
+    )
+    def test_iban_ocr_artifacts(self, text: str, expected_iban: str):
+        val, conf = _iban(text)
+        assert val == expected_iban
+        assert conf > 0.0
+        assert FORMAT_TESTS["IBAN_FORMAT"](val)
+
 
 class TestNifExtractor:
     @pytest.mark.parametrize(
@@ -183,6 +221,9 @@ class TestNifExtractor:
             ("NIF: 5010401075570", "5010401075570"),
             ("Tax ID: A41220987", "A41220987"),
             ("P. IVA: A46990201", "A46990201"),
+            ("N° 88120774", "88120774"),
+            ("NIF 898120774", "898120774"),
+            ("N/S B80233808", "B80233808"),
         ],
     )
     def test_nif_internacional(self, text: str, expected_nif: str):
@@ -190,6 +231,27 @@ class TestNifExtractor:
         assert val == expected_nif
         assert conf > 0.0
         assert FORMAT_TESTS["NIF_FORMAT"](val)
+
+    def test_nif_vendor_preferred_over_client_cif(self):
+        text = (
+            "Limpiezas Turia S.L.\n"
+            "N° 88120774 (GAN E5441465/0100/9517/0430/2211)\n"
+            "Factura 2026/50749 Fecha 23/07/2026\n"
+            "Pedido PO 2026/0478\n"
+            "Cliente: Banco Muralmar S.A CIF A68231074\n"
+        )
+        val, conf = _nif(text)
+        assert val == "88120774"
+        assert conf > 0.0
+
+        text_a58 = (
+            "Papeleria Ruzafa S.C.\n"
+            "NIF: J40112358 Valencia\n"
+            "Cliente: Banco Miralmar S.A. CIF: A58231074\n"
+        )
+        val, conf = _nif(text_a58)
+        assert val == "J40112358"
+        assert conf > 0.0
 
 class TestPedidoExtractor:
     @pytest.mark.parametrize(
@@ -207,6 +269,14 @@ class TestPedidoExtractor:
             ("Nº. PEDIDO: P-2026-001", "P-2026-001"),
             ("ORDEN: PO-2026-0100", "PO-2026-0100"),
             ("Factura con PO-2026-0055 en el texto", "PO-2026-0055"),
+            ("Pedido PO 2026/0478", "PO-2026-0478"),
+            ("Pedido PO 2026-0478", "PO-2026-0478"),
+            ("Pedido: PO 2026/0478", "PO-2026-0478"),
+            ("Pérdido PO 2026-0483", "PO-2026-0483"),
+            ("Pediño PO-2026-0484", "PO-2026-0484"),
+            ("Pediota PO-2026-0491", "PO-2026-0491"),
+            ("Redido PO 2026 0485", "PO-2026-0485"),
+            ("Redido PO 3026/0486", "PO-3026-0486"),
         ],
     )
     def test_pedido_variaciones(self, text: str, expected_pedido: str):
@@ -269,6 +339,10 @@ class TestTotalBaseExtractors:
             ("TOTAL: MX$ 48.800,00 MXN", 48800.00),
             ("GESAMT: Fr 5.400,00 CHF", 5400.00),
             ("TOTAL: £ 2.900,00 GBP", 2900.00),
+            ("TOTAL: 1.59438 EUR", 1594.38),
+            ("TOTAL 1.29288", 1292.88),
+            ("TOTAL: 1 426,40 EUR", 1426.40),
+            ("TOTAL 1,135,20 EUR", 1135.20),
         ],
     )
     def test_total_variaciones(self, text: str, expected_total: float):

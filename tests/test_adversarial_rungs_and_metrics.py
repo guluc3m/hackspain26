@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import math
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,8 +47,9 @@ def _setup_context(tmp_path: Path, config: dict | None = None, sha: str = "img_s
 
 
 def test_typesafe_malformed_missing_answers(tmp_path: Path):
-    """Attack TypeSafe rung with response missing 'answers' and 'results' fields."""
+    """A response without typed answers must not produce invoice text."""
     ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_no_answers")
+    ctx.ocr_text = "FACTURA. Total: 121,00 EUR."
 
     def mock_response(request: httpx.Request):
         return httpx.Response(200, json={"status": "success", "data": "unexpected_schema"})
@@ -58,7 +58,7 @@ def test_typesafe_malformed_missing_answers(tmp_path: Path):
     with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
         feat = typesafe_jev.extract(ctx)
 
-    assert feat.extraction_method == "skipped:typesafe-empty"
+    assert feat.extraction_method == "skipped:typesafe-malformed-response"
     assert feat.latency_ms >= 0
     assert feat.data == ""
 
@@ -66,6 +66,7 @@ def test_typesafe_malformed_missing_answers(tmp_path: Path):
 def test_typesafe_malformed_non_dict_json_array(tmp_path: Path):
     """Attack TypeSafe rung with a top-level JSON array instead of a JSON object."""
     ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_json_array")
+    ctx.ocr_text = "FACTURA. Total: 121,00 EUR."
 
     def mock_response(request: httpx.Request):
         return httpx.Response(200, json=["unexpected", "list", "response"])
@@ -79,36 +80,53 @@ def test_typesafe_malformed_non_dict_json_array(tmp_path: Path):
     assert feat.latency_ms >= 0
 
 
-def test_typesafe_malformed_non_numeric_probabilities_and_confidences(tmp_path: Path):
-    """Attack TypeSafe confidence calculator with non-numeric, NaN, and Inf values."""
+@pytest.mark.parametrize("bad", ["high", float("nan"), float("inf"), -0.1, 1.1, True])
+@pytest.mark.parametrize("field", ["noul", "confidence", "probability"])
+def test_typesafe_invalid_probabilities_cannot_become_evidence(tmp_path: Path, bad, field):
     ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_nan_prob")
+    ctx.ocr_text = "FACTURA. Total: 121,00 EUR."
+    payload = {
+        "model": "jev-latest",
+        "usage": {"input_tokens": 10, "output_tokens": 4},
+        "answers": {
+            "is_invoice": {"type": "noul", "noul": 0.99},
+            "has_fiscal_data": {"type": "noul", "noul": 0.99},
+            "document_quality": {
+                "type": "score", "score": 2, "confidence": 0.99,
+                "legend": {"0": "Ilegible", "1": "Parcial", "2": "Legible"},
+                "probabilities": {"0": 0.0, "1": 0.0, "2": 1.0},
+            },
+            "document_category": {
+                "type": "choice", "choice": "invoice", "confidence": 0.99,
+                "probabilities": {"invoice": 1.0, "receipt": 0.0, "other": 0.0},
+            },
+        },
+    }
+    if field == "noul":
+        payload["answers"]["is_invoice"]["noul"] = bad
+    elif field == "confidence":
+        payload["answers"]["document_quality"]["confidence"] = bad
+    else:
+        payload["answers"]["document_category"]["probabilities"]["invoice"] = bad
 
     def mock_response(request: httpx.Request):
-        raw_payload = (
-            '{"answers": {'
-            '"nif": {"value": "B12345678", "confidence": "non_numeric"}, '
-            '"iban": {"value": "ES9121000418450200051332", "confidence": NaN}, '
-            '"total": {"value": "150.00", "confidence": Infinity}, '
-            '"fecha": {"value": "2026-01-01", "probabilities": {"valid": "high", "invalid": "low"}}'
-            '}}'
-        )
-        return httpx.Response(200, text=raw_payload, headers={"Content-Type": "application/json"})
+        # Raw JSON allows non-finite provider output to reach the boundary.
+        return httpx.Response(200, text=json.dumps(payload))
 
     transport = httpx.MockTransport(mock_response)
     with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
         feat = typesafe_jev.extract(ctx)
 
-    # Handled without NaN/Inf crashing or corrupting features
-    assert feat.confidence is not None
-    assert not math.isnan(feat.confidence)
-    assert not math.isinf(feat.confidence)
-    assert 0.0 <= feat.confidence <= 1.0
+    assert feat.extraction_method == "skipped:typesafe-malformed-response"
+    assert feat.data == ""
+    assert ctx.cache.get(ctx.page_image_sha, typesafe_jev.VERSION, "") is None
     assert feat.latency_ms >= 0
 
 
 def test_typesafe_http_429_rate_limit(tmp_path: Path):
     """Attack TypeSafe rung with HTTP 429 Too Many Requests."""
     ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_429")
+    ctx.ocr_text = "FACTURA. Total: 121,00 EUR."
 
     def mock_response(request: httpx.Request):
         return httpx.Response(429, text="Rate limit exceeded")
@@ -124,6 +142,7 @@ def test_typesafe_http_429_rate_limit(tmp_path: Path):
 def test_typesafe_network_timeout(tmp_path: Path):
     """Attack TypeSafe rung with connection/read timeout."""
     ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_timeout")
+    ctx.ocr_text = "FACTURA. Total: 121,00 EUR."
 
     def mock_response(request: httpx.Request):
         raise httpx.ReadTimeout("TypeSafe API read timeout")
@@ -414,20 +433,6 @@ def test_stage_metrics_integrity_and_tolerance(tmp_path: Path):
 # ==============================================================================
 
 
-def test_zero_second_latency_metric_boundary_handling(tmp_path: Path):
-    """Test that sub-millisecond executions do not cause negative latency or division by zero."""
-    ctx = _setup_context(tmp_path, {"typesafe_api_key": "test_key"}, sha="ts_zero_ms")
-
-    # Fast in-memory response that registers 0ms
-    def instant_response(request: httpx.Request):
-        return httpx.Response(200, json={"answers": {"nif": "B12345678"}})
-
-    transport = httpx.MockTransport(instant_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
-        feat = typesafe_jev.extract(ctx)
-
-    assert feat.latency_ms >= 0
-    assert isinstance(feat.latency_ms, int)
 
 
 def test_pipeline_zero_ms_boundary_integrity(tmp_path: Path):

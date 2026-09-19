@@ -81,6 +81,9 @@ class Pipeline:
             for feat in page.features:
                 stage_name = feat.extraction_method.split(":")[0]
                 rung_latencies[f"{stage_name}_p{feat.page if feat.page is not None else 0}"] = feat.latency_ms
+                detail = {"type": feat.type}
+                if isinstance(feat.data, (dict, list)):
+                    detail["data"] = feat.data
                 self.store.add_feature(
                     invoice_id,
                     stage=stage_name,
@@ -91,7 +94,7 @@ class Pipeline:
                     latency_ms=feat.latency_ms,
                     confidence=feat.confidence,
                     outcome=feat.extraction_method,
-                    detail={"type": feat.type},
+                    detail=detail,
                 )
 
         # Parser: todos los candidatos se conservan

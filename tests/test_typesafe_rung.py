@@ -1,199 +1,141 @@
 from __future__ import annotations
 
-import base64
 from pathlib import Path
-import pytest
-import httpx
 
-from filemaid.extract.cache import FeatureCache, sha256_bytes
+import httpx
+import pytest
+
+from filemaid.extract.cache import FeatureCache
 from filemaid.extract.rungs import typesafe_jev
 from filemaid.extract.rungs.context import PageContext
 
 
-def _dummy_png() -> bytes:
-    # 1x1 valid PNG
-    return base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-    )
-
-
-def test_skip_no_page_image(tmp_path: Path):
-    cache = FeatureCache(tmp_path / "cache")
-    ctx = PageContext(
+@pytest.fixture
+def ctx(tmp_path: Path) -> PageContext:
+    return PageContext(
         pdf_path=tmp_path / "doc.pdf",
         page_index=0,
-        cache=cache,
-        config={"typesafe_api_key": "test-key"},
-        page_image_sha=None,
+        cache=FeatureCache(tmp_path / "cache"),
+        config={"typesafe_api_key": "test-key", "config_version": "cfg-1"},
+        page_image_sha="page-sha",
+        ocr_text="FACTURA. Total: 121,00 EUR. NIF: B12345678.",
     )
-    feat = typesafe_jev.extract(ctx)
-    assert feat.extraction_method == "skipped:no-page-image"
-    assert feat.extractor_version == typesafe_jev.VERSION
 
 
-def test_skip_no_api_key(tmp_path: Path, monkeypatch):
+@pytest.fixture
+def response() -> dict:
+    return {
+        "model": "jev-2026-09-15",
+        "usage": {"input_tokens": 120, "output_tokens": 12},
+        "answers": {
+            "is_invoice": {"type": "noul", "noul": 0.98},
+            "has_fiscal_data": {"type": "noul", "noul": 0.95},
+            "document_quality": {
+                "type": "score", "score": 1.8, "confidence": 0.9,
+                "legend": {"0": "Ilegible", "1": "Parcial", "2": "Legible"},
+                "probabilities": {"0": 0.0, "1": 0.2, "2": 0.8},
+            },
+            "document_category": {
+                "type": "choice", "choice": "invoice", "confidence": 0.99,
+                "probabilities": {"invoice": 0.99, "receipt": 0.005, "other": 0.005},
+            },
+        },
+    }
+
+
+def test_missing_prerequisites_do_not_request(ctx, monkeypatch):
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("Missing input must not reach the provider")
+
+    monkeypatch.setattr(httpx, "post", unexpected_request)
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
-    cache = FeatureCache(tmp_path / "cache")
-    ctx = PageContext(
-        pdf_path=tmp_path / "doc.pdf",
-        page_index=0,
-        cache=cache,
-        config={},
-        page_image_sha="sha123",
-    )
+    ctx.config.clear()
+    assert typesafe_jev.extract(ctx).extraction_method == "skipped:no-typesafe-api-key"
+    ctx.config["typesafe_api_key"] = "test-key"
+    ctx.config["ocr_text"] = "Global hint must not leak between pages"
+    ctx.ocr_text = " \n "
     feat = typesafe_jev.extract(ctx)
-    assert feat.extraction_method == "skipped:no-typesafe-api-key"
-    assert feat.extractor_version == typesafe_jev.VERSION
+    assert feat.extraction_method == "skipped:typesafe-no-ocr-text"
+    assert feat.latency_ms >= 0
+    ctx.page_image_sha = None
+    assert typesafe_jev.extract(ctx).extraction_method == "skipped:no-page-image"
 
 
-def test_skip_no_page_png(tmp_path: Path):
-    cache = FeatureCache(tmp_path / "cache")
-    ctx = PageContext(
-        pdf_path=tmp_path / "doc.pdf",
-        page_index=0,
-        cache=cache,
-        config={"typesafe_api_key": "ts-test"},
-        pages_dir=tmp_path / "pages",
-        page_image_sha="sha123",
-    )
-    feat = typesafe_jev.extract(ctx)
-    assert feat.extraction_method == "skipped:no-page-png"
+def test_typed_evidence_is_cached_without_invoice_field_generation(ctx, response, monkeypatch):
+    from filemaid.extract.ladder import PageExtraction
+    from filemaid.parse.parser import parse_fields
 
-
-def test_typesafe_successful_extraction_and_cache(tmp_path: Path, monkeypatch):
-    pages_dir = tmp_path / "pages"
-    pages_dir.mkdir(parents=True)
-    png_bytes = _dummy_png()
-    (pages_dir / "p0.png").write_bytes(png_bytes)
-    page_sha = sha256_bytes(png_bytes)
-
-    cache = FeatureCache(tmp_path / "cache")
-    config = {
-        "typesafe_api_key": "ts-mock-key",
+    calls = []
+    ctx.config.update({
         "typesafe_api_url": "https://api.typesafe.ai/v1/systemone",
         "typesafe_model": "jev-latest",
-        "config_version": "v1.0",
-        "ocr_text": "Texto previo",
-    }
-    ctx = PageContext(
-        pdf_path=tmp_path / "doc.pdf",
-        page_index=0,
-        cache=cache,
-        config=config,
-        pages_dir=pages_dir,
-        page_image_sha=page_sha,
-    )
-
-    requested_urls = []
-    requested_bodies = []
+        "rungs": {"typesafe_jev": {"endpoint": "https://custom.test/judge", "model": "custom-model"}},
+    })
 
     def mock_post(url, headers, json, timeout):
-        requested_urls.append(str(url))
-        requested_bodies.append(json)
-        assert headers["Authorization"] == "Bearer ts-mock-key"
-        resp_payload = {
-            "answers": {
-                "is_valid_invoice": {"value": True, "confidence": 0.95},
-                "nif": {"value": "B12345678", "confidence": 0.90},
-                "iban": {"value": "ES1234567890123456789012", "confidence": 0.88},
-                "total": {"value": "121.50 EUR", "confidence": 0.92},
-                "fecha": {"value": "2026-01-15", "confidence": 0.85},
-                "pedido": {"value": "PED-2026-001", "confidence": 0.80},
-                "iva": {"value": "21.00 EUR", "confidence": 0.85},
-            }
+        calls.append(url)
+        assert url == "https://custom.test/judge"
+        assert json["model"] == "custom-model"
+        assert json["state"] == {"ocr_text": ctx.ocr_text, "page_index": 0}
+        assert {key: value["type"] for key, value in json["questions"].items()} == {
+            "is_invoice": "noul", "has_fiscal_data": "noul",
+            "document_quality": "score", "document_category": "choice",
         }
-        req = httpx.Request("POST", str(url), headers=headers, json=json)
-        return httpx.Response(200, json=resp_payload, request=req)
+        assert isinstance(json["questions"]["document_quality"]["criteria"], list)
+        assert isinstance(json["questions"]["document_category"]["criteria"], dict)
+        return httpx.Response(200, json=response, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "post", mock_post)
-
     feat = typesafe_jev.extract(ctx)
+    assert feat.type == "typed_evidence"
     assert feat.extraction_method == "typesafe_jev"
-    assert "NIF: B12345678" in feat.data
-    assert "IBAN: ES1234567890123456789012" in feat.data
-    assert "TOTAL: 121.50 EUR" in feat.data
-    assert feat.page == 0
-    assert feat.sha256 == page_sha
-    assert feat.extractor_version == typesafe_jev.VERSION
+    assert feat.data == response
+    assert 0.0 <= feat.confidence <= 1.0
     assert feat.latency_ms >= 0
-    assert feat.confidence >= 0.8
-
-    # Verify HTTP request payload
-    assert requested_urls == ["https://api.typesafe.ai/v1/systemone"]
-    assert requested_bodies[0]["model"] == "jev-latest"
-    assert "image" in requested_bodies[0]["state"]
-    assert requested_bodies[0]["state"]["ocr_text"] == "Texto previo"
-    assert "questions" in requested_bodies[0]
-    assert "nif" in requested_bodies[0]["questions"]
-    assert "total" in requested_bodies[0]["questions"]
-
-    # Test caching: second call returns cached result without hitting network
-    cached_feat = typesafe_jev.extract(ctx)
-    assert cached_feat.extraction_method == "typesafe_jev"
-    assert cached_feat.data == feat.data
-    assert len(requested_urls) == 1
+    assert parse_fields([PageExtraction(page=0, features=[feat])]) == []
+    assert typesafe_jev.extract(ctx).data == response
+    assert len(calls) == 1
 
 
-def test_typesafe_http_error_graceful_skip(tmp_path: Path, monkeypatch):
-    pages_dir = tmp_path / "pages"
-    pages_dir.mkdir(parents=True)
-    png_bytes = _dummy_png()
-    (pages_dir / "p0.png").write_bytes(png_bytes)
-    page_sha = sha256_bytes(png_bytes)
-
-    cache = FeatureCache(tmp_path / "cache")
-    config = {
-        "typesafe_api_key": "ts-error-key",
-        "config_version": "v1.0",
-    }
-    ctx = PageContext(
-        pdf_path=tmp_path / "doc.pdf",
-        page_index=0,
-        cache=cache,
-        config=config,
-        pages_dir=pages_dir,
-        page_image_sha=page_sha,
-    )
-
-    def mock_post(url, headers, json, timeout):
-        raise httpx.ConnectTimeout("Connection timeout to typesafe.ai")
+@pytest.mark.parametrize("status", [401, 429, 500])
+def test_http_errors_are_not_cached(ctx, monkeypatch, status):
+    def mock_post(url, **kwargs):
+        return httpx.Response(status, text="Provider error", request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "post", mock_post)
-
     feat = typesafe_jev.extract(ctx)
-    assert feat.extraction_method.startswith("skipped:typesafe-error:")
-    assert feat.extractor_version == typesafe_jev.VERSION
+    assert feat.extraction_method == "skipped:typesafe-error:HTTPStatusError"
     assert feat.latency_ms >= 0
+    assert ctx.cache.get(ctx.page_image_sha, typesafe_jev.VERSION, "cfg-1") is None
 
 
-def test_typesafe_empty_answers_returns_skip(tmp_path: Path, monkeypatch):
-    pages_dir = tmp_path / "pages"
-    pages_dir.mkdir(parents=True)
-    png_bytes = _dummy_png()
-    (pages_dir / "p0.png").write_bytes(png_bytes)
-    page_sha = sha256_bytes(png_bytes)
-
-    cache = FeatureCache(tmp_path / "cache")
-    config = {
-        "typesafe_api_key": "ts-empty-key",
-        "config_version": "v1.0",
-    }
-    ctx = PageContext(
-        pdf_path=tmp_path / "doc.pdf",
-        page_index=0,
-        cache=cache,
-        config=config,
-        pages_dir=pages_dir,
-        page_image_sha=page_sha,
-    )
-
-    def mock_post(url, headers, json, timeout):
-        req = httpx.Request("POST", str(url), headers=headers, json=json)
-        return httpx.Response(200, json={"answers": {}}, request=req)
+def test_timeout_is_recorded(ctx, monkeypatch):
+    def mock_post(*args, **kwargs):
+        raise httpx.ConnectTimeout("Provider unavailable")
 
     monkeypatch.setattr(httpx, "post", mock_post)
-
     feat = typesafe_jev.extract(ctx)
-    assert feat.extraction_method == "skipped:typesafe-empty"
-    assert feat.extractor_version == typesafe_jev.VERSION
+    assert feat.extraction_method == "skipped:typesafe-error:ConnectTimeout"
     assert feat.latency_ms >= 0
+
+
+@pytest.mark.parametrize("payload", [[], {}, {"answers": {}}, {"answers": "TOTAL: 999 EUR"}])
+def test_malformed_response_does_not_produce_text(ctx, monkeypatch, payload):
+    def mock_post(url, **kwargs):
+        return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", mock_post)
+    feat = typesafe_jev.extract(ctx)
+    assert feat.extraction_method == "skipped:typesafe-malformed-response"
+    assert feat.data == ""
+    assert feat.latency_ms >= 0
+
+
+def test_invalid_json_skips_without_caching(ctx, monkeypatch):
+    def mock_post(url, **kwargs):
+        return httpx.Response(200, text="not JSON", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", mock_post)
+    feat = typesafe_jev.extract(ctx)
+    assert feat.extraction_method == "skipped:typesafe-error:JSONDecodeError"
+    assert ctx.cache.get(ctx.page_image_sha, typesafe_jev.VERSION, "cfg-1") is None

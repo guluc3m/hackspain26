@@ -17,20 +17,22 @@ NamedExtractor = tuple[str, str, Extractor]  # (field_type, nombre, extractor)
 
 _CLEAN_ZW_RE = re.compile(r"[\u200b\u200c\u200d\ufeff]")
 
+_KNOWN_CLIENT_CIFS = frozenset({"A58231074", "A68231074"})
+
 _NIF_LABEL_RE = re.compile(
-    r"(?:NIF|CIF|Tax\s+ID|N°\s*TVA|USt-ID|P\.\s*IVA)\s*[:.]?\s*",
+    r"(?:NIF|CIF|Tax\s+ID|N[°º]\s*TVA|USt-ID|P\.\s*IVA|N[°º/S])\s*[:.]?\s*",
     re.IGNORECASE,
 )
-_NIF_SPANISH_RE = r"[XYZ]\d{7}[A-Z]|[ABCDEFGHJKLMNPQRSUVW]\d{7}[0-9A-J]|\d{8}[A-Z]"
+_NIF_SPANISH_RE = r"[XYZ]\d{7}[A-Z]|[ABCDEFGHJKLMNPQRSUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|\d{8,9}"
 _NIF_INTL_RE = r"DE\d{9}|FR\d{11}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}|\d{13}"
 _NIF_RE = re.compile(
     rf"(?:{_NIF_LABEL_RE.pattern})?(\b(?:{_NIF_SPANISH_RE}|{_NIF_INTL_RE})\b)",
     re.IGNORECASE,
 )
-_IBAN_LABEL_PAT = r"(?:IBAN|Cuenta|Account|abono(?:\s*\(IBAN\))?)\s*[:.]?\s*"
+_IBAN_LABEL_PAT = r"(?:IBAN|Cuenta|Account|abono(?:\s*\(IBAN\))?|\(GAN|\(IDAN)\s*[:.]?\s*"
 _IBAN_RE = re.compile(
     r"\b("
-    r"ES\d{2}(?:[ ]?\d{4}){5}"
+    r"(?:ES|E5)\d{2}(?:[ /]?\d{4}){5}"
     r"|DE\d{2}(?:[ ]?\d{4}){4}[ ]?\d{2}"
     r"|FR\d{2}(?:[ ]?\d{4}){5}[ ]?\d{3}"
     r"|GB\d{2}[ ]?[A-Z]{4}[ ]?(?:\d{4}[ ]?){3}\d{2}"
@@ -42,22 +44,22 @@ _IBAN_RE = re.compile(
 )
 _CURRENCY_PAT = r"(?:EUR|USD|GBP|CHF|JPY|BRL|MXN|€|\$|£|Fr|¥|R\$|MX\$)"
 _IVA_LINE_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:CUOTA\s+)?(?:I\.?V\.?A\.?|TVA|VAT|MWST\.?|P\.\s*IVA)(?:(?=[0-9%])|\b|\s|:)(.*)",
+    r"(?<![A-Za-z0-9])(?:CUOTA\s+)?(?:I\.?V\.?A\.?|TVA|VAT|MWST\.?|P\.\s*IVA|IV/A|IV\.A\.|IVÁ)(?:(?=[0-9%])|\b|\s|:)(.*)",
     re.IGNORECASE,
 )
-_AMOUNT_RE = re.compile(rf"(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,]*)", re.IGNORECASE)
+_AMOUNT_RE = re.compile(rf"(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,\s]*\d|[0-9])", re.IGNORECASE)
 _RATE_RE = re.compile(r"([0-9]{1,2}(?:[.,]\d+)?)\s*%", re.IGNORECASE)
 _BASE_LABELS = r"(?:BASE(?:\s+IMPO[NV]IBLE|\s+IMPOSABLE)?|IMPORTE\s+BASE|SUBTOTAL|SOUS-TOTAL|ZWISCHENSUMME|VALOR\s+BASE|IMPONIBILE)"
 _BASE_RE = re.compile(
-    rf"\b{_BASE_LABELS}\s*[.:…\s]*(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,]*)",
+    rf"\b{_BASE_LABELS}\s*[.:…|\s]*(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,\s]*\d|[0-9])",
     re.IGNORECASE,
 )
 _TOTAL_LABELS = r"(?:TOTAL\s+FACTURA|TOTAL\s+A\s+PAGAR|IMPORTE\s+TOTAL|TOTALE|GESAMT|TOTAL)"
 _TOTAL_RE = re.compile(
-    rf"(?<![A-Za-z0-9_-])\b{_TOTAL_LABELS}\s*(?:\(\s*IVA\s+INCLUIDO\s*\))?\s*[.:…\s]*(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,]*)",
+    rf"(?<![A-Za-z0-9_-])\b{_TOTAL_LABELS}\s*(?:\(\s*IVA\s+INCLUIDO\s*\))?\s*[.:…|\s]*(?:{_CURRENCY_PAT}\s*)?([0-9][\d.,\s]*\d|[0-9])",
     re.IGNORECASE,
 )
-_FECHA_NUM_RE = re.compile(r"\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\b")
+_FECHA_NUM_RE = re.compile(r"\b(\d{1,2}[/\-.][0-9]{1,2}[/\-.][0-9]{2,4})\b")
 _FECHA_LABEL_RE = re.compile(
     r"(?:Fecha(?:\s+de\s+emisi[oó]n|\s+factura)?|Issue\s+date|Ausstellungsdatum|Data\s+di\s+emissione|Data\s+d['’]emissi[oó]|Data\s+de\s+emiss[aã]o|Date\s+d['’][\xe9e]mission)\s*[:.]?\s*([^\n\r]+)",
     re.IGNORECASE,
@@ -67,10 +69,10 @@ _FECHA_NATURAL_RE = re.compile(
     re.IGNORECASE,
 )
 _PEDIDO_RE = re.compile(
-    r"\b(?:PEDIDO(?:\s+CLIENTE|\s+ASOCIADO)?|ORDEN|N[ºO]\.?\s*PEDIDO|SU\s+PEDIDO|REF\.?\s*PEDIDO|PO)\s*:?\s*([A-Z0-9-]{3,})",
+    r"\b(?:PEDIDO(?:\s+CLIENTE|\s+ASOCIADO)?|ORDEN|N[ºO]\.?\s*PEDIDO|SU\s+PEDIDO|REF\.?\s*PEDIDO|PO|P[ÉE]RDIDO|PEDI[ÑN]O|PEDIOTA|REDIDO[S]?)\s*[:|]?\s*([A-Z0-9/_-]{3,}(?:\s+[A-Z0-9/_-]+)*)",
     re.IGNORECASE,
 )
-_FALLBACK_PEDIDO_RE = re.compile(r"\b([A-Z]{1,2}-\d{4}-\d{3,4})\b")
+_FALLBACK_PEDIDO_RE = re.compile(r"\b([A-Z]{1,2}[-/\s]\d{4}[-/\s]\d{3,4})\b", re.IGNORECASE)
 
 _MESES: dict[str, int] = {
     # Español
@@ -242,8 +244,26 @@ def _clean_text(text: str) -> str:
 
 def _nif(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
-    m = _NIF_RE.search(text)
-    return (normalizers.normalize_nif(m.group(1)), 0.8) if m else (None, 0.0)
+    candidates: list[tuple[str, float]] = []
+    for m in _NIF_RE.finditer(text):
+        raw_val = m.group(1)
+        norm_val = normalizers.normalize_nif(raw_val)
+        start_pos = m.start()
+        preceding = text[max(0, start_pos - 40):start_pos].lower()
+        is_client = "cliente" in preceding or "clernie" in preceding or "cilemar" in preceding
+        is_known_client = norm_val in _KNOWN_CLIENT_CIFS
+
+        if is_known_client or is_client:
+            score = 0.4
+        else:
+            score = 0.85 if "nif" in preceding or "cif" in preceding else 0.8
+        candidates.append((norm_val, score))
+
+    if not candidates:
+        return (None, 0.0)
+    # Prefer higher score; on tie, maintain order
+    best_val, best_score = max(candidates, key=lambda c: c[1])
+    return (best_val, best_score)
 
 
 def _iban(text: str) -> tuple[Any, float]:
@@ -252,8 +272,13 @@ def _iban(text: str) -> tuple[Any, float]:
     if m_label:
         return (normalizers.normalize_iban(m_label.group(1)), 0.9)
     m = _IBAN_RE.search(text)
-    return (normalizers.normalize_iban(m.group(1)), 0.9) if m else (None, 0.0)
-
+    if m:
+        return (normalizers.normalize_iban(m.group(1)), 0.9)
+    # Fallback: slashed IBAN pattern like ES44/1465/0100/9517/0430/2211 or E544/1465/...
+    m_slash = re.search(r"\b((?:ES|E5)\d{2}(?:/\d{4}){5})\b", text, re.IGNORECASE)
+    if m_slash:
+        return (normalizers.normalize_iban(m_slash.group(1)), 0.9)
+    return (None, 0.0)
 
 def _total(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
@@ -289,12 +314,31 @@ def _iva_lines(text: str) -> list[str]:
 
 def _line_numbers(line: str) -> list[str]:
     """Números de la línea tras quitar relleno (puntos de guía, EUR...)."""
+    # Separate fused percentage/amount like 21%27150 or 21%215.35 -> 21% 27150
+    line = re.sub(r"(\d+%\s*)([0-9][\d.,]*)", r"\1 \2", line)
     return [m.group(1) for m in _AMOUNT_RE.finditer(line)]
+
+
+def _normalize_iva_line(line: str) -> str:
+    # Handle OCR mistyped % as K e.g. "IVA 21K 197,02" or " 21K 197,02"
+    line = re.sub(r"(?i)(?:\bIVA[-:\s]*)?(\d{1,2})\s*[Kk]\b", r" \1% ", line)
+    # Fused rate + '5/' + 5-digit decimal e.g. "IVA215/27150" or "215/27150" -> 21% 271.50
+    line = re.sub(r"(?i)(?:\bIVA[-:\s]*)?(\d{1,2})5/(\d{3})(\d{2})\b(?![.,])", r" \1% \2.\3", line)
+    # Fused rate + '%' + 5-digit decimal without dot/comma e.g. "IVA21%27150" or "21%27150" -> 21% 271.50
+    line = re.sub(r"(?i)(?:\bIVA[-:\s]*)?(\d{1,2})%(\d{3})(\d{2})\b(?![.,])", r" \1% \2.\3", line)
+    # Remaining OCR artifacts
+    line = re.sub(r"(?i)(?:\bIVA[-:\s]*)?(\d{1,2})5/", r" \1% ", line)
+    line = re.sub(r"(?i)\bIVA[-:\s]*(\d{1,2})[5%K/]+", r" \1% ", line)
+    line = re.sub(r"^\s*(\d{1,2})[5%K/]+(?:\s*/)?", r" \1% ", line)
+    # Separate fused rate and amount without altering already spaced numbers
+    line = re.sub(r"(\d+%\s*)([0-9][\d.,]*)", r"\1 \2", line)
+    return line
 
 
 def _iva_rate(text: str) -> tuple[Any, float]:
     for line in _iva_lines(text):
-        m = _RATE_RE.search(line)
+        line_norm = _normalize_iva_line(line)
+        m = _RATE_RE.search(line_norm) or _RATE_RE.search(line)
         if m:
             return (int(float(m.group(1).replace(",", "."))), 0.6)
     return (None, 0.0)
@@ -302,11 +346,13 @@ def _iva_rate(text: str) -> tuple[Any, float]:
 
 def _iva_amount(text: str) -> tuple[Any, float]:
     for line in _iva_lines(text):
-        rate = _RATE_RE.search(line)
-        numbers = [n for n in _line_numbers(line) if not rate or n != rate.group(1)]
-        if numbers:  # el número que no es el % es el importe
+        line_norm = _normalize_iva_line(line)
+        rate = _RATE_RE.search(line_norm)
+        numbers = [n for n in _line_numbers(line_norm) if not rate or n != rate.group(1)]
+        if numbers:
             return (normalizers.parse_amount(numbers[-1]), 0.6)
     return (None, 0.0)
+
 
 
 def _fecha(text: str) -> tuple[Any, float]:
@@ -351,13 +397,23 @@ def _pedido(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
     m = _PEDIDO_RE.search(text)
     if m:
-        val = m.group(1).upper()
+        raw_match = m.group(1).strip()
+        # Normalize PO 2026/0478 or PO 2026-0478 or PO-2026-0478 or PO/2026/0478
+        m_sub = re.search(r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_match, re.IGNORECASE)
+        if m_sub:
+            norm_val = f"{m_sub.group(1).upper()}-{m_sub.group(2)}-{m_sub.group(3)}"
+            return (norm_val, 0.7)
+        val = raw_match.upper()
         val = re.split(r"[\s,;:]", val)[0]
         if re.match(r"^[A-Z]{1,2}-[0-9]{4}-[0-9]{3,4}$", val):
             return (val, 0.7)
     m_fall = _FALLBACK_PEDIDO_RE.search(text)
     if m_fall:
-        return (m_fall.group(1).upper(), 0.7)
+        raw_fall = m_fall.group(1).strip()
+        m_sub = re.search(r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_fall, re.IGNORECASE)
+        if m_sub:
+            return (f"{m_sub.group(1).upper()}-{m_sub.group(2)}-{m_sub.group(3)}", 0.7)
+        return (raw_fall.upper(), 0.7)
     if m:
         val = re.split(r"[\s,;:]", m.group(1).upper())[0]
         return (val, 0.7)
