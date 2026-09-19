@@ -31,6 +31,18 @@ evento seq={{ integridad.roto_en_seq }} — la manipulación queda delatada.</di
   {% endfor %}
 </table>
 
+{% if impacto %}
+<h2>Último reprocesado (Impacto medido)</h2>
+<div class="tarjeta">
+  Reprocesadas: <strong>{{ impacto.reprocesados }}</strong> · cambios:
+  <strong>{{ impacto.cambios }}</strong> · regresiones:
+  <strong>{{ impacto.regresiones }}</strong> · validación: {{ impacto.validacion }}
+  <span class="etq {{ impacto.etiqueta }}">{{ impacto.etiqueta }}</span>
+  <p class="peq">Fuente: <code>{{ impacto.fuente }}</code> (loader unificado
+  que acepta los schemas T13 y T18).</p>
+</div>
+{% endif %}
+
 <h2>Anotar algo (queda en la cadena)</h2>
 <form method="post" action="/actividad/anotar">
   <label>Nota: <input name="nota" size="40" required></label>

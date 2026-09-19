@@ -212,3 +212,41 @@ def test_operaciones_con_escalera_y_actividad():
     c.post("/revision/inv-B/resolver", data={"file_id": "B.pdf", "campo": "total", "valor": "121"})
     assert "override-revision" in c.get("/actividad").text
     shutil.rmtree(base)
+
+
+def test_impacto_loader_unificado():
+    """T38-S8: acepta el schema T18 y el T13; ninguno ⇒ None."""
+    from albertitos.ui.ledger import leer_impactos
+
+    base = Path(".sdd") / "pytest-tmp" / "impacto-loader"
+    if base.exists():
+        shutil.rmtree(base)
+    base.mkdir(parents=True)
+    try:
+        assert leer_impactos(base) is None  # sin datos ⇒ None, no ceros
+        # schema T18 (real hoy)
+        (base / "impacto-fix-colapso.json").write_text(
+            json.dumps({"reprocesados": 108, "resumen": {"no_pagar_a_pagar": 86, "regresiones": 0},
+                        "validacion": "OK"}),
+            encoding="utf-8",
+        )
+        d = leer_impactos(base)
+        assert d["fuente"] == "impacto-fix-colapso.json"
+        assert d["reprocesados"] == "108" and d["cambios"] == "86" and d["regresiones"] == "0"
+        # schema T13 (futuro lote 2): manda si existe
+        (base / "impacto.json").write_text(
+            json.dumps({"resumen": {"cambios": 12, "regresiones": 1}, "validacion": "OK"}),
+            encoding="utf-8",
+        )
+        d2 = leer_impactos(base)
+        assert d2["fuente"] == "impacto.json" and d2["cambios"] == "12"
+        # y en la UI: la pantalla Actividad lo muestra
+        from fastapi.testclient import TestClient
+
+        from albertitos.ui.app import create_app
+
+        app = create_app(records=[])
+        r = TestClient(app).get("/actividad")
+        assert "Último reprocesado" in r.text and "108" in r.text
+    finally:
+        shutil.rmtree(base)

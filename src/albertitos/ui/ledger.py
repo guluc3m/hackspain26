@@ -152,6 +152,44 @@ def drills_estado(metrics_dir: Path | None = None) -> dict[str, Any] | None:
     }
 
 
+def leer_impactos(metrics_dir: Path | None = None) -> dict[str, Any] | None:
+    """Loader unificado de diffs de reprocesado (T38-S8, W3).
+
+    Acepta los DOS schemas que existen hoy y devuelve un dict normalizado:
+      - impacto-fix-colapso.json (T18): {reprocesados, resumen{...}, validacion}
+      - impacto.json (T13): {resumen|...} — formato futuro del lote 2
+    None si no hay ninguno. Los futuros reprocesos nacen con el schema
+    correcto (la UI ya lo alimenta)."""
+    base = Path(metrics_dir) if metrics_dir is not None else Path(".sdd") / "metrics"
+    for nombre in ("impacto.json", "impacto-fix-colapso.json"):
+        data = None
+        ruta = base / nombre
+        if ruta.is_file():
+            try:
+                data = json.loads(ruta.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+        if not isinstance(data, dict):
+            continue
+        resumen = dict(data.get("resumen", {}))
+        if not resumen and "reprocesados" in data:
+            # schema T18 plano: los contadores viven al nivel raíz
+            resumen = {
+                "reprocesados": data.get("reprocesados"),
+                "no_pagar_a_pagar": data.get("no_pagar_a_pagar"),
+                "regresiones": data.get("regresiones"),
+            }
+        return {
+            "fuente": nombre,
+            "reprocesados": str(data.get("reprocesados", resumen.get("reprocesados", "—"))),
+            "cambios": str(resumen.get("no_pagar_a_pagar", resumen.get("cambios", "—"))),
+            "regresiones": str(resumen.get("regresiones", "—")),
+            "validacion": str(data.get("validacion", "—")),
+            "etiqueta": "medido",
+        }
+    return None
+
+
 def load_ledger(store_dir: Path) -> list[dict[str, Any]]:
     """Lee todos los *.jsonl del ledger. Tolera líneas corruptas (no bloquea)."""
     registros: list[dict[str, Any]] = []
