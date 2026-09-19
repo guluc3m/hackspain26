@@ -78,3 +78,12 @@
   consecuencias: [Los falsos NO_PAGAR desaparecen sin tocar extracción ni política (cambio solo en el colapso del motor); cada veredicto registra el candidato elegido y los desacuerdos, alimentando Revisión e Impacto; el NO_PAGAR definitivo se reserva para violaciones reales, como exige §6. Riesgo controlado: la evaluación de varios candidatos es O(n) por campo, coste medido en el reprocesado del lote.],
   evidencia: [Auditoría T17 (`.sdd/metrics/auditoria-trampas.md`): 87/108 falsos con la firma exacta (candidato [1409.4, 1705.37], maestro 1705.37); reprocesado del lote 1 con diff medido `.sdd/metrics/impacto-fix-colapso.json` — 87 NO_PAGAR→PAGAR, 14 genuinos se mantienen NO_PAGAR, 0 regresiones; tests del motor con candidatos Subtotal+TOTAL, ninguno y varios matcheando (T18).],
 )
+
+#adr([App de escritorio multiplataforma: pywebview, NO Electron (ADR-07)],
+  status: "ACEPTADA",
+  contexto: [El requisito del usuario: que funcione también en Windows y Mac, con integración de app «tipo Electron o similar». Alberto usa la app desde Linux, pero la demo debe portarse a otros escritorios.],
+  alternativas: [Electron (runtime ~200 MB, toolchain Node adicional, empaquetado por OS); PWA sola (requiere navegador abierto); app nativa por OS (tres codebases).],
+  decision: [pywebview: ventana nativa con el webview del OS (WebKit en Mac, WebView2/Edge en Windows, GTK en Linux) sobre nuestra UI FastAPI/HTMX existente, arrancada por `python -m albertitos.desktop` (uvicorn en hilo, puerto efímero, cierre limpio con la ventana). Launchers `iniciar.sh/.command/.bat/.ps1` de un paso. Fallback: sin webview, aviso en español y navegador.],
+  consecuencias: [Cero Node, cero runtime extra en la base (pywebview es extra opcional `desktop`); la misma UI sirve a navegador y ventana. Límite honesto: un instalador .exe/.dmg firmado exige una máquina por OS — desde Linux entregamos fuente + arranque de un paso, suficiente para la defensa.],
+  evidencia: [Tests del bootstrap (tests/test_desktop.py): servidor en hilo responde y se apaga limpio; degradación a navegador sin webview y si falla el init del webkit; launchers idempotentes. ADR citado en el informe y en `desktop.py`.],
+)
