@@ -38,3 +38,7 @@ dist/
 /outcomes_lote2.jsonl
 .sdd/lote1
 .sdd/metrics
+
+# T21: sandbox de la simulación del lote 2 y tmp de tests (estado, no código)
+.sdd/lote2-sim/
+.sdd/pytest-tmp/

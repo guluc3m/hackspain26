@@ -1,0 +1,5 @@
+# Parche de maestro (T21): cambia el NIF del proveedor P001.
+# Afectado exacto: las facturas cuyo NIF guardado es B46102331 (antes o después).
+proveedores:
+  P001:
+    nif: B99999999

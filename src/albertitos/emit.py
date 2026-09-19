@@ -16,17 +16,22 @@ from albertitos.store import Store
 _RESULTADOS_VALIDOS = ("PAGAR", "NO_PAGAR", "ESCALAR")
 
 
-def emit_outcomes(store: Store, out_path: str | Path) -> Path:
+def emit_outcomes(store: Store, out_path: str | Path,
+                  only_files: set[str] | None = None) -> Path:
     """Escribe outcomes.jsonl desde el store, ordenado por file_id.
 
-    Determinista: mismo contenido en el store ⇒ mismo fichero byte a byte.
-    Los campos de traza (rule_ids, invoice_id, engine, config) son opcionales
-    y van tras el contrato.
+    `only_files` (T21): si se da, emite SOLO esos file_id — así el lote 2
+    produce `outcomes_lote2.jsonl` (40 líneas) SIN tocar ni mezclar el lote 1
+    cuando ambos conviven en el mismo store. None ⇒ todo el store.
+    Determinista: mismo contenido ⇒ mismo fichero byte a byte.
     """
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    decisions = store.all_decisions()
+    if only_files is not None:
+        decisions = [d for d in decisions if d.file_id in only_files]
     lines = []
-    for d in sorted(store.all_decisions(), key=lambda x: x.file_id):
+    for d in sorted(decisions, key=lambda x: x.file_id):
         obj = {
             "file_id": d.file_id,
             "result": d.result,
