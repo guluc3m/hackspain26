@@ -89,8 +89,20 @@ class RunReport:
     validacion: dict | None = None
 
 
-def _vlm_up(base_url: str, timeout_s: float = 2.0) -> bool:
-    """Health-check de llama-server (rung 4). Down no es error: degrada."""
+def _vlm_up(base_url: str, timeout_s: float = 2.0, *,
+            ready: bool = False) -> bool:
+    """Health del VLM local (llama-server, OpenAI-compatible).
+
+    ready=False (default): solo /v1/models — para saber si el rung 4 está
+    CONFIGURADO (durante la carga del modelo las llamadas quedan en cola;
+    eso lo acota el presupuesto por archivo, T8/T24).
+
+    ready=True (T29): listo DE VERDAD — exige además `GET /health == 200`.
+    Durante la carga /health contesta 503 (HTTPError ⇒ False). Es el fix del
+    race documentado en T24: ni el drill ni nadie debe actuar "como listo"
+    con el modelo a medias, y un servidor colgado (acepta y no responde)
+    tampoco es listo.
+    """
     import urllib.error
     import urllib.request
 
@@ -98,9 +110,22 @@ def _vlm_up(base_url: str, timeout_s: float = 2.0) -> bool:
         with urllib.request.urlopen(
             base_url.rstrip("/") + "/v1/models", timeout=timeout_s
         ) as resp:
-            return resp.status == 200
+            if resp.status != 200:
+                return False
     except (urllib.error.URLError, OSError, TimeoutError, ValueError):
         return False
+    if not ready:
+        return True
+    try:
+        with urllib.request.urlopen(
+            base_url.rstrip("/") + "/health", timeout=timeout_s
+        ) as resp:
+            return resp.status == 200
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError,
+            TimeoutError, ValueError):
+        return False  # 503 de carga, colgado o caído: NO listo
+
+
 
 
 class Runner:

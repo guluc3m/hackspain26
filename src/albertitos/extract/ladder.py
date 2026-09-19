@@ -314,8 +314,10 @@ class ExtractionLadder:
 
         ctx = ctx_factory()
         result = rung_fn(ctx)
-        if _fallo_transient(result.detail):
-            # no cachear: el proveedor puede estar de vuelta en el re-run
+        if not _skip_definitivo(result.detail):
+            # T29: solo se cachea un skip DEFINITIVO (servidor muerto). Un
+            # skip por "cargando"/"colgado" no debe marcar la página como
+            # no-OCRizable para siempre: el re-run la reintenta.
             return result
         payload = {
             "features": [_feature_to_json(f, psha, self.cache.root) for f in result.features],
@@ -342,14 +344,20 @@ class RungResult:
         self.detail = detail
 
 
-# Fallos TRANSIENTES de proveedor: jamás se cachean (T24). El re-run reintenta.
-_TRANSIENTES = ("skipped:llama-server-not-running", "skipped:vlm-call-failed",
-                "skipped:cloud-vlm-failed", "skipped:tesseract-failed")
+# T29: un skip SOLO se cachea si fue DEFINITIVO (servidor muerto: el estado
+# no va a cambiar dentro de esta corrida). "Cargando"/"colgado" y los fallos
+# de llamada en vuelo son transitorios: no se cachean, el re-run reintenta.
+_NO_CACHEABLES = ("skipped:llama-server-loading", "skipped:llama-server-hung",
+                  "skipped:vlm-call-failed", "skipped:cloud-vlm-failed",
+                  "skipped:tesseract-failed")
 
 
-def _fallo_transient(detail: str) -> bool:
+def _skip_definitivo(detail: str) -> bool:
+    """True si el resultado del rung debe cachearse (skip estable o éxito)."""
     d = str(detail or "")
-    return any(d == t or d.startswith(t + ":") for t in _TRANSIENTES)
+    if d.startswith("skipped:llama-server-down"):
+        return True  # definitivo: fallo estable
+    return not any(d == t or d.startswith(t + ":") for t in _NO_CACHEABLES)
 
 
 def _feature_to_json(feat: ExtractionFeature, page_sha: str, cache_root: Path) -> dict:

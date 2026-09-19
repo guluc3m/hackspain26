@@ -34,7 +34,7 @@ CORPUS_FALLBACKS = (
 # rungs 3–5 fuera del dry-run: su ausencia degrada, no aborta
 _DRYRUN_CFG = {
     "tesseract_bin": "/nonexistent/tesseract",  # ⇒ skipped:tesseract-not-on-PATH
-    "vlm_base_url": "http://127.0.0.1:1",  # ⇒ skipped:llama-server-not-running
+    "vlm_base_url": "http://127.0.0.1:1",  # ⇒ skipped:llama-server-down (conexión rechazada, T29)
 }
 
 TIMEOUT_ROUTE = "timeout"

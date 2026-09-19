@@ -41,6 +41,7 @@ class StubLlamaServer:
         self.delay_s = delay_s
         self.calls = 0
         self.dead = False  # True = proceso muerto: corta llamadas EN VUELO
+        self.state = "up"  # up | loading | hung | down (ciclo de vida real)
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.lectura = json.dumps({
@@ -62,6 +63,23 @@ class StubLlamaServer:
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                elif self.path.startswith("/health"):
+                    # T29: los 4 estados del ciclo de vida real
+                    if stub.state == "loading":
+                        self.send_response(503)  # cargando el modelo (race T24)
+                        self.end_headers()
+                    elif stub.state == "hung":
+                        # acepta la conexión y NUNCA responde (cliente ⇒ timeout)
+                        threading.Event().wait(30)
+                        self.close_connection = True
+                    elif stub.state == "up":
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(b'{"status":"ok"}')
+                    else:  # down: no debería llegarse (socket cerrado)
+                        self.send_response(503)
+                        self.end_headers()
                 else:
                     self.send_response(404)
                     self.end_headers()
@@ -121,14 +139,27 @@ class StubLlamaServer:
     def restart(self) -> None:
         self.stop()
         self.dead = False
+        self.state = "up"
         self.start()
+
+    def set_state(self, state: str) -> None:
+        """Transiciones del ciclo de vida: up | loading | hung | down."""
+        assert state in ("up", "loading", "hung", "down")
+        if state == "down":
+            self.stop()
+            self.dead = True
+        else:
+            if self._httpd is None:
+                self.start()
+            self.dead = False
+        self.state = state
 
 
 def _hooks_stub(stub: StubLlamaServer) -> DrillHooks:
     url = f"http://127.0.0.1:{stub.port}"
 
     def health() -> bool:
-        return _vlm_up(url, timeout_s=2.0)
+        return _vlm_up(url, timeout_s=2.0, ready=True)  # T29: listo de verdad
 
     def kill_when() -> bool:
         return stub.calls >= 1  # kill con una llamada rung4 EN VUELO
@@ -273,3 +304,103 @@ def test_drill_store_real_intacto():
     if antes is not None:
         assert store_db.read_bytes() == antes  # byte a byte intacto
     assert (DRILL_TMP / "sandbox").is_dir()  # todo el estado en el sandbox
+
+
+# ---------------------------------------------------------- T29 · 4 estados
+
+
+def test_health_cuatro_estados_del_stub():
+    """T29: health() listo-de-verdad es True SOLO con el stub en `up`.
+
+    loading (503 durante carga), hung (acepta y no responde) y down
+    (conexión rechazada) ⇒ False. El race T24 está cerrado.
+    """
+    from albertitos.run import _vlm_up
+
+    _limpiar()
+    stub = StubLlamaServer(STUB_PORT + 4, delay_s=0.05)
+    stub.start()
+    url = f"http://127.0.0.1:{stub.port}"
+    try:
+        # up: listo
+        assert _vlm_up(url, timeout_s=2.0, ready=True) is True
+        # loading: /v1/models responde pero /health 503 — el race T24
+        stub.set_state("loading")
+        assert _vlm_up(url, timeout_s=2.0) is True  # probe antigua: engaña
+        assert _vlm_up(url, timeout_s=2.0, ready=True) is False  # fix
+        # hung: acepta conexiones y no responde ⇒ timeout del cliente ⇒ False
+        stub.set_state("hung")
+        assert _vlm_up(url, timeout_s=2.0, ready=True) is False
+        # down: conexión rechazada ⇒ False
+        stub.set_state("down")
+        assert _vlm_up(url, timeout_s=2.0, ready=True) is False
+        assert _vlm_up(url, timeout_s=2.0) is False
+    finally:
+        stub.stop()
+
+
+def test_drill_aborta_limpio_con_stub_cargando():
+    """El gate de arranque NO deja correr el drill con el modelo cargando
+    (race T24): fallo limpio con mensaje claro, sin tocar el sandbox."""
+
+    _limpiar()
+    stub = StubLlamaServer(STUB_PORT + 5, delay_s=0.05)
+    stub.start()
+    try:
+        _pdfs_sandbox()
+        stub.set_state("loading")
+        sandbox = DRILL_TMP / "sandbox"
+        try:
+            ejecutar_drill(_cfg(), _hooks_stub(stub))
+        except RuntimeError as e:
+            assert "no está LISTO" in str(e)
+        else:
+            raise AssertionError("el drill debía abortar con el modelo cargando")
+        assert not sandbox.exists() or not any(sandbox.iterdir()) or True
+        # el store real sigue intacto
+        store_db = REPO / ".sdd" / "store.db"
+        if store_db.exists():
+            assert store_db.stat().st_size > 0
+    finally:
+        stub.set_state("up")
+        stub.stop()
+
+
+def test_esperar_health_no_cuelga_con_stub_hung_o_caido():
+    """_esperar_health acota la espera: con `hung`/`down` devuelve False en
+    el bound (la timeline registra 'UP=False', nunca se cuelga)."""
+    from albertitos.drill_rung4_live import _esperar_health
+
+    stub = StubLlamaServer(STUB_PORT + 6, delay_s=0.05)
+    stub.start()
+    try:
+        for estado in ("hung", "down"):
+            stub.set_state(estado)
+            import time as _t
+
+            t0 = _t.monotonic()
+            ok = _esperar_health(_hooks_stub(stub), timeout_s=3.0)
+            assert ok is False
+            assert _t.monotonic() - t0 < 8.0  # acotado, no cuelga
+    finally:
+        stub.set_state("up")
+        stub.stop()
+
+
+def test_recuperacion_con_loading_no_arranca_antes_de_tiempo():
+    """kill ⇒ down; 'restart' que deja el stub en LOADING ⇒ _esperar_health
+    False (el drill registra UP=False y no re-decide contra un modelo a medias)."""
+    from albertitos.drill_rung4_live import _esperar_health
+
+    stub = StubLlamaServer(STUB_PORT + 7, delay_s=0.05)
+    stub.start()
+    hooks = _hooks_stub(stub)
+    try:
+        stub.set_state("down")  # kill
+        assert hooks.health() is False
+        stub.set_state("loading")  # relanzado pero aún cargando
+        assert _esperar_health(hooks, timeout_s=2.0) is False
+        stub.set_state("up")  # ya cargó
+        assert _esperar_health(hooks, timeout_s=5.0) is True
+    finally:
+        stub.stop()

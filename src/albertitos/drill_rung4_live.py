@@ -314,7 +314,11 @@ def ejecutar_drill(cfg: DrillConfig, hooks: DrillHooks,
         threading.Thread(target=_vigilar_rss, args=(0.5, muestras_rss, stop_rss),
                          daemon=True).start()
 
-    assert hooks.health(), "llama-server no está UP antes del drill"
+    if not hooks.health():
+        raise RuntimeError(
+            "llama-server no está LISTO antes del drill (health=False: "
+            "cargando el modelo, colgado o caído) — el drill no corre con el "
+            "modelo sin cargar (race T24)")
     timeline.append({
         "t_rel_s": round(time.monotonic() - t0, 3),
         "evento": "health-check llama-server",
@@ -339,11 +343,14 @@ def ejecutar_drill(cfg: DrillConfig, hooks: DrillHooks,
     })
 
     # ---- 2 · corrida con KILL a mitad
+    import os as _os
+    print("DEBUG dirs:", [d for d in _os.listdir(root)], "| kill ledger existe antes:", _os.path.exists(root / "kill" / "ledger"))
     store_kill_dir = root / "kill"
     stop_watchdog = _watchdog(store_kill_dir, len(files), cfg, hooks,
                               timeline, t0)
     rep_kill = Runner(_runner_cfg(cfg, store_kill_dir, RUN_KILL, files)).run()
     stop_watchdog.set()
+    print("kill ledger tras runner:", _os.path.exists(root / "kill" / "ledger"), "| listado:", _os.listdir(root))
     store_kill = Store(store_kill_dir)
     try:
         skip_rung4 = _skips_rung4(store_kill)
@@ -540,18 +547,9 @@ def hooks_reales() -> DrillHooks:
     estado: dict = {}
 
     def health() -> bool:
-        # listo de verdad: /v1/models responde Y /health ya no está cargando
-        if not _vlm_up("http://127.0.0.1:8080", timeout_s=3.0):
-            return False
-        import urllib.request
-
-        try:
-            with urllib.request.urlopen(
-                "http://127.0.0.1:8080/health", timeout=3.0
-            ) as resp:
-                return resp.status == 200
-        except OSError:
-            return True  # /health no disponible en esta build: models basta
+        # listo DE VERDAD (fix del race T24): /v1/models 200 Y /health 200.
+        # Un 503 de carga, un servidor colgado o caído ⇒ False, nunca True.
+        return _vlm_up("http://127.0.0.1:8080", timeout_s=3.0, ready=True)
 
     def kill(motivo: str) -> dict:
         hallado = _pid_llama_server()

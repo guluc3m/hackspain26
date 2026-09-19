@@ -351,19 +351,80 @@ def _vlm_request(ctx: RungContext) -> str | None:
         return None
 
 
-def _vlm_available(cfg: ExtractionConfig) -> bool:
+def _vlm_probe(cfg: ExtractionConfig) -> tuple[str, str, float | None]:
+    """Sonda de health del rung 4 con 4 estados (T29).
+
+    Devuelve (estado, motivo, retry_after_s):
+    - 'up'      : listo (models 200; /health 200 o inexistente en la build).
+    - 'down'    : servidor MUERTO (conexión rechazada) ⇒ skip DEFINITIVO,
+                  cacheable: el re-run no lo reintenta (fallo estable).
+    - 'loading' : /v1/models responde pero /health 503 ⇒ el modelo carga;
+                  NUNCA "vivo" (el 503 no se come): backoff acotado y NO
+                  cacheable — la página queda pendiente para re-proceso.
+    - 'hung'    : timeout de sonda (acepta conexiones y no contesta) ⇒
+                  backoff acotado y NO cacheable.
+    """
+    base = cfg.vlm_base_url.rstrip("/")
     try:
         with urllib.request.urlopen(
-            cfg.vlm_base_url.rstrip("/") + "/v1/models", timeout=2
+            base + "/v1/models", timeout=cfg.vlm_probe_timeout_s
         ) as resp:
-            return resp.status == 200
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return False
+            models_ok = resp.status == 200
+    except urllib.error.HTTPError as e:
+        return "down", f"/v1/models HTTP {e.code}", None
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        razon = getattr(e, "reason", e)
+        texto = str(razon).lower()
+        if "refused" in texto or isinstance(razon, ConnectionRefusedError):
+            return "down", "conexión rechazada (servidor muerto)", None
+        return "hung", f"sonda sin respuesta: {texto or e}", None
+    if not models_ok:
+        return "down", f"/v1/models HTTP {resp.status}", None
+    # /health: llama-server responde 503 mientras carga el modelo (acepta
+    # conexiones pero los requests se cuelgan hasta el timeout — T24 ROJO).
+    try:
+        with urllib.request.urlopen(base + "/health", timeout=cfg.vlm_probe_timeout_s) as resp:
+            if resp.status == 200:
+                return "up", "ok", None
+            return "loading", f"/health HTTP {resp.status}", None
+    except urllib.error.HTTPError as e:
+        if e.code == 503:
+            ra = e.headers.get("Retry-After") if e.headers else None
+            try:
+                retry_after = float(ra) if ra else None
+            except ValueError:
+                retry_after = None
+            return "loading", "/health HTTP 503 (cargando el modelo)", retry_after
+        if e.code == 404:
+            return "up", "ok (esta build no publica /health)", None
+        return "down", f"/health HTTP {e.code}", None
+    except TimeoutError:
+        # acepta conexiones y NO contesta: servidor colgado ⇒ backoff, no vivo
+        return "hung", "/health acepta conexiones y no responde (colgado)", None
+    except OSError:
+        # conexión cerrada/recusada en /health (server cayendo): no vivo
+        return "down", "/health no accesible (server cayendo)", None
+    except ValueError:
+        # build sin /health: models basta
+        return "up", "ok (esta build no publica /health)", None
 
 
 def run_vlm(ctx: RungContext) -> RungOutcome:
     t0 = time.monotonic()
-    if not _vlm_available(ctx.cfg):
+    estado, motivo, retry_after = _vlm_probe(ctx.cfg)
+    # T29: backoff acotado con Retry-After/carga; máx N reintentos; después
+    # degradar a skip (la página queda pendiente para re-proceso) — nunca
+    # colgar el lote.
+    reintentos = 0
+    backoff = 0.5
+    while estado in ("loading", "hung") and reintentos < ctx.cfg.vlm_health_retries:
+        pausa = max(backoff, retry_after or 0.0)
+        pausa = min(pausa, ctx.cfg.vlm_health_backoff_cap_s)
+        time.sleep(pausa)
+        backoff = min(backoff * 2, ctx.cfg.vlm_health_backoff_cap_s)
+        reintentos += 1
+        estado, motivo, retry_after = _vlm_probe(ctx.cfg)
+    if estado != "up":
         feat = ExtractionFeature(
             type="vlm_text",
             extraction_method="vlm",
@@ -371,7 +432,11 @@ def run_vlm(ctx: RungContext) -> RungOutcome:
             data={},
             page=ctx.page,
             sha256=ctx.page_sha,
-            skipped="skipped:llama-server-not-running",
+            skipped=f"skipped:llama-server-{estado}",
+        )
+        detalle = (
+            f"skipped:llama-server-{estado}: {motivo}"
+            + (f" · reintentos={reintentos}" if reintentos else "")
         )
         ctx.add_evidence(
             stage="extract:rung4_vlm",
@@ -382,9 +447,11 @@ def run_vlm(ctx: RungContext) -> RungOutcome:
             latency_ms=int((time.monotonic() - t0) * 1000),
             confidence=None,
             outcome="skipped",
-            detail="skipped:llama-server-not-running",
+            detail=detalle,
         )
-        return RungOutcome(features=[feat], stop=False, detail="skipped:llama-server-not-running")
+        return RungOutcome(
+            features=[feat], stop=False, detail=f"skipped:llama-server-{estado}"
+        )
 
     content = _vlm_request(ctx)
     latency = int((time.monotonic() - t0) * 1000)

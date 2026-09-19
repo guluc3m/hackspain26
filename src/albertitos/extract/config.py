@@ -41,6 +41,11 @@ class ExtractionConfig:
     vlm_model: str = "paddleocr-vl"
     vlm_timeout_s: float = 60.0
     vlm_min_field_coverage: float = 0.5
+    # T29 — sonda de health con 4 estados (muerto/cargando/colgado/sano):
+    # backoff acotado con N reintentos; tras el límite, degradar (nunca colgar).
+    vlm_probe_timeout_s: float = 3.0
+    vlm_health_retries: int = 3
+    vlm_health_backoff_cap_s: float = 5.0
 
     # fields the OCR/VLM coverage term looks for (ticket T1 rungs 3–4)
     expected_fields: tuple[str, ...] = ("nif", "iban", "fecha", "total", "pedido")

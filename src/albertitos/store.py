@@ -346,6 +346,10 @@ class Store:
     # ---------------------------------------------------------------- ledger
 
     def _ledger(self, event: dict) -> None:
+        import os as _os
+        if not self.ledger_dir.exists():
+            print("DEBUG ledger dir GONE:", self.ledger_dir, "| root listado:",
+                  _os.listdir(self.root) if self.root.exists() else "root-gone")
         with open(self.ledger_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n")
             fh.flush()
