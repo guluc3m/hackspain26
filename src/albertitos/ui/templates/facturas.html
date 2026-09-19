@@ -5,6 +5,20 @@
 <h1>Facturas</h1>
 <p>Una fila por factura. «Confianza» es la más baja de toda su cadena de
 extracción (el eslabón más débil).</p>
+
+<form method="get" action="/facturas">
+  <label>Resultado:
+    <select name="result">
+      <option value="">— todos —</option>
+      {% for r in resultados %}<option value="{{ r }}" {% if r == result %}selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Buscar file_id: <input name="q" value="{{ q }}"></label>
+  <button type="submit">Filtrar</button>
+  {% if result or q %}<a href="/facturas">Quitar filtros</a>{% endif %}
+</form>
+<p>{{ total }} factura(s) — página {{ pagina }} de {{ n_paginas }} {{ m.etq('medido') }}</p>
+
 <table>
   <tr>
     <th>Factura</th><th>Resultado</th><th>Reglas que deciden</th>
@@ -21,6 +35,14 @@ extracción (el eslabón más débil).</p>
     <td>{{ f.paginas | join(', ') or '—' }}</td>
     <td><a href="/facturas/{{ f.invoice_id }}">Detalle</a></td>
   </tr>
+  {% else %}
+  <tr><td colspan="8">Ninguna factura coincide con el filtro.</td></tr>
   {% endfor %}
 </table>
+
+<p>
+  {% if pagina > 1 %}<a href="/facturas?pagina={{ pagina - 1 }}&result={{ result }}&q={{ q }}">← Anterior</a>{% endif %}
+  · página {{ pagina }} / {{ n_paginas }} ·
+  {% if pagina < n_paginas %}<a href="/facturas?pagina={{ pagina + 1 }}&result={{ result }}&q={{ q }}">Siguiente →</a>{% endif %}
+</p>
 {% endblock %}

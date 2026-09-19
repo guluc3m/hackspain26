@@ -87,6 +87,71 @@ class LedgerView:
     overrides: list[OverrideView] = field(default_factory=list)
 
 
+def parse_rule_codes(texto: str) -> list[VerdictView]:
+    """Parsea `rule_codes` del runner real: "CODE:PASS,CODE2:UNKNOWN,..."."""
+    veredictos: list[VerdictView] = []
+    for par in texto.split(","):
+        if ":" not in par:
+            continue
+        code, outcome = par.split(":", 1)
+        veredictos.append(
+            VerdictView(code=code.strip(), outcome=outcome.strip().upper(), reason="", consumed={})
+        )
+    return veredictos
+
+
+def estado_runner(store_dir: Path) -> dict[str, Any] | None:
+    """Estado del runner real (`<root>/state/runner.json`) — medido por el runner.
+
+    `store_dir` apunta al ledger; el state vive en su raíz (p. ej. `.sdd/lote1`
+    → worktree de W1, SOLO LECTURA). Devuelve None si no existe.
+    """
+    ruta = Path(store_dir).parent / "state" / "runner.json"
+    if not ruta.is_file():
+        return None
+    try:
+        data = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {
+        "done": (str(data.get("done", "—")), "medido"),
+        "fallos": (str(data.get("fallos", "—")), "medido"),
+        "pendientes": (str(data.get("pendientes", "—")), "medido"),
+        "total": (str(data.get("total_archivos", "—")), "medido"),
+        "files_per_second": (str(data.get("files_per_second", "—")), "medido"),
+        "resultados": {
+            r: (str(data.get("resultados", {}).get(r, 0)), "medido") for r in RESULTADOS
+        },
+        "config_version": (str(data.get("config_version", "—")), "medido"),
+        "engine_version": (str(data.get("engine_version", "—")), "medido"),
+        "rung4_llama_server": (str(data.get("rung4_llama_server", "—")), "medido por el runner"),
+        "rung4_secuencial": (str(data.get("rung4_secuencial", "—")), "medido"),
+        "actualizado": (str(data.get("actualizado", "—")), "medido"),
+    }
+
+
+def drills_estado(metrics_dir: Path | None = None) -> dict[str, Any] | None:
+    """Estado de los drills de resiliencia (`.sdd/metrics/drills.json`, T12)."""
+    base = Path(metrics_dir) if metrics_dir is not None else Path(".sdd") / "metrics"
+    ruta = base / "drills.json"
+    if not ruta.is_file():
+        return None
+    try:
+        data = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    resumen = data.get("resumen", {})
+    return {
+        "resumen": (f"{resumen.get('pass', 0)} pass / {resumen.get('fail', 0)} fail", "medido"),
+        "por_nombre": tuple(
+            (str(d.get("drill", "?")), "PASS" if d.get("pass") else "FAIL")
+            for d in data.get("drills", [])
+        ),
+    }
+
+
 def load_ledger(store_dir: Path) -> list[dict[str, Any]]:
     """Lee todos los *.jsonl del ledger. Tolera líneas corruptas (no bloquea)."""
     registros: list[dict[str, Any]] = []
@@ -112,7 +177,7 @@ def build_view(
 ) -> LedgerView:
     vista = LedgerView(overrides=overrides or [])
     for rec in registros:
-        kind = rec.get("kind")
+        kind = rec.get("kind") or rec.get("event")
         if kind == "evidence":
             vista.evidence.append(
                 EvidenceView(
@@ -130,22 +195,27 @@ def build_view(
                 )
             )
         elif kind == "decision":
-            veredictos = [
-                VerdictView(
-                    code=str(v.get("code", "")),
-                    outcome=str(v.get("outcome", "")),
-                    reason=str(v.get("reason", "")),
-                    consumed=dict(v.get("consumed", {})),
-                )
-                for v in rec.get("rule_verdicts", [])
-            ]
+            if rec.get("rule_verdicts"):
+                veredictos = [
+                    VerdictView(
+                        code=str(v.get("code", "")),
+                        outcome=str(v.get("outcome", "")),
+                        reason=str(v.get("reason", "")),
+                        consumed=dict(v.get("consumed", {})),
+                    )
+                    for v in rec.get("rule_verdicts", [])
+                ]
+            else:
+                # formato del runner real (lote 1): "CODE:PASS,CODE2:UNKNOWN,..."
+                veredictos = parse_rule_codes(str(rec.get("rule_codes", "")))
             vista.decisions.append(
                 DecisionView(
                     invoice_id=str(rec.get("invoice_id", "")),
                     file_id=str(rec.get("file_id", "")),
                     result=str(rec.get("result", "")),
                     verdicts=veredictos,
-                    config_snapshot=dict(rec.get("config_snapshot", {})),
+                    config_snapshot=dict(rec.get("config_snapshot", {}))
+                    or ({"rule_set_version": rec["config_version"]} if rec.get("config_version") else {}),
                     timestamp=float(rec.get("timestamp", 0.0) or 0.0),
                 )
             )
