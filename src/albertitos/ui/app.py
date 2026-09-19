@@ -579,8 +579,10 @@ def create_app(
         if not file_id or file_id.startswith("—"):
             raise HTTPException(status_code=404, detail="esta factura aún no tiene PDF asociado")
         env = os.environ.get("ALBERTITOS_CARPETA", "").strip()
-        candidatos = [Path(env)] if env else []
-        candidatos += [Path("caja-de-alberto/facturas"), Path("facturas")]
+        if env:
+            candidatos = [Path(env)]  # la carpeta del usuario manda
+        else:
+            candidatos = [Path("facturas"), Path("caja-de-alberto/facturas")]
         ruta = next(
             (p for c in candidatos if c.is_dir() for p in c.rglob(file_id) if p.is_file()),
             None,

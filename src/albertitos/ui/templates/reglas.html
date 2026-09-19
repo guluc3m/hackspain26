@@ -21,11 +21,7 @@ romper nada.</em></p>
 <table>
   <tr><th>Regla</th><th>Umbral</th></tr>
   {% for cod, umbral in activas.umbrales | dictsort %}
-<<<<<<< HEAD
-  <tr><td><code>{{ cod }}</code></td><td>{{ umbral }}</td></tr>
-=======
   <tr><td><code title="{{ descripciones_reglas[cod] if cod in descripciones_reglas else 'Regla del motor de pagos' }}">{{ cod }}</code></td><td>{{ umbral }}</td></tr>
->>>>>>> ui-reglas
   {% else %}
   <tr><td colspan="2">Sin umbrales registrados todavía.</td></tr>
   {% endfor %}

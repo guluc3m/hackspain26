@@ -196,6 +196,6 @@ def test_pendiente_con_maestro_y_store_sembrado(monkeypatch, tmp_path: Path):
     maestro = Path(__file__).parent / "fixtures" / "maestro_fixture.xlsx"
     monkeypatch.setattr(ui_app, "_maestro_para_resumen", lambda: maestro)
     d = ui_app._pendiente_alberto(tmp_path)
-    assert d["pagado_n"] == {"valor": "1", "etiqueta": "medido"}
-    assert d["pagado_total"] == {"valor": "4,635.26 EUR", "etiqueta": "medido"}
-    assert d["no_pago_n"] == {"valor": "0", "etiqueta": "medido"}
+    assert d["pagado_n"] == {"valor": "1"}
+    assert d["pagado_total"] == {"valor": "4,635.26 EUR"}
+    assert d["no_pago_n"] == {"valor": "0"}
