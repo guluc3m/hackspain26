@@ -121,14 +121,19 @@ Fuente citada: `.sdd/metrics/drills.json`. Resumen: #drillsResumen.at(0)
   ..drillsPorNombre.pairs().map(p => ([#p.at(0)], [#p.at(1)])).flatten(),
 )
 
-== Lote 1 y reprocesado (T14/T13)
+== Lote 1, reprocesado y cierre post-fix (T14/T17/T18)
 
-- Resultados del lote 1 (500 PDFs, corrida completa): #resultadosLote1.at(0)
-  #emph[(#resultadosLote1.at(1))].
-- Exactitud sobre la referencia privada: #exactitudLote1.at(0)
-  #emph[(#exactitudLote1.at(1))].
-- Reprocesado tras cambio de reglas/datos: #impactoReprocesado.at(0)
-  #emph[(#impactoReprocesado.at(1))].
+- Resultados del lote 1 (500 PDFs, corrida completa + reprocesado):
+  #resultadosLote1.at(0) #emph[(#resultadosLote1.at(1))]. Distribución
+  final: #distribucionFinal.at(0) #emph[(#distribucionFinal.at(1))].
+- % PAGAR automático sobre el corpus completo: #exactitudLote1.at(0)
+  #emph[(#exactitudLote1.at(1))] (la exactitud contra la referencia privada
+  de la organización es PENDIENTE — no es pública).
+- Impacto del fix ADR-06 (colapso de candidatos): #impactoFix.at(0)
+  #emph[(#impactoFix.at(1))] — fuente citada
+  `.sdd/metrics/impacto-fix-colapso.json` (diff completo, 0 regresiones).
+- Modo Alberto y app de escritorio: #modoAlberto.at(0)
+  #emph[(#modoAlberto.at(1))] (ADR-07).
 
 == Perfil de carga del sistema completo (T23, medido)
 
@@ -140,6 +145,8 @@ up. Resultado medido: la UI sigue respondiendo (peor p95 de las 5 pantallas
 < 12 ms), 108–110 archivos/s por runner, RSS ~96 MB (UI) / ~38 MB (runner),
 8 GB RAM libres de 12 — **concurrencia soportada medida, 0 ROJOS**.
 
+- Último perfil regenerado (cierre de entrega): #perfilCarga.at(0)
+  #emph[(#perfilCarga.at(1))].
 - Límite práctico en esta caja (8 cores / 12 GB): rung 4 serializado ocupa
   ≈1 core por runner; el régimen cómodo estimado es ~4-6 runners + UI
   (extrapolación, etiquetada ESTIMADO — el medido es el régimen de 2 runners

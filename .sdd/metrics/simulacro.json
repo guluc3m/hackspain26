@@ -1,0 +1,94 @@
+{
+  "generado": "2026-09-19 07:15:37",
+  "guion": "docs/report/DEFENSA.md",
+  "verificaciones": [
+    {
+      "check": "fuentes-citadas-existen",
+      "pass": true,
+      "medido": "6/6 ficheros citados presentes",
+      "citado": "todas"
+    },
+    {
+      "check": "distribucion-final-433-22-45",
+      "pass": true,
+      "medido": "433/22/45",
+      "citado": "guion menciona 433/22/45: True"
+    },
+    {
+      "check": "outcomes-500-coherente-con-ledger",
+      "pass": true,
+      "medido": "500 outcomes: {'PAGAR': 433, 'NO_PAGAR': 22, 'ESCALAR': 45}",
+      "citado": "433/22/45"
+    },
+    {
+      "check": "perfil-p95-pantallas",
+      "pass": true,
+      "medido": "peor p95 medido 7.7 ms",
+      "citado": "guion cita < 12.0 ms y medido 7,7 ms"
+    },
+    {
+      "check": "runners-files-por-segundo",
+      "pass": true,
+      "medido": "[108.722, 109.986]",
+      "citado": "guion cita 108.0–110.0 archivos/s por runner"
+    },
+    {
+      "check": "drills-4-sobre-4",
+      "pass": true,
+      "medido": "4 pass / 0 fail",
+      "citado": "guion cita 4/4 PASS"
+    },
+    {
+      "check": "dryrun-471-29-0",
+      "pass": true,
+      "medido": "471/29/0",
+      "citado": "guion cita 471/500 (94,2 %) y 29 raster"
+    },
+    {
+      "check": "resumen-ejecutivo-demo",
+      "pass": true,
+      "medido": "TOTAL regenerado desde store×maestro (sin datos ⇒ PENDIENTE, no falso)",
+      "citado": "guion cita el resumen en el paso 1"
+    },
+    {
+      "check": "resumen-pdf-presente",
+      "pass": true,
+      "medido": ".sdd/metrics/resumen-simulacro.pdf",
+      "citado": "demo paso 1"
+    },
+    {
+      "check": "ui/",
+      "pass": true,
+      "medido": "HTTP 200"
+    },
+    {
+      "check": "ui/facturas",
+      "pass": true,
+      "medido": "HTTP 200"
+    },
+    {
+      "check": "ui/revision",
+      "pass": true,
+      "medido": "HTTP 200"
+    },
+    {
+      "check": "ui/reglas",
+      "pass": true,
+      "medido": "HTTP 200"
+    },
+    {
+      "check": "ui/salud",
+      "pass": true,
+      "medido": "HTTP 200"
+    },
+    {
+      "check": "store-solo-lectura",
+      "pass": true,
+      "medido": "sqlite modo ro + ledger JSONL lectura"
+    }
+  ],
+  "resumen": {
+    "pass": 15,
+    "fail": 0
+  }
+}

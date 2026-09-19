@@ -329,14 +329,65 @@ def metricas_t10_t12(metrics_dir: Path | None = None) -> dict[str, Any]:
         out["drillsResumen"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
         out["drillsPorNombre"] = ()
 
-    # ---- T13: reprocesado/impacto (si existe)
+    # ---- T13/T18: reprocesado/impacto del fix (impacto-fix-colapso.json)
+    if not impacto:
+        impacto = _cargar_json(base / "impacto-fix-colapso.json")
     out["impactoReprocesado"] = (
         (str(impacto.get("resumen", impacto))[:120], "medido") if impacto
         else ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
     )
 
+    # ---- T18: impacto del fix colapso de candidatos (medido, diff completo)
+    impacto_fix = _cargar_json(base / "impacto-fix-colapso.json")
+    if impacto_fix:
+        r = impacto_fix.get("resumen", {})
+        out["impactoFix"] = (
+            (
+                f"{impacto_fix.get('reprocesados', '—')} reprocesados · "
+                f"{r.get('no_pagar_a_pagar', '—')} NO_PAGAR→PAGAR · "
+                f"{r.get('regresiones', '—')} regresiones · validación "
+                f"{impacto_fix.get('validacion', '—')}"
+            ),
+            "medido",
+        )
+    else:
+        out["impactoFix"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+
+    # ---- T23: perfil de carga del sistema completo
+    perfil = _cargar_json(base / "perfil-carga.json")
+    if perfil:
+        peor = max(
+            (pant["p95_ms"] or 0) for pant in perfil.get("pantallas", {}).values()
+        )
+        files = perfil.get("runners_files_por_s", [])
+        out["perfilCarga"] = (
+            (
+                f"UI+2 runners simultáneos: peor p95 {peor} ms, "
+                f"{[round(f, 1) for f in files]} files/s por runner, "
+                f"{len(perfil.get('rojos', []))} ROJOS"
+            ),
+            "medido",
+        )
+    else:
+        out["perfilCarga"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+
+    # ---- T34: Modo Alberto (arranque de un paso + UI en llano) — narrativa
+    out["modoAlberto"] = (
+        (
+            "iniciar.sh de un paso (idempotente) + UI en lenguaje llano con ayuda "
+            "contextual + app de escritorio con pywebview (ADR-07)"
+        ),
+        "medido (implementación con tests)",
+    )
+
     # ---- T14/T18: corrida real del lote 1 (lote1.json describe las 500)
     lote1 = _cargar_json(base / "lote1.json")
+    if lote1 and lote1.get("distribucion_final"):
+        df = lote1["distribucion_final"]
+        out["distribucionFinal"] = (
+            f"{df['PAGAR']} PAGAR / {df['NO_PAGAR']} NO_PAGAR / {df['ESCALAR']} ESCALAR",
+            "medido",
+        )
     if lote1:
         dist = lote1.get("distribucion", {})
         p = int(dist.get("PAGAR", 0) or 0)
@@ -450,8 +501,19 @@ def generar_escalabilidad_datos(
     lineas.append(")")
     lineas.append("// — T13/T14: pendientes de corrida")
     lineas.append(f'#let impactoReprocesado = {_pareja(extra["impactoReprocesado"])}')
+    lineas.append("// — T18: impacto del fix (.sdd/metrics/impacto-fix-colapso.json)")
+    lineas.append(f'#let impactoFix = {_pareja(extra["impactoFix"])}')
+    lineas.append("// — T23: perfil de carga (.sdd/metrics/perfil-carga.json)")
+    lineas.append(f'#let perfilCarga = {_pareja(extra["perfilCarga"])}')
+    lineas.append("// — T34: Modo Alberto + app escritorio (ADR-07)")
+    lineas.append(f'#let modoAlberto = {_pareja(extra["modoAlberto"])}')
     lineas.append(f'#let resultadosLote1 = {_pareja(extra["resultadosLote1"])}')
     lineas.append(f'#let exactitudLote1 = {_pareja(extra["exactitudLote1"])}')
+    lineas.append("// — distribución FINAL post-fix (lote1.json, corrida+reprocesado)")
+    if "distribucionFinal" in extra:
+        lineas.append(f'#let distribucionFinal = {_pareja(extra["distribucionFinal"])}')
+    else:
+        lineas.append('#let distribucionFinal = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")')
     tdest.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     return jdest, tdest
 
