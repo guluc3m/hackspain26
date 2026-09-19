@@ -3,6 +3,39 @@
 {% block titulo %}Operaciones · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Operaciones</h1>
+<p><em>Esta es tu pantalla de mando: qué hay pendiente, qué se pagó y qué no.
+Cada pantalla tiene una explicación arriba y un enlace «? Ayuda» arriba a la
+derecha.</em></p>
+
+<h2>Lo que te toca hoy</h2>
+<div class="fila">
+  <div class="tarjeta">
+    {% if pendiente and pendiente.n is not none %}
+    <div class="num">{{ pendiente.n.valor }}</div>
+    <div>facturas esperan tu decisión
+      {% if pendiente.euros and pendiente.euros.etiqueta == 'medido' %}
+      — <strong>{{ pendiente.euros.valor }}</strong> en juego
+      {% endif %}
+      <span class="etq {{ pendiente.n.etiqueta }}">{{ pendiente.n.etiqueta }}</span></div>
+    <p><a href="/revision"><strong>Revisarlas →</strong></a> (con la foto de la página y las lecturas lado a lado)</p>
+    {% else %}
+    <div class="num">—</div>
+    <div>{{ pendiente.nota if pendiente else 'PENDIENTE: sin datos' }}
+      <span class="etq sin">sin datos</span></div>
+    {% endif %}
+  </div>
+  {% if pendiente and pendiente.pagado_n is not none %}
+  <div class="tarjeta"><div class="num">{{ pendiente.pagado_total.valor }}</div>
+    <div>se pagarán por {{ pendiente.pagado_n.valor }} facturas
+      <span class="etq {{ pendiente.pagado_n.etiqueta }}">{{ pendiente.pagado_n.etiqueta }}</span></div>
+    <p><a href="/resumen-ejecutivo"><strong>Ver mi resumen del día</strong></a> (¿qué pago hoy y por qué?)</p></div>
+  <div class="tarjeta"><div class="num">{{ pendiente.no_pago_n.valor }}</div>
+    <div>no se pagan (motivo registrado)
+      <span class="etq {{ pendiente.no_pago_n.etiqueta }}">{{ pendiente.no_pago_n.etiqueta }}</span></div>
+    <p><a href="/facturas?result=NO_PAGAR">Ver las facturas no pagadas</a></p></div>
+  {% endif %}
+</div>
+
 {% if runner %}
 <div class="tarjeta">
   <strong>Estado del runner (lote 1, medido)</strong> — actualizado {{ runner.actualizado[0] }}
@@ -31,6 +64,66 @@
     <div class="num">{% if resumen.rule_set_version %}{{ resumen.rule_set_version }}{% elif runner %}{{ runner.config_version[0] }}{% else %}—{% endif %}</div>
     <div>{{ m.etq('medido') }}</div></div>
 </div>
+
+
+<h2>¿Quién lee cada factura y cuánto tarda?</h2>
+<p>Cada factura pasa por varios lectores hasta que uno la resuelve. Esta
+tabla compara cuántas facturas leyó cada uno y cuánto tardó — sirve para ver
+si algo se ralentiza después de un cambio. <span title="Detalle técnico: la
+escalera son los peldaños rung 1–5 (texto/QR/OCR/VLM local/VLM nube) y las
+ventanas se calculan sobre las filas de evidencia del registro de actividad.">?
+Detalle técnico</span></p>
+{% for ventana in ['corrida_actual', 'historico'] %}
+<h3>{{ 'Corrida actual' if ventana == 'corrida_actual' else 'Histórico' }}
+  {{ m.etq('medido') }}</h3>
+<table>
+  <tr><th>Lector</th><th>Facturas que leyó</th><th>p50</th><th>p95</th>
+      <th>% filas</th><th>Descarte</th><th>Coste</th></tr>
+  {% for rung, s in escalera[ventana].rungs | dictsort %}
+  <tr>
+    <td title="{{ rung }} (peldaño técnico)">{{ nombres_rung[rung] if rung in nombres_rung else rung }}</td>
+    <td>{{ s.n }}</td>
+    <td>{% if s.p50_ms is not none %}{{ s.p50_ms }} ms{% else %}—{% endif %}</td>
+    <td>{% if s.p95_ms is not none %}{{ s.p95_ms }} ms{% else %}—{% endif %}</td>
+    <td>{% if s.pct_filas is not none %}{{ s.pct_filas }} %{% else %}—{% endif %}</td>
+    <td>{% if s.ratio_descarte is not none %}{{ s.ratio_descarte }} %{% else %}—{% endif %}</td>
+    <td>{{ s.coste_eur }} EUR</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">Sin evidencia registrada todavía.</td></tr>
+  {% endfor %}
+</table>
+{% endfor %}
+
+<h2>Los lectores con IA</h2>
+<p>Rendimiento del lector local y del de la nube. <span title="rung 4 = llama-server local; rung 5 = deepseek en la nube; cache hit = página ya leída y reutilizada">? Detalle técnico</span></p>
+<table>
+  <tr><th>Componente</th><th>Invocaciones</th><th>Lat. media</th><th>Lat. máx</th>
+      <th>Cache hit/miss</th><th>Truncado</th><th>Coste</th></tr>
+  {% for nombre, s in vlm | dictsort if s.n_invocaciones is defined %}
+  <tr><td title="código técnico: {{ nombre }}">{{ {'rung4_llama_server': 'Lector visual (IA local)', 'rung5_cloud': 'Lector visual (IA en la nube)'}[nombre] if nombre in {'rung4_llama_server': '', 'rung5_cloud': ''} else nombre }}</td>
+      <td>{{ s.n_invocaciones }} {{ m.etq(s.etiqueta if s.etiqueta in ['medido'] else 'sin datos') }}</td>
+      <td>{% if s.latencia_media_ms is not none %}{{ s.latencia_media_ms }} ms{% else %}—{% endif %}</td>
+      <td>{% if s.latencia_max_ms is not none %}{{ s.latencia_max_ms }} ms{% else %}—{% endif %}</td>
+      <td>{{ s.cache_hit }} / {{ s.cache_miss }}</td>
+      <td>{% if s.tasa_truncado is not none %}{{ s.tasa_truncado }} %{% else %}sin datos{% endif %}</td>
+      <td>{{ s.coste_eur.valor }} <span class="etq {{ s.coste_eur.etiqueta if s.coste_eur.etiqueta in ['medido', 'estimado'] else 'sin datos' }}">{{ s.coste_eur.etiqueta }}</span></td></tr>
+  {% endfor %}
+</table>
+{% if vlm.cache_paginas_almacenadas %}<p class="peq">Páginas en caché
+(page_sha256 × engine × config_version): {{ vlm.cache_paginas_almacenadas.valor }}
+{{ m.etq('medido') }}.</p>{% endif %}
+
+{% if llama %}
+<h2>¿Está vivo el lector local?</h2>
+<div class="tarjeta">
+  <p>Estado: <strong>{{ llama.estado[0] }}</strong> {{ m.etq('medido') }} —
+  <code>{{ llama.url }}</code></p>
+  {% if llama.modelo %}<p>Modelo: {{ llama.modelo.valor }} {{ m.etq(llama.modelo.etiqueta) }}</p>{% endif %}
+  {% if llama.cola_rung4 %}<p>Cola rung 4: {{ llama.cola_rung4.valor }} {{ m.etq(llama.cola_rung4.etiqueta) }}</p>{% endif %}
+  {% if llama.contadores %}<p>Contadores Prometheus: {{ llama.contadores.valor }} {{ m.etq(llama.contadores.etiqueta) }}</p>{% endif %}
+</div>
+{% endif %}
 
 <h2>Resultados</h2>
 <table>

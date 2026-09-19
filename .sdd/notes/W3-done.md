@@ -170,3 +170,32 @@
 - Submodule caja-de-alberto inicializado user-space en este worktree (W1 lo
   necesitaba); queda 1 flaky de timing en test_drill_rung4_live (W1, verde
   en suite completa) — documentado.
+
+## Sesión 11 — T30 y T31 cerrados (commits fd11670 integrado + 61d2009)
+
+- T30 (BONUS): plan por dinero en riesgo en el resumen de Alberto —
+  escaladas por importe desc con suma acumulada y % cubierto; «revisando las
+  N primeras cubres el 80 %». Sin tocar el motor.
+- T31: telemetría continua — Escalera por rung (n/p50/p95/%/descarte/coste
+  en ventanas corrida+histórico), stats VLM de primera (cache hit/miss
+  literal, truncado, coste facturable rung 5), sonda llama-server
+  (/metrics Prometheus con caché 60 s) y EventChain encadenada con hash +
+  pantalla Actividad con verificación anti-manipulación.
+- Flaky ajeno recurrente: test_drill_rung4_live (T24, W1) falla ~1 de cada N
+  corridas de suite por contention (verde en solitario); documentado.
+- Al cierre: 261 passed, ruff limpio, sin secretos.
+
+## Sesión 12 — T34 cerrado (commit 4c50d5f) — p0 Modo Alberto
+
+- iniciar.sh (raíz): arranque de UN paso, idempotente, con comprobaciones
+  de requisitos en español y apertura de navegador. Probado en vivo y por
+  test (arranque + idempotencia).
+- UI entera en lenguaje llano: rungs/extractores/stages/drills traducidos
+  con tooltips para el detalle técnico; inicio = la operación de Alberto
+  («lo que te toca hoy: X por € Y»); confirmaciones con consecuencias;
+  /ayuda con glosario; /resumen-ejecutivo sin terminal. Test anti-jerga
+  (rung1-5/WAL fuera de tooltips no aparecen).
+- Compat del suite: presentacion.py (T32) cae al store del lote 1; test de
+  imágenes de Revisión tolera la cola vaciada por W1 (post-reprocesado);
+  DEFENSA.md fuente [3] actualizada a la realidad del store.
+- Al cierre: 272 passed, ruff limpio, sin secretos.

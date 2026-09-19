@@ -25,6 +25,9 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from albertitos.resumen import datos_resumen
+from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
+
 from .demo import demo_records
 from .ledger import (
     OverrideView,
@@ -40,6 +43,120 @@ from .ledger import (
     revision_queue,
     what_if,
 )
+
+# ---------------------------------------------------------------- Modo Alberto
+# Lenguaje llano (AGENTS.md §9): toda jerga técnica se traduce; el detalle
+# técnico queda en los tooltips (title=) y en la pantalla Ayuda.
+
+NOMBRES_RUNG: dict[str, str] = {
+    "rung1": "Texto del PDF",
+    "rung2": "Código QR",
+    "rung3": "OCR (leer escaneos)",
+    "rung4": "Lector visual con IA (local)",
+    "rung5": "Lector visual con IA (nube)",
+}
+NOMBRES_STAGE: dict[str, str] = {
+    "extract:rung1_pdf_text": "Lectura del texto del PDF",
+    "extract:rung2_raster_qr": "Renderizado + lectura del QR",
+    "extract:rung3_tesseract": "OCR sobre la imagen",
+    "extract:rung4_vlm": "Lector visual con IA (local)",
+    "extract:rung5_cloud_vlm": "Lector visual con IA (nube)",
+    "features": "Extracción de datos",
+    "parse": "Traducción a campos",
+    "decision": "Decisión con reglas",
+    "render": "Renderizado de la página",
+}
+NOMBRES_EXTRACTOR: dict[str, str] = {
+    "pypdf": "Lectura directa del PDF",
+    "pypdfium2": "Renderizado de páginas",
+    "zxing": "Lector de códigos QR",
+    "tesseract": "OCR",
+    "vlm": "Lector visual (IA local)",
+    "cloud_vlm": "Lector visual (IA en la nube)",
+    "regex": "Buscador de patrones",
+    "rule-engine": "Motor de reglas",
+    "parser": "Traducción a campos",
+}
+NOMBRES_DRILL: dict[str, str] = {
+    "rung5-provider-caido": "El lector de la nube caído",
+    "backoff-429": "Demasiadas peticiones: espera y reintenta",
+    "crash-reanudacion": "Apagón a mitad de lote: reanuda sin duplicados",
+    "ledger-corrupto": "Registro dañado: se tolera sin inventar",
+}
+GLOSARIO: list[tuple[str, str]] = [
+    ("PAGAR", "Factura con todas las reglas en verde: se puede pagar."),
+    ("NO_PAGAR", "Factura con una regla en rojo: no se paga y el motivo queda registrado."),
+    ("ESCALAR", "Necesita que un humano la mire: la decisión la toma Alberto en la cola de Revisión."),
+    ("Texto del PDF (rung 1)", "Lectura directa del texto que trae el PDF, sin fotos."),
+    ("Código QR (rung 2)", "Código cuadrado que traen algunas facturas con sus datos dentro."),
+    ("OCR (rung 3)", "Reconocimiento de texto sobre la imagen de la página (tesseract)."),
+    ("Lector visual con IA (rung 4)", "Modelo de IA local que lee la página como imagen (llama-server)."),
+    ("Lector visual con IA en la nube (rung 5)", "Misma idea, pero en un servicio externo. Solo si la local no basta."),
+    ("Registro de actividad (ledger)", "Fichero al que solo se añade, donde queda guardado todo lo que pasa (para poder repetir y auditar)."),
+    ("Base de datos local (store)", "Fichero SQLite con las decisiones y su evidencia; vive en .sdd/."),
+    ("Cache", "Las páginas ya leídas no se vuelven a leer: se reutilizan (ahorra tiempo y dinero)."),
+    ("Override", "La corrección que Alberto guarda en Revisión: queda sellada con quién y cuándo."),
+    ("Regla (TOTALS_MUST_MATCH, …)", "Comprobación en código con su nombre exacto del contrato; cada decisión lista las reglas que la justifican."),
+]
+
+
+def _maestro_para_resumen() -> Path | None:
+    """Maestro real para el resumen ejecutivo (auto-detectado, SOLO LECTURA)."""
+    candidatos = [
+        Path(".sdd/lote1/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
+        Path("/home/deploy/hackspain26/caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
+        Path("caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
+    ]
+    for c in candidatos:
+        if c.is_file():
+            return c
+    return None
+
+
+def _pendiente_alberto(store_root: Path) -> dict[str, Any]:
+    """Lo primero que Alberto quiere saber: qué hay pendiente y por cuánto."""
+    maestro = _maestro_para_resumen()
+    try:
+        datos = datos_resumen(store_root, maestro_path=maestro) if maestro else None
+    except Exception:  # noqa: BLE001 — sin maestro el resumen degrada, no rompe
+        datos = None
+    if not datos:
+        return {"n": None, "euros": None, "nota": "PENDIENTE: sin maestro en este nodo"}
+    return {
+        "n": datos["revisar"]["n"],
+        "euros": datos["riesgo"]["total_en_riesgo_eur"],
+        "pagado_n": datos["pago"]["n"],
+        "pagado_total": datos["pago"]["total_eur"],
+        "no_pago_n": datos["no_pago"]["n"],
+        "nota": "",
+    }
+
+_sonda_cache: tuple[float, Any] | None = None  # (ts, resultado) — sonda acotada
+
+
+def _ruta_actividad() -> Path:
+    """Cadena de actividad: telemetría de la UI, JAMÁS dentro del store."""
+    return Path(".sdd") / "telemetria" / "actividad.jsonl"
+
+
+def _cache_root() -> Path | None:
+    candidato = Path(".sdd/lote1/cache")
+    return candidato if candidato.is_dir() else None
+
+
+def _sonda_con_cache(base_url: str = "http://127.0.0.1:8080", ttl_s: float = 60.0) -> Any:
+    """Sonda llama-server con caché de 60 s: nunca satura el sidecar."""
+    global _sonda_cache
+    ahora = time.monotonic()
+    if _sonda_cache is not None and ahora - _sonda_cache[0] < ttl_s:
+        return _sonda_cache[1]
+    from albertitos.telemetria import sonda_llama
+
+    resultado = sonda_llama(base_url)
+    _sonda_cache = (ahora, resultado)
+    return resultado
+
+
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -89,13 +206,29 @@ def create_app(
         drills = None
 
     aplicacion.state.view = build_view(registros)
+    aplicacion.state.registros = registros
     aplicacion.state.override_dir = destino
     aplicacion.state.demo = demo
     aplicacion.state.runner = estado
     aplicacion.state.drills = drills
+    aplicacion.state.pendiente: dict[str, Any] | None = None
+    aplicacion.state.store_base = (Path(store_dir) if store_dir else Path(".sdd") / "ledger")
+
+    def _store_root() -> Path:
+        """Raíz del store (donde vive store.db) — SOLO LECTURA."""
+        return aplicacion.state.store_base.parent
 
     def ctx(**extra: Any) -> dict[str, Any]:
-        datos: dict[str, Any] = {"demo": demo, "runner": estado, "drills": drills}
+        datos: dict[str, Any] = {
+            "demo": demo,
+            "runner": estado,
+            "drills": drills,
+            "nombres_rung": NOMBRES_RUNG,
+            "nombres_extractor": NOMBRES_EXTRACTOR,
+            "nombres_stage": NOMBRES_STAGE,
+            "nombres_drill": NOMBRES_DRILL,
+            "glosario": GLOSARIO,
+        }
         datos.update(extra)
         return datos
 
@@ -123,11 +256,45 @@ def create_app(
             )
 
     @aplicacion.get("/", response_class=HTMLResponse)
+    @aplicacion.get("/", response_class=HTMLResponse)
     def operaciones(request: Request):
+        stats = stats_por_rung(aplicacion.state.registros)
+        vlm = stats_vlm(aplicacion.state.registros, cache_root=_cache_root())
+        sondea = _sonda_con_cache()
+        if aplicacion.state.pendiente is None:
+            aplicacion.state.pendiente = _pendiente_alberto(_store_root())
         return _TEMPLATES.TemplateResponse(
             request,
             "operaciones.html",
-            ctx(resumen=ops_summary(aplicacion.state.view)),
+            ctx(
+                resumen=ops_summary(aplicacion.state.view),
+                escalera=stats["ventanas"],
+                vlm=vlm,
+                llama=sondea,
+                pendiente=aplicacion.state.pendiente,
+            ),
+        )
+
+    @aplicacion.get("/ayuda", response_class=HTMLResponse)
+    def ayuda(request: Request):
+        return _TEMPLATES.TemplateResponse(request, "ayuda.html", ctx())
+
+    @aplicacion.get("/resumen-ejecutivo", response_class=HTMLResponse)
+    def resumen_ejecutivo(request: Request):
+        """«¿Qué pago hoy y por qué?» — se genera y se muestra, sin terminal."""
+        try:
+            maestro = _maestro_para_resumen()
+            datos = datos_resumen(_store_root(), maestro) if maestro else None
+        except Exception:  # noqa: BLE001 — degrada con aviso, no rompe
+            datos = None
+        if not datos:
+            return _TEMPLATES.TemplateResponse(
+                request,
+                "resumen_ejecutivo.html",
+                ctx(datos=None, error="No pude generar el resumen: falta el maestro de proveedores en este nodo."),
+            )
+        return _TEMPLATES.TemplateResponse(
+            request, "resumen_ejecutivo.html", ctx(datos=datos)
         )
 
     @aplicacion.get("/facturas", response_class=HTMLResponse)
@@ -214,7 +381,36 @@ def create_app(
                 cuando=time.strftime("%Y-%m-%d %H:%M:%S"),
             )
         )
+        # telemetría: el evento de corrección queda en la cadena encadenada
+        try:
+            EventChain(_ruta_actividad()).append(
+                "override-revision",
+                {"invoice_id": invoice_id, "file_id": file_id, "campo": campo},
+            )
+        except OSError:
+            pass  # la telemetría nunca bloquea la revisión
         return RedirectResponse("/revision", status_code=303)
+
+    @aplicacion.get("/actividad", response_class=HTMLResponse)
+    def actividad(request: Request):
+        cadena = EventChain(_ruta_actividad())
+        return _TEMPLATES.TemplateResponse(
+            request,
+            "actividad.html",
+            ctx(
+                eventos=cadena.leer()[-50:],
+                integridad=cadena.verificar(),
+                total=len(cadena.leer()),
+            ),
+        )
+
+    @aplicacion.post("/actividad/anotar")
+    async def actividad_anotar(nota: str = Form(...)):
+        EventChain(_ruta_actividad()).append(
+            "anotacion-humana",
+            {"nota": nota, "quien": "alberto-ui"},
+        )
+        return RedirectResponse("/actividad", status_code=303)
 
     @aplicacion.get("/reglas", response_class=HTMLResponse)
     def reglas(request: Request, codigo: str = "", nuevo_umbral: str = ""):

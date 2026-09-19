@@ -3,6 +3,9 @@
 {% block titulo %}Revisión · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Revisión</h1>
+<p><em>Aquí decides tú: cada factura espera tu veredicto con la foto de la
+página al lado. Guardar una corrección no rompe nada — el sistema recalcula
+y deja tu cambio sellado.</em></p>
 <p>Casos marcados para revisión humana. Puedes resolverlos con calma: el resto
 del lote sigue funcionando mientras tanto. Tu corrección se guarda con quién,
 cuándo y qué cambió; la decisión final la recalcula siempre el motor de reglas.</p>
@@ -60,7 +63,8 @@ página {{ pagina }} de {{ n_paginas }}.
             <option value="{{ cand.value }}">{% endfor %}{% endfor %}
         </datalist><br>
         <label>Nota (opcional):<br><input name="nota" size="30"></label><br>
-        <button type="submit">Guardar corrección</button>
+        <button type="submit"
+  onclick="return confirm('¿Guardar esta corrección? La decisión de esta factura se recalculará con tu dato (queda sellado con fecha).');">Guardar corrección</button>
       </form>
     </div>
   </div>

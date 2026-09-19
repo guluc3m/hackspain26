@@ -83,6 +83,12 @@ def generar_datos(metrics_dir: Path | None = None,
     metrics = _json(base / "metrics.json")
     drill_live = _json(base / "drill-rung4-live.json")
     _ = drill_live  # la resiliencia se cita en 'decisiones' (drill EN VIVO T24)
+    # store configurable: el local (.sdd/store.db) o el del lote 1 real (symlink SOLO LECTURA)
+    store_db = (
+        Path(".sdd/store.db")
+        if Path(".sdd/store.db").exists()
+        else Path(".sdd/lote1/store.db")
+    )
 
     rutas = dry.get("rutas", {})
     texto_usable = rutas.get("rung1_pdf_text", "471")
@@ -194,7 +200,7 @@ def generar_datos(metrics_dir: Path | None = None,
             },
             "fuentes": "todo desde .sdd/metrics/ (lote1, corpus-dryrun, drills, impacto, metrics)",
         },
-        "traza": _traza_real(Path(".sdd/store.db")),
+        "traza": _traza_real(store_db),
         "cierre": {
             "entregables": [
                 "outcomes.jsonl (500/500 validado)",

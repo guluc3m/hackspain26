@@ -3,6 +3,9 @@
 {% block titulo %}Reglas · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Reglas</h1>
+<p><em>Las reglas son las comprobaciones que decide el sistema (por ejemplo,
+«los totales deben cuadrar»). Aquí puedes verlas y probar cambios sin
+romper nada.</em></p>
 <p>Versión activa:
   {% if activas.version %}<strong>{{ activas.version }}</strong> {{ m.etq('medido') }}
   {% else %}aún sin decisiones registradas{% endif %}</p>

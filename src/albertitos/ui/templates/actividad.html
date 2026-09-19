@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block titulo %}Actividad · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Actividad (trazabilidad encadenada)</h1>
+<p>Log de eventos continuo: cada evento sella el hash del anterior
+(<code>hash = sha256(hash_anterior + evento)</code>). Si alguien manipula un
+evento intermedio, la verificación lo delata.</p>
+
+{% if integridad.integra %}
+<div class="tarjeta">✅ Cadena íntegra: <strong>{{ integridad.n }}</strong>
+evento(s) verificados {{ m.etq('medido') }} — recalculada con
+<code>sha256(hash_anterior + evento)</code>.</div>
+{% else %}
+<div class="tarjeta desacuerdo">⚠️ <strong>ROJO</strong>: cadena rota en el
+evento seq={{ integridad.roto_en_seq }} — la manipulación queda delatada.</div>
+{% endif %}
+
+<h2>Últimos eventos ({{ eventos | length }} de {{ total }})</h2>
+<table>
+  <tr><th>Seq</th><th>Cuándo</th><th>Evento</th><th>Detalle</th><th>Hash</th></tr>
+  {% for e in eventos | reverse %}
+  <tr>
+    <td>{{ e.seq }}</td><td>{{ e.ts }}</td><td>{{ e.evento }}</td>
+    <td>{% for k, v in e.detalle | dictsort %}<em>{{ k }}</em>: {{ v }} {% endfor %}</td>
+    <td><code>{{ e.hash[:12] }}…</code> ← <code>{{ e.prev_hash[:8] }}…</code></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">Sin eventos todavía. La cadena se alimenta con las
+  correcciones de Revisión y anotaciones manuales.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Anotar algo (queda en la cadena)</h2>
+<form method="post" action="/actividad/anotar">
+  <label>Nota: <input name="nota" size="40" required></label>
+  <button type="submit"
+  onclick="return confirm('¿Anotar en el registro sellado? La nota quedará guardada para siempre.');">Anotar</button>
+</form>
+<p class="peq">La cadena vive en <code>.sdd/telemetria/actividad.jsonl</code>
+(telemetría de la UI, jamás dentro del store). Se puede verificar con
+<code>EventChain.verificar()</code>.</p>
+{% endblock %}

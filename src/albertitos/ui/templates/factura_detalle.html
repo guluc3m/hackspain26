@@ -3,6 +3,8 @@
 {% block titulo %}Factura · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Factura: {{ decision.file_id if decision else invoice_id }}</h1>
+<p><em>Toda la historia de esta factura: qué leyó el sistema, qué reglas la
+decidieron y por qué. Los códigos exactos se ven al pasar el ratón.</em></p>
 {% if decision %}
 <p>Resultado:
   <span class="{{ decision.result }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar a revisión'}.get(decision.result, decision.result) }}</span>
@@ -34,7 +36,8 @@ trabajando en ella.</p>
       <th>Confianza</th><th>Resultado</th><th>Detalle</th></tr>
   {% for e in evidencia %}
   <tr>
-    <td>{{ e.stage }}</td><td><code>{{ e.extractor }}</code></td>
+    <td title="código técnico: {{ e.stage }}">{{ nombres_stage[e.stage] if e.stage in nombres_stage else e.stage }}</td>
+    <td title="código técnico: {{ e.extractor }}">{{ nombres_extractor[e.extractor] if e.extractor in nombres_extractor else e.extractor }}</td>
     <td>{{ e.extractor_version }}</td>
     <td>{{ e.latency_ms }} ms {{ m.etq('medido') }}</td>
     <td>{% if e.confidence is not none %}{{ '%.2f'|format(e.confidence) }}{% else %}—{% endif %}</td>
