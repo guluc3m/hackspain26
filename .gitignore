@@ -41,6 +41,9 @@ dist/
 .sdd/tessdata/
 .sdd/drills/
 .sdd/metrics
+# registros de CIERRE de entrega (sí se commitan: son el acta, no estado)
+!.sdd/metrics/entrega.json
+!.sdd/metrics/simulacro.json
 
 # T21: sandbox de la simulación del lote 2 y tmp de tests (estado, no código)
 .sdd/lote2-sim/

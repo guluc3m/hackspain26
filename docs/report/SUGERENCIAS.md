@@ -1,4 +1,12 @@
-<<<<<<< HEAD
+# SUGERENCIAS.md — mejoras pendientes (apéndice colectivo, T33)
+
+Apéndice colectivo: cada worker AÑADE entradas al final; nunca reescribe las
+de otros. Formato: título + categoría · problema con evidencia citada ·
+propuesta y coste · por qué NO se implementó ya · prioridad y responsable.
+
+---
+
+
 # SUGERENCIAS — apéndice colectivo (workers ociosos → ideas grandes)
 
 Cada worker AÑADE entradas (nunca reescribe las de otros). Formato: título,
@@ -135,15 +143,8 @@ implementa con ticket propio; lo grande/riesgoso vive aquí.
 - **Coste**: ~20 líneas en run.py. **Por qué NO**: toca el runner (W2) y el
   esquema de estado en pleno ciclo de entrega; riesgo bajo pero alcance de W2.
 - **Prioridad**: media. **Quién**: W2.
-=======
-# SUGERENCIAS.md — mejoras pendientes (apéndice colectivo, T33)
-
-Apéndice colectivo: cada worker AÑADE entradas al final; nunca reescribe las
-de otros. Formato: título + categoría · problema con evidencia citada ·
-propuesta y coste · por qué NO se implementó ya · prioridad y responsable.
 
 ---
-
 
 ## · Drill en vivo: carrera de timing bajo carga (flake medido) — W2
 
@@ -270,4 +271,3 @@ propuesta y coste · por qué NO se implementó ya · prioridad y responsable.
   además el render ya está verificado y no quiero re-renderizar antes de la
   entrega sin necesidad.
 - **Prioridad**: baja. Quién: W2 (con Alberto decidiendo si entra en la defensa).
->>>>>>> worker/w2
