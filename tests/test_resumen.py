@@ -68,7 +68,6 @@ def test_totales_son_la_suma_exacta_de_los_pagar(escenario: dict[str, Path]):
     datos = datos_resumen(escenario["store"], escenario["maestro"])
     assert datos["pago"]["n"]["valor"] == "3"  # A, B, C (C sin importe)
     assert datos["pago"]["total_eur"]["valor"] == "11,176.16 EUR"  # 4635.26 + 6540.90
-    assert datos["pago"]["total_eur"]["etiqueta"] == "medido"
     assert datos["pago"]["sin_importe"] == ["C.pdf"]  # avisado, nunca inventado
     # top10 ordenado por importe desc
     top = datos["pago"]["top10"]
@@ -135,7 +134,6 @@ def test_sin_datos_placeholder_no_ceros_falsos():
         datos = datos_resumen(vacio, FIXTURES / "maestro_fixture.xlsx")
         assert datos["pago"]["n"]["valor"] == "0"
         assert "PENDIENTE" in datos["pago"]["total_eur"]["valor"]
-        assert datos["pago"]["total_eur"]["etiqueta"] == "sin datos"
         generar_resumen(vacio, FIXTURES / "maestro_fixture.xlsx", vacio / "resumen")
         texto = (vacio / "resumen.html").read_text(encoding="utf-8")
         assert "PENDIENTE: sin importes" in texto
@@ -161,7 +159,6 @@ def test_plan_riesgo_sumas_acumuladas_exactas(escenario: dict[str, Path]):
     datos = datos_resumen(escenario["store"], escenario["maestro"])
     riesgo = datos["riesgo"]
     assert riesgo["total_en_riesgo_eur"]["valor"] == "6,540.90 EUR"
-    assert riesgo["total_en_riesgo_eur"]["etiqueta"] == "medido"
     assert riesgo["sin_importe"] == 1  # H: sin pedido en el maestro
     plan = riesgo["plan"]
     assert [p["file_id"] for p in plan] == ["G.pdf"]
@@ -169,7 +166,6 @@ def test_plan_riesgo_sumas_acumuladas_exactas(escenario: dict[str, Path]):
     assert plan[0]["pct_acumulado"] == 100.0  # única con importe ⇒ cubre el 100 %
     # para cubrir el 80 % del riesgo basta la primera (6540.90 ≥ 0.8·6540.90)
     assert riesgo["para_cubrir_80_pct"]["valor"] == "1"
-    assert riesgo["para_cubrir_80_pct"]["etiqueta"] == "medido"
 
 
 def test_plan_riesgo_matematica_exacta(escenario: dict[str, Path]):
@@ -220,6 +216,5 @@ def test_plan_riesgo_sin_datos_placeholder(escenario: dict[str, Path]):
     """Sin importes ⇒ PENDIENTE honesto, jamás '0 EUR' fingido."""
     datos = datos_resumen(Path(".sdd/pytest-tmp/resumen-vacio"), escenario["maestro"])
     assert "PENDIENTE" in datos["riesgo"]["total_en_riesgo_eur"]["valor"]
-    assert datos["riesgo"]["total_en_riesgo_eur"]["etiqueta"] == "sin datos"
     assert datos["riesgo"]["plan"] == []
     assert datos["riesgo"]["para_cubrir_80_pct"]["valor"] == "PENDIENTE"

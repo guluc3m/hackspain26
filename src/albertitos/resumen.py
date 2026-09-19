@@ -8,7 +8,7 @@ Reglas duras:
 - Datos medidos, cero hardcodeo: los totales son la suma exacta de los
   importes del maestro para los PAGAR; lo que no esté en el maestro se
   declara (avisos), jamás se inventa. Sin datos ⇒ PENDIENTE, no ceros falsos.
-- Todo con etiqueta medido/estimado y fuentes al pie.
+- Todo con los números a secas y fuentes al pie.
 - Lenguaje llano: los códigos de regla se traducen a frases de Alberto.
 
     uv run python -m albertitos.resumen [--store-root .sdd/lote1] \
@@ -194,8 +194,8 @@ def datos_resumen(store_root: Path | str, maestro_path: Path | str) -> dict[str,
         if d["result"] == "ESCALAR" and "RUNNER_TIMEOUT" in str(d.get("rule_codes", ""))
     ]
 
-    def pareja(valor: Any, etiqueta: str) -> dict[str, Any]:
-        return {"valor": str(valor), "etiqueta": etiqueta}
+    def pareja(valor: Any) -> dict[str, Any]:
+        return {"valor": str(valor)}
 
     return {
         "generado": time.strftime("%Y-%m-%d %H:%M"),
@@ -205,34 +205,33 @@ def datos_resumen(store_root: Path | str, maestro_path: Path | str) -> dict[str,
             "nota": "SOLO LECTURA — el resumen no decide ni toca el store",
         },
         "pago": {
-            "n": {"valor": str(n_pagar), "etiqueta": "medido"},
+            "n": {"valor": str(n_pagar)},
             "total_eur": (
-                {"valor": f"{total_eur:,.2f} EUR", "etiqueta": "medido"}
+                {"valor": f"{total_eur:,.2f} EUR"}
                 if pagados
-                else {"valor": "PENDIENTE (sin importes en el maestro)", "etiqueta": "sin datos"}
+                else {"valor": "PENDIENTE (sin importes en el maestro)"}
             ),
             "top10": pagados[:10],
             "sin_importe": sin_importe,
         },
         "no_pago": {
-            "n": {"valor": str(n_no_pago), "etiqueta": "medido"},
+            "n": {"valor": str(n_no_pago)},
             "motivos": dict(sorted(no_pago.items(), key=lambda kv: -kv[1]["n"])),
         },
         "revisar": {
-            "n": {"valor": str(len(por_revisar)), "etiqueta": "medido"},
+            "n": {"valor": str(len(por_revisar))},
             "lista": por_revisar,
         },
         "riesgo": {
             "total_en_riesgo_eur": (
-                {"valor": f"{riesgo_total:,.2f} EUR", "etiqueta": "medido"}
+                {"valor": f"{riesgo_total:,.2f} EUR"}
                 if con_importe
-                else {"valor": "PENDIENTE (sin importes en el maestro)", "etiqueta": "sin datos"}
+                else {"valor": "PENDIENTE (sin importes en el maestro)"}
             ),
             "sin_importe": sin_importe_n,
             "plan": plan,
             "para_cubrir_80_pct": {
                 "valor": str(n_para_80) if riesgo_total else "PENDIENTE",
-                "etiqueta": "medido" if riesgo_total else "sin datos",
                 "nota": "mínimo de facturas a revisar (por importe) para cubrir el 80 % del dinero en riesgo",
             },
         },
@@ -263,8 +262,8 @@ def _typ(datos: dict[str, Any]) -> str:
         f"Generado: {datos['generado']} · fuentes: {datos['fuentes']['store']} (SOLO LECTURA)",
         "",
         "== 1 · Hoy se pagan",
-        f"Facturas: {datos['pago']['n']['valor']} (#text(fill: green)[{datos['pago']['n']['etiqueta']}])",
-        f"TOTAL: {datos['pago']['total_eur']['valor']} ({datos['pago']['total_eur']['etiqueta']})",
+        f"Facturas: {datos['pago']['n']['valor']}",
+        f"TOTAL: {datos['pago']['total_eur']['valor']}",
         "",
         "Top 10 por importe:",
         "",
@@ -286,7 +285,7 @@ def _typ(datos: dict[str, Any]) -> str:
     lineas += [
         "",
         "== 2 · No se pagan",
-        f"Total NO_PAGAR: {datos['no_pago']['n']['valor']} ({datos['no_pago']['n']['etiqueta']})",
+        f"Total NO_PAGAR: {datos['no_pago']['n']['valor']}",
     ]
     for motivo, g in datos["no_pago"]["motivos"].items():
         lineas.append(f"- {motivo} — {g['n']} factura(s). Ejemplos: {', '.join(g['ejemplos'])}")
@@ -299,7 +298,7 @@ def _typ(datos: dict[str, Any]) -> str:
     lineas += [
         "",
         "Plan por dinero en riesgo",
-        f"Total en juego: {datos['riesgo']['total_en_riesgo_eur']['valor']} ({datos['riesgo']['total_en_riesgo_eur']['etiqueta']})",
+        f"Total en juego: {datos['riesgo']['total_en_riesgo_eur']['valor']}",
         f"Las {datos['riesgo']['para_cubrir_80_pct']['valor']} primeras por importe cubren el 80 % del riesgo.",
         "",
         "#table(",

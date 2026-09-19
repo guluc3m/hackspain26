@@ -108,7 +108,7 @@ def test_stats_vlm_por_componente(registros):
     r5 = vlm["rung5_cloud"]
     # 1 llamada emitida, 0 cacheadas ⇒ facturable 1 × precio
     assert r5["n_invocaciones"] == 1 and r5["cache_miss"] == 1
-    assert r5["coste_eur"]["etiqueta"] == "medido×precio estimado"
+    assert r5["coste_eur"]["valor"] == "0.0040 EUR"
     # con 1 invocación sin truncado ⇒ 0.0 % MEDIDO (no None)
     assert r5["tasa_truncado"] == 0.0
 
@@ -131,7 +131,6 @@ def test_stats_vlm_cache_y_truncado(registros):
 def test_stats_vlm_sin_datos(registros):
     vacio = [r for r in registros if "rung4" not in r["stage"] and "rung5" not in r["stage"]]
     vlm = stats_vlm(vacio)
-    assert vlm["rung4_llama_server"]["etiqueta"] == "sin datos"
     assert vlm["rung4_llama_server"]["n_invocaciones"] == 0
 
 
@@ -140,7 +139,7 @@ def test_stats_vlm_sin_datos(registros):
 
 def test_sonda_down_no_inventa():
     s = sonda_llama("http://127.0.0.1:1", timeout_s=0.5)
-    assert s["estado"] == ("down", "medido")
+    assert s["estado"] == "down"
     assert "modelo" not in s  # sin datos, jamás ceros falsos
 
 
@@ -201,7 +200,6 @@ def test_operaciones_con_escalera_y_actividad():
     r = c.get("/")
     assert r.status_code == 200
     assert "¿Quién lee cada factura" in r.text and "Los lectores con IA" in r.text
-    assert "medido" in r.text
     # pantalla Actividad con la cadena
     r2 = c.get("/actividad")
     assert r2.status_code == 200 and "Cadena íntegra" in r2.text

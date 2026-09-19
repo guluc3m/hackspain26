@@ -12,12 +12,11 @@ de proveedores. Fuentes: <code>{{ datos.fuentes.store }}</code> y
 <h2>1 · Hoy se pagan</h2>
 <div class="tarjeta">
   <div class="num">{{ datos.pago.n.valor }}</div>
-  <div>facturas con todas las reglas en verde
-    <span class="etq {{ datos.pago.n.etiqueta }}">{{ datos.pago.n.etiqueta }}</span></div>
+  <div>facturas con todas las reglas en verde</div>
 </div>
 <div class="tarjeta">
   <div class="num">{{ datos.pago.total_eur.valor }}</div>
-  <div>TOTAL a pagar <span class="etq {{ datos.pago.total_eur.etiqueta }}">{{ datos.pago.total_eur.etiqueta }}</span></div>
+  <div>TOTAL a pagar</div>
 </div>
 {% if datos.pago.top10 %}
 <table>

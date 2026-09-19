@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Reglas · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Reglas</h1>
@@ -7,14 +6,14 @@
 «los totales deben cuadrar»). Aquí puedes verlas y probar cambios sin
 romper nada.</em></p>
 <p>Versión activa:
-  {% if activas.version %}<strong>{{ activas.version }}</strong> {{ m.etq('medido') }}
+  {% if activas.version %}<strong>{{ activas.version }}</strong>
   {% else %}aún sin decisiones registradas{% endif %}</p>
 
 <h2>Umbrales de confianza vigentes</h2>
 <table>
   <tr><th>Regla</th><th>Umbral</th></tr>
   {% for cod, umbral in activas.umbrales | dictsort %}
-  <tr><td><code>{{ cod }}</code></td><td>{{ umbral }} {{ m.etq('medido') }}</td></tr>
+  <tr><td><code>{{ cod }}</code></td><td>{{ umbral }}</td></tr>
   {% else %}
   <tr><td colspan="2">Sin umbrales registrados todavía.</td></tr>
   {% endfor %}
@@ -49,7 +48,7 @@ la decisión real la recalcula el motor al reprocesar).</p>
     <td><a href="/facturas/{{ c.invoice_id }}">{{ c.file_id }}</a></td>
     <td>{{ c.antes }}</td>
     <td><strong>{{ c.despues }}</strong></td>
-    <td>{{ '%.2f'|format(c.confianza) }} {{ m.etq('medido') }}</td>
+    <td>{{ '%.2f'|format(c.confianza) }}</td>
     <td>{{ c.umbral_actual }}</td>
   </tr>
   {% endfor %}

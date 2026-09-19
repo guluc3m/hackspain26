@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Salud · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Salud del sistema</h1>
@@ -8,15 +7,13 @@ funcionando por otra vía. Un problema aquí no impide trabajar.</em></p>
 {% if runner %}
 <div class="tarjeta">
   <strong>Rung 4 — llama-server (127.0.0.1:8080)</strong>: estado
-  <strong>{{ runner.rung4_llama_server[0] }}</strong> · serializado:
-  {{ runner.rung4_secuencial[0] }} · engine {{ runner.engine_version[0] }}
-  · <span class="etq {{ runner.rung4_llama_server[1].split()[0] }}">{{ runner.rung4_llama_server[1] }}</span>
+  <strong>{{ runner.rung4_llama_server }}</strong> · serializado:
+  {{ runner.rung4_secuencial }} · engine {{ runner.engine_version }}
 </div>
 {% endif %}
 {% if drills %}
 <div class="tarjeta">
-  <strong>Drills de resiliencia (T12)</strong> — {{ drills.resumen[0] }}
-  <span class="etq {{ 'medido' if 'fail: 0' not in drills.resumen[0] else 'medido' }}">{{ drills.resumen[1] }}</span>
+  <strong>Drills de resiliencia (T12)</strong> — {{ drills.resumen }}
   <ul>
     {% for nombre, estado in drills.por_nombre %}
     <li title="nombre del ensayo: {{ nombre }}">{{ nombres_drill[nombre] if nombre in nombres_drill else nombre }} — <strong>{{ estado }}</strong></li>
@@ -33,7 +30,7 @@ funcionando por otra vía. Un problema aquí no impide trabajar.</em></p>
   {% else %}
   <strong>correcto</strong>: sin fallos de proveedor ni extractores ausentes.
   {% endif %}
-  {{ m.etq('medido') }}</p>
+</p>
 
 <h2>Fallos de proveedor / ERP</h2>
 <table>
@@ -52,7 +49,7 @@ funcionando por otra vía. Un problema aquí no impide trabajar.</em></p>
   <tr><th>Factura</th><th>Fase</th><th>Extractor</th><th>Intentos</th></tr>
   {% for r in estado.reintentos %}
   <tr><td>{{ r.invoice_id }}</td><td>{{ r.stage }}</td>
-      <td title="código técnico: {{ r.extractor }}">{{ nombres_extractor[r.extractor] if r.extractor in nombres_extractor else r.extractor }}</td><td>{{ r.veces }} {{ m.etq('medido') }}</td></tr>
+      <td title="código técnico: {{ r.extractor }}">{{ nombres_extractor[r.extractor] if r.extractor in nombres_extractor else r.extractor }}</td><td>{{ r.veces }}</td></tr>
   {% else %}
   <tr><td colspan="4">Sin reintentos.</td></tr>
   {% endfor %}

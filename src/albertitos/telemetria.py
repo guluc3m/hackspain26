@@ -114,7 +114,6 @@ def stats_por_rung(
                 "pct_filas": (
                     round(100 * g["n"] / total_filas, 1) if total_filas else None
                 ),
-                "etiqueta": "medido" if g["n"] else "sin datos",
             }
         return {"rungs": salida, "total_filas": total_filas}
 
@@ -136,7 +135,6 @@ def stats_por_rung(
             "historico": _stat(evidencia),
         },
         "ventanas_nota": ventanas,
-        "etiqueta": "medido",
     }
 
 
@@ -194,16 +192,15 @@ def stats_vlm(
             ),
             "tokens_registrados": len(tokens) if tokens else 0,
             "coste_eur": (
-                {"valor": f"{facturables * precio:.4f} EUR", "etiqueta": "medido×precio estimado"}
+                {"valor": f"{facturables * precio:.4f} EUR"}
                 if rungs[0] == "rung5"
-                else {"valor": "0.0000 EUR (local)", "etiqueta": "medido"}
+                else {"valor": "0.0000 EUR (local)"}
             ),
-            "etiqueta": "medido" if filas else "sin datos",
         }
     # cache real por (page_sha256, engine, config_version): ficheros en el dir
     if cache_root is not None and Path(cache_root).is_dir():
         n_cache = sum(1 for _ in Path(cache_root).rglob("*.json"))
-        out["cache_paginas_almacenadas"] = {"valor": str(n_cache), "etiqueta": "medido"}
+        out["cache_paginas_almacenadas"] = {"valor": str(n_cache)}
     return out
 
 
@@ -214,17 +211,17 @@ def sonda_llama(base_url: str = "http://127.0.0.1:8080", timeout_s: float = 2.0)
     """Sondea /health, /props y /metrics del sidecar. Down ⇒ «sin datos»."""
     import httpx
 
-    out: dict[str, Any] = {"url": base_url, "estado": ("down", "medido")}
+    out: dict[str, Any] = {"url": base_url, "estado": "down"}
     try:
         r = httpx.get(f"{base_url}/health", timeout=timeout_s)
         if r.status_code != 200:
             return out
     except httpx.HTTPError:
         return out
-    out["estado"] = ("up", "medido")
+    out["estado"] = "up"
     props = _cargar_json_url(f"{base_url}/props", timeout_s)
     if props:
-        out["modelo"] = {"valor": str(props.get("model", "—")), "etiqueta": "medido"}
+        out["modelo"] = str(props.get("model", "—"))
     metrics = _texto_url(f"{base_url}/metrics", timeout_s)
     if metrics:
         contadores = {}
@@ -234,10 +231,10 @@ def sonda_llama(base_url: str = "http://127.0.0.1:8080", timeout_s: float = 2.0)
             if m:
                 contadores[clave.split(":")[1]] = float(m.group(1))
         if contadores:
-            out["contadores"] = {"valor": contadores, "etiqueta": "medido (/metrics Prometheus)"}
+            out["contadores"] = contadores
         cola = re.search(r"llamacpp:requests_processing\s+(\S+)", metrics)
         if cola:
-            out["cola_rung4"] = {"valor": cola.group(1), "etiqueta": "medido"}
+            out["cola_rung4"] = cola.group(1)
     return out
 
 

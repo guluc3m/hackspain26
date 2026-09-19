@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Operaciones · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Operaciones</h1>
@@ -13,56 +12,52 @@ derecha.</em></p>
     {% if pendiente and pendiente.n is not none %}
     <div class="num">{{ pendiente.n.valor }}</div>
     <div>facturas esperan tu decisión
-      {% if pendiente.euros and pendiente.euros.etiqueta == 'medido' %}
+      {% if pendiente.euros and 'PENDIENTE' not in pendiente.euros.valor %}
       — <strong>{{ pendiente.euros.valor }}</strong> en juego
-      {% endif %}
-      <span class="etq {{ pendiente.n.etiqueta }}">{{ pendiente.n.etiqueta }}</span></div>
+      {% endif %}</div>
     <p><a href="/revision"><strong>Revisarlas →</strong></a> (con la foto de la página y las lecturas lado a lado)</p>
     {% else %}
     <div class="num">—</div>
-    <div>{{ pendiente.nota if pendiente else 'PENDIENTE: sin datos' }}
-      <span class="etq sin">sin datos</span></div>
+    <div>{{ pendiente.nota if pendiente else 'PENDIENTE: sin datos' }}</div>
     {% endif %}
   </div>
   {% if pendiente and pendiente.pagado_n is defined and pendiente.pagado_n is not none %}
   <div class="tarjeta"><div class="num">{{ pendiente.pagado_total.valor }}</div>
-    <div>se pagarán por {{ pendiente.pagado_n.valor }} facturas
-      <span class="etq {{ pendiente.pagado_n.etiqueta }}">{{ pendiente.pagado_n.etiqueta }}</span></div>
+    <div>se pagarán por {{ pendiente.pagado_n.valor }} facturas</div>
     <p><a href="/resumen-ejecutivo"><strong>Ver mi resumen del día</strong></a> (¿qué pago hoy y por qué?)</p></div>
   <div class="tarjeta"><div class="num">{{ pendiente.no_pago_n.valor }}</div>
-    <div>no se pagan (motivo registrado)
-      <span class="etq {{ pendiente.no_pago_n.etiqueta }}">{{ pendiente.no_pago_n.etiqueta }}</span></div>
+    <div>no se pagan (motivo registrado)</div>
     <p><a href="/facturas?result=NO_PAGAR">Ver las facturas no pagadas</a></p></div>
   {% endif %}
 </div>
 
 {% if runner %}
 <div class="tarjeta">
-  <strong>Estado del runner (lote 1, medido)</strong> — actualizado {{ runner.actualizado[0] }}
+  <strong>Estado del runner (lote 1)</strong> — actualizado {{ runner.actualizado }}
   <div class="fila">
-    <div>Procesados: {{ runner.done[0] }} / {{ runner.total[0] }} {{ m.etq(runner.done[1]) }}</div>
-    <div>Fallos: {{ runner.fallos[0] }} {{ m.etq(runner.fallos[1]) }}</div>
-    <div>Pendientes: {{ runner.pendientes[0] }} {{ m.etq(runner.pendientes[1]) }}</div>
-    <div>Throughput: {{ runner.files_per_second[0] }} archivos/s {{ m.etq(runner.files_per_second[1]) }}</div>
-    <div>Reglas: {{ runner.config_version[0] }} {{ m.etq(runner.config_version[1]) }}</div>
-    <div>Rung 4: llama-server {{ runner.rung4_llama_server[0] }} · serializado: {{ runner.rung4_secuencial[0] }} <span class="etq estimado">{{ runner.rung4_llama_server[1] }}</span></div>
+    <div>Procesados: {{ runner.done }} / {{ runner.total }}</div>
+    <div>Fallos: {{ runner.fallos }}</div>
+    <div>Pendientes: {{ runner.pendientes }}</div>
+    <div>Throughput: {{ runner.files_per_second }} archivos/s</div>
+    <div>Reglas: {{ runner.config_version }}</div>
+    <div>Rung 4: llama-server {{ runner.rung4_llama_server }} · serializado: {{ runner.rung4_secuencial }}</div>
   </div>
 </div>
 {% endif %}
 <div class="fila">
   <div class="tarjeta"><div>Facturas decididas</div>
-    <div class="num">{{ resumen.total }}</div><div>{{ m.etq('medido') }}</div></div>
+    <div class="num">{{ resumen.total }}</div></div>
   <div class="tarjeta"><div>En espera de decisión</div>
-    <div class="num">{{ resumen.pendientes }}</div><div>{{ m.etq('medido') }}</div></div>
+    <div class="num">{{ resumen.pendientes }}</div></div>
   <div class="tarjeta"><div>Tiempo medio por página</div>
     <div class="num">{% if resumen.ms_por_pagina %}{{ resumen.ms_por_pagina }} ms{% else %}—{% endif %}</div>
-    <div>{% if resumen.ms_por_pagina %}{{ m.etq('medido') }}{% else %}{{ m.etq('sin datos') }} — el runner real no registra latencia por página en este ledger{% endif %}</div></div>
+    <div>{% if not resumen.ms_por_pagina %}sin datos — el runner real no registra latencia por página en este ledger{% endif %}</div></div>
   <div class="tarjeta"><div>Coste acumulado</div>
     <div class="num">{% if resumen.coste_eur is not none %}{{ '%.2f'|format(resumen.coste_eur) }} €{% else %}sin datos{% endif %}</div>
-    <div>{% if resumen.n_registros_coste %}{{ m.etq('medido') }}{% else %}{{ m.etq('estimado') }} — sin registros de coste en este ledger{% endif %}</div></div>
+    <div>{% if not resumen.n_registros_coste %}sin datos — sin registros de coste en este ledger{% endif %}</div></div>
   <div class="tarjeta"><div>Versión de reglas activa</div>
-    <div class="num">{% if resumen.rule_set_version %}{{ resumen.rule_set_version }}{% elif runner %}{{ runner.config_version[0] }}{% else %}—{% endif %}</div>
-    <div>{{ m.etq('medido') }}</div></div>
+    <div class="num">{% if resumen.rule_set_version %}{{ resumen.rule_set_version }}{% elif runner %}{{ runner.config_version }}{% else %}—{% endif %}</div>
+  </div>
 </div>
 
 
@@ -74,8 +69,7 @@ escalera son los peldaños rung 1–5 (texto/QR/OCR/VLM local/VLM nube) y las
 ventanas se calculan sobre las filas de evidencia del registro de actividad.">?
 Detalle técnico</span></p>
 {% for ventana in ['corrida_actual', 'historico'] %}
-<h3>{{ 'Corrida actual' if ventana == 'corrida_actual' else 'Histórico' }}
-  {{ m.etq('medido') }}</h3>
+<h3>{{ 'Corrida actual' if ventana == 'corrida_actual' else 'Histórico' }}</h3>
 <table>
   <tr><th>Lector</th><th>Facturas que leyó</th><th>p50</th><th>p95</th>
       <th>% filas</th><th>Descarte</th><th>Coste</th></tr>
@@ -102,26 +96,25 @@ Detalle técnico</span></p>
       <th>Cache hit/miss</th><th>Truncado</th><th>Coste</th></tr>
   {% for nombre, s in vlm | dictsort if s.n_invocaciones is defined %}
   <tr><td title="código técnico: {{ nombre }}">{{ {'rung4_llama_server': 'Lector visual (IA local)', 'rung5_cloud': 'Lector visual (IA en la nube)'}[nombre] if nombre in {'rung4_llama_server': '', 'rung5_cloud': ''} else nombre }}</td>
-      <td>{{ s.n_invocaciones }} {{ m.etq(s.etiqueta if s.etiqueta in ['medido'] else 'sin datos') }}</td>
+      <td>{{ s.n_invocaciones }}</td>
       <td>{% if s.latencia_media_ms is not none %}{{ s.latencia_media_ms }} ms{% else %}—{% endif %}</td>
       <td>{% if s.latencia_max_ms is not none %}{{ s.latencia_max_ms }} ms{% else %}—{% endif %}</td>
       <td>{{ s.cache_hit }} / {{ s.cache_miss }}</td>
       <td>{% if s.tasa_truncado is not none %}{{ s.tasa_truncado }} %{% else %}sin datos{% endif %}</td>
-      <td>{{ s.coste_eur.valor }} <span class="etq {{ s.coste_eur.etiqueta if s.coste_eur.etiqueta in ['medido', 'estimado'] else 'sin datos' }}">{{ s.coste_eur.etiqueta }}</span></td></tr>
+      <td>{{ s.coste_eur.valor }}</td></tr>
   {% endfor %}
 </table>
 {% if vlm.cache_paginas_almacenadas %}<p class="peq">Páginas en caché
-(page_sha256 × engine × config_version): {{ vlm.cache_paginas_almacenadas.valor }}
-{{ m.etq('medido') }}.</p>{% endif %}
+(page_sha256 × engine × config_version): {{ vlm.cache_paginas_almacenadas.valor }}.</p>{% endif %}
 
 {% if llama %}
 <h2>¿Está vivo el lector local?</h2>
 <div class="tarjeta">
-  <p>Estado: <strong>{{ llama.estado[0] }}</strong> {{ m.etq('medido') }} —
+  <p>Estado: <strong>{{ llama.estado }}</strong> —
   <code>{{ llama.url }}</code></p>
-  {% if llama.modelo %}<p>Modelo: {{ llama.modelo.valor }} {{ m.etq(llama.modelo.etiqueta) }}</p>{% endif %}
-  {% if llama.cola_rung4 %}<p>Cola rung 4: {{ llama.cola_rung4.valor }} {{ m.etq(llama.cola_rung4.etiqueta) }}</p>{% endif %}
-  {% if llama.contadores %}<p>Contadores Prometheus: {{ llama.contadores.valor }} {{ m.etq(llama.contadores.etiqueta) }}</p>{% endif %}
+  {% if llama.modelo %}<p>Modelo: {{ llama.modelo }}</p>{% endif %}
+  {% if llama.cola_rung4 %}<p>Cola rung 4: {{ llama.cola_rung4 }}</p>{% endif %}
+  {% if llama.contadores %}<p>Contadores Prometheus: {{ llama.contadores }}</p>{% endif %}
 </div>
 {% endif %}
 
@@ -130,7 +123,7 @@ Detalle técnico</span></p>
   <tr><th>Resultado</th><th>Facturas</th></tr>
   {% for r in ['PAGAR', 'NO_PAGAR', 'ESCALAR'] %}
   <tr><td class="{{ r }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar a revisión'}[r] }}</td>
-      <td>{{ resumen.conteo[r] }} {{ m.etq('medido') }}</td></tr>
+      <td>{{ resumen.conteo[r] }}</td></tr>
   {% endfor %}
 </table>
 

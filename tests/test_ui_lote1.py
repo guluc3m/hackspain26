@@ -233,8 +233,8 @@ def test_override_lote_va_al_sdd_local_jamas_al_store_externo(lote_real_formato:
 def test_estado_runner_si_existe(lote_real_formato: Path):
     e = estado_runner(lote_real_formato / "ledger")
     assert e is not None
-    assert e["done"] == ("5", "medido")
-    assert e["resultados"]["ESCALAR"] == ("2", "medido")
+    assert e["done"] == "5"
+    assert e["resultados"]["ESCALAR"] == "2"
 
 
 # ------------------------------------------- store REAL truncado (si existe)
