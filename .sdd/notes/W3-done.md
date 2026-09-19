@@ -89,3 +89,22 @@
   `uv run python -m albertitos.report_data && uv run python -m albertitos.metrics`
   y recompilar (`cd docs/report && ~/.local/bin/typst compile --font-path fonts albertitos_plan.typ`).
   El flujo data→.typ ya lee esos orígenes (tests en verde).
+
+## Sesión 6 — T16 cerrado (commit e97c2ad)
+
+- UI demo-ready contra el store REAL del lote 1: symlink `.sdd/lote1` →
+  /home/deploy/fleet/w1/.sdd (SOLO LECTURA) o `ALBERTITOS_STORE`.
+  Para la demo: `ALBERTITOS_STORE=.sdd/lote1/ledger uv run uvicorn
+  albertitos.ui.app:app` → Operaciones con estado del runner medido,
+  Facturas con filtro/búsqueda/paginación, Revisión con los escalados reales
+  (paginada, imágenes reales), Reglas v3 real, Salud con llama-server +
+  drills.
+- Lector extendido al formato real del runner (rule_codes string, event=
+  decision); overrides SIEMPRE al .sdd local, jamás al store externo.
+- Importante para quien integre: el store de W1 es objetivo móvil (al
+  cerrar T16: 515 líneas de ledger, 60 ESCALAR, 24 en cola de revisión con
+  imagen) — los tests validan consistencia interna del render, no números
+  congelados.
+- Flaky ajeno detectado: tests/test_run.py::test_archivo_con_timeout... (T8,
+  W2) falla ~1 de cada N corridas de suite por timing (verde en solitario
+  3/3); avisado en el ticket cerrado para W2.
