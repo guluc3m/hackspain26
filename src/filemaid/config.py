@@ -12,9 +12,6 @@ import yaml
 class AppConfig:
     def __init__(self, root: Path) -> None:
         self.root = root
-        self.store_path = root / "store.db"
-        self.ledger_path = root / "ledger.jsonl"
-        self.cache_dir = root / "cache"
         self.pages_dir = root / "pages"
         self.master_dir = Path(os.environ.get("FILEMAID_MASTER", "master"))
         self.rules_config_path = Path(
@@ -34,16 +31,28 @@ class AppConfig:
             "FIRECRAWL_API_URL", "https://api.firecrawl.dev/v2/parse"
         )
         self.firecrawl_api_key = os.environ.get("FIRECRAWL_API_KEY", "")
+
     @classmethod
     def load(cls) -> AppConfig:
         root = Path(os.environ.get("FILEMAID_DATA", "data"))
         return cls(root)
 
+    def runtime_settings(self) -> dict:
+        from .runtime import RuntimeSettings
+
+        return RuntimeSettings(self).get()
+
     def extraction_config(self) -> dict:
         raw = yaml.safe_load(self.extraction_config_path.read_bytes()) or {}
-        return {
-            "config_version": self.extraction_config_path.stem + ":"
-            + hashlib.sha256(self.extraction_config_path.read_bytes()).hexdigest()[:12],
+        settings = self.runtime_settings()
+        vlm_url = settings["vlm_url"]
+        config = {
+            "config_version": self.extraction_config_path.stem
+            + ":"
+            + hashlib.sha256(
+                self.extraction_config_path.read_bytes()
+                + repr((vlm_url, settings["vlm_model"])).encode()
+            ).hexdigest()[:12],
             "llama_base_url": self.llama_base_url,
             "cloud_api_key": self.cloud_api_key,
             "typesafe_api_url": self.typesafe_api_url,
@@ -54,3 +63,6 @@ class AppConfig:
             "render_scale": 2.0,
             **raw,
         }
+        config["vlm_base_url"] = vlm_url
+        config["vlm_model"] = settings["vlm_model"]
+        return config

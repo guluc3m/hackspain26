@@ -1,13 +1,13 @@
 == Implementation
-- *MongoDB (+ separate SQL)*: at this scale (hundreds of files) two engines
-  are two operational surfaces with no benefit; traceability (evidence,
-  candidates, snapshots) is relational, and SQLite + ledger covers the
-  history with trivial recovery. Dynamic fields fit JSON columns.
+- *Dos motores de persistencia*: descartados. PouchDB JS local conserva
+  evidencia, candidatos, snapshots, caché y eventos como documentos dinámicos.
+  El modo servidor replica con una base remota CouchDB sin requerir CouchDB local.
 - *Backend in Go*: the UI must write overrides and re-trigger the
   deterministic engine (Python); duplicating the engine breaks the
   byte-for-byte determinism guarantee and drifts the type contract.
 - *Astro*: aimed at content sites; this panel is a live ops dashboard
   (batch status, review queue, threshold diffs), so a reactive framework fits
   better.
-- Ledger con JSONL para estar por casa, ya cuando escale usar algo como MongoDB
-- SQLite ya escalará cuando toque escalar (PosgreSQL)
+- *Ledger externo*: descartado; los eventos append-only viven en PouchDB.
+- *Modelo VLM en cada cliente*: opcional en standalone; en modo servidor el
+  escalador centraliza el endpoint configurado, sin cambiar reglas de decisión.

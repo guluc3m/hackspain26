@@ -1,6 +1,5 @@
-"""Store: SQLite (WAL) + ledger JSONL append-only. Estado en disco, nunca en /tmp."""
+"""Store: PouchDB durable runtime persistence."""
 
-from .db import Store, open_store
-from .ledger import Ledger
+from .pouch import PouchStore
 
-__all__ = ["Ledger", "Store", "open_store"]
+__all__ = ["PouchStore"]

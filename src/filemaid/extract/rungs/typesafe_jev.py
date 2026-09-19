@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from filemaid.store.trace import capture_response
 from filemaid.types import ExtractionFeature
 
 from .context import PageContext
@@ -92,12 +93,16 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         "questions": SYSTEMONE_QUESTIONS,
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    resp = None
     try:
         resp = httpx.post(api_url, headers=headers, json=payload, timeout=timeout_sec)
         resp.raise_for_status()
         response = resp.json()
     except Exception as exc:
         return _skip(ctx, f"typesafe-error:{exc.__class__.__name__}", t0)
+    finally:
+        if resp is not None:
+            capture_response(NAME, resp)
 
     confidence = _evidence_confidence(response)
     if confidence is None:

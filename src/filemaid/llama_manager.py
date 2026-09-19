@@ -1,5 +1,5 @@
 """Sidecar llama-server (escalón 4): se arranca al pedirlo, se para a los
-5 min sin uso. Sin flags de hilos/GPU — llama.cpp usa sus defaults. Si el
+5 min sin uso. Presupuesto fijo de hilos configurable; si el
 binario o el modelo faltan, no lanza: ensure_started() devuelve False y el
 escalón degrada (skipped:...). Si ya algo escucha en la URL, se reutiliza
 y jamás se mata.
@@ -110,6 +110,8 @@ class LlamaSidecar:
             "-c", "131072",  # Contexto máximo que soporta el modelo (n_ctx_train = 131072)
             "-ctk", "q8_0",  # KV cache quantization K = q8_0
             "-ctv", "q8_0",  # KV cache quantization V = q8_0
+            "-t", str(max(1, int(os.environ.get("FILEMAID_LLAMA_THREADS", "4")))),
+            "-tb", str(max(1, int(os.environ.get("FILEMAID_LLAMA_THREADS", "4")))),
         ]
         host, _, port = self.base_url.split("//", 1)[1].partition(":")
         cmd += ["--host", host, "--port", port or "8080"]

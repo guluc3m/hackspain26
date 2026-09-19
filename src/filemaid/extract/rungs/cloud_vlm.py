@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+from filemaid.store.trace import capture_response
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
@@ -105,6 +106,7 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         "Content-Type": "application/json",
     }
 
+    resp = None
     try:
         resp = httpx.post(url, headers=headers, json=req_body, timeout=timeout_sec)
         resp.raise_for_status()
@@ -113,6 +115,9 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     except Exception as exc:
         latency_ms = int((time.monotonic() - t0) * 1000)
         return _skip(f"cloud-vlm-error:{exc.__class__.__name__}", latency_ms=latency_ms)
+    finally:
+        if resp is not None:
+            capture_response(NAME, resp)
 
     latency_ms = int((time.monotonic() - t0) * 1000)
     if not text or not text.strip():
