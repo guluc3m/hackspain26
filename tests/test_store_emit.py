@@ -237,8 +237,6 @@ def test_validador_500_file_id_de_caja_de_alberto(tmp_path):
 def test_override_humano_se_aplica_y_la_decision_recalcula(tmp_path):
     """T38-F6 REPRO: un override humano del UI alimenta la extracción y la
     decisión se recalcula; el override queda marcado CONSUMIDO y sellado."""
-    from albertitos.emit import emit_outcomes
-
     store = Store(tmp_path / ".sdd")
     deps = _deps()
     # 1ª corrida: factura en NO_PAGAR (el NIF no está en el maestro)
