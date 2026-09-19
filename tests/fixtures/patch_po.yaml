@@ -1,4 +1,0 @@
-# Parche de maestro (T13): cambia el importe del pedido del primer archivo.
-pedidos:
-  PO-2026-0021:
-    importe: 1.00
