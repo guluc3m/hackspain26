@@ -57,6 +57,48 @@ def _pick(field: ExtractionField) -> tuple[Candidate, str]:
     return c, why
 
 
+def _match_all(field: ExtractionField, match_fn) -> tuple[Candidate | None, list[Candidate], str]:
+    """Evalúa TODOS los candidatos del campo (T18/ADR-06).
+
+    Devuelve (elegido, matches, why): elegido = el de mayor confianza entre los
+    que matchean (con provenance extractor+value+feature_ref en `consumed`);
+    matches = TODOS los que matchean — si son varios, concuerdan entre sí
+    dentro de tolerancia y la regla hace PASS con nota de ambigüedad (no es
+    señal de fraude); si es ninguno, FAIL (ADR-06).
+    """
+    matches = [c for c in field.values if match_fn(c)]
+    if not matches:
+        return None, [], f"0/{len(field.values)} candidatos matchean"
+    elegido = max(matches, key=lambda c: c.confidence)
+    why = (
+        f"{len(matches)}/{len(field.values)} candidatos matchean; elegido "
+        f"extractor={elegido.extractor}, value={elegido.value}, "
+        f"feature_ref={elegido.feature_ref or '—'}"
+    )
+    if len(matches) > 1:
+        why += " — ambigüedad benigna: los candidatos concuerdan entre sí"
+    return elegido, matches, why
+
+
+def _consume_match(field: ExtractionField, elegido: Candidate | None,
+                   matches: list[Candidate], why: str) -> dict:
+    """Consumed con provenance completo del candidato elegido (ADR-06)."""
+    return {
+        "elegido": None
+        if elegido is None
+        else {
+            "extractor": elegido.extractor,
+            "value": elegido.value,
+            "confidence": elegido.confidence,
+            "feature_ref": elegido.feature_ref,
+        },
+        "candidatos_match": len(matches),
+        "total_candidatos": len(field.values) if field else 0,
+        "ambiguo": len(matches) > 1,
+        "por_que": why,
+    }
+
+
 def _num(field: ExtractionField | None) -> float | None:
     if not field:
         return None
@@ -122,25 +164,28 @@ def _r_nif(fields, master, cfg, batch, textos) -> RuleVerdict:
 @rule("IBAN_MATCHES_MASTER")
 def _r_iban(fields, master, config, batch) -> RuleVerdict:
     f = field_by_type(fields, "iban")
-    iban = _str(f)
-    if not iban:
-        cand = _pick(f)[0] if f else None
+    if not f or not f.values:
         return _v("IBAN_MATCHES_MASTER", UNKNOWN, "IBAN ausente",
-                  _consume(cand, "sin lectura de IBAN"))
-    cand, why = _pick(f)
-    iban_n = normalize_iban(str(cand.value))
+                  {"elegido": None, "por_que": "sin lectura de IBAN"})
     nif = normalize_nif(_str(field_by_type(fields, "nif")) or "")
     prov = master.proveedores_por_nif.get(nif) if nif else None
     if prov is None:
+        cand, _ = _pick(f)
         return _v("IBAN_MATCHES_MASTER", UNKNOWN,
                   "sin proveedor en maestro para cruzar el IBAN",
-                  _consume(cand, why))
-    if prov.iban and iban_n == prov.iban:
+                  _consume(cand, "sin proveedor para cruzar"))
+    # ADR-06: evaluar TODOS los candidatos de IBAN contra el maestro
+    elegido, matches, why = _match_all(
+        f, lambda c: normalize_iban(str(c.value)) == prov.iban
+    )
+    if matches:
+        nota = " (ambigüedad benigna)" if len(matches) > 1 else ""
         return _v("IBAN_MATCHES_MASTER", PASS,
-                  "IBAN coincide con el maestro", _consume(cand, why))
+                  "IBAN coincide con el maestro" + nota,
+                  _consume_match(f, elegido, matches, why))
     return _v("IBAN_MATCHES_MASTER", FAIL,
-              "IBAN de la factura no coincide con el del maestro",
-              _consume(cand, why))
+              "ningún candidato de IBAN coincide con el del maestro",
+              _consume_match(f, elegido, matches, why))
 
 
 @rule("ORDER_BELONGS_TO_SUPPLIER")
@@ -174,54 +219,99 @@ def _r_order_supplier(fields, master, config, batch) -> RuleVerdict:
 def _r_order_amount(fields, master, config, batch) -> RuleVerdict:
     pedido_id = _str(field_by_type(fields, "pedido"))
     pedido = master.pedidos.get(pedido_id) if pedido_id else None
-    total = _num(field_by_type(fields, "total"))
-    if pedido is None or total is None:
+    f_total = field_by_type(fields, "total")
+    if pedido is None or not f_total or not f_total.values:
         return _v("ORDER_AMOUNT_MATCHES", UNKNOWN,
                   "pedido o total ausente", _consume(None,
-                  f"pedido={pedido_id}, total={total}"))
-    dif = abs(Decimal(str(total)) - Decimal(str(pedido.importe)))
-    if dif <= Decimal(str(config.tolerancia_importe)):
+                  f"pedido={pedido_id}, total_sin_leer={f_total is None}"))
+    # ADR-06: la regla evalúa TODOS los candidatos de `total`; PASS si alguno
+    # cuadra con el pedido dentro de tolerancia (provenance del elegido).
+    elegido, matches, why = _match_all(
+        f_total,
+        lambda c: isinstance(c.value, (int, float))
+        and abs(Decimal(str(c.value)) - Decimal(str(pedido.importe)))
+        <= Decimal(str(config.tolerancia_importe)),
+    )
+    if elegido is not None:
+        nota = " (varios candidatos concuerdan)" if len(matches) > 1 else ""
         return _v("ORDER_AMOUNT_MATCHES", PASS,
-                  "importe igual al del pedido",
-                  _consume(None, f"total={total}, pedido={pedido.importe}"))
+                  "importe igual al del pedido" + nota,
+                  _consume_match(f_total, elegido, matches, why
+                                 + f" (pedido={pedido.importe})"))
+    dif_min = min(
+        (abs(Decimal(str(c.value)) - Decimal(str(pedido.importe)))
+         for c in f_total.values if isinstance(c.value, (int, float))),
+        default=None,
+    )
     return _v("ORDER_AMOUNT_MATCHES", FAIL,
-              f"importe difiere del pedido en {dif:.2f} EUR",
-              _consume(None, f"total={total}, pedido={pedido.importe}"))
+              f"ningún candidato de total cuadra con el pedido "
+              f"({pedido.importe}; dif mín "
+              f"{float(dif_min):.2f} EUR)" if dif_min is not None else
+              "ningún candidato de total es numérico",
+              _consume_match(f_total, elegido, matches, why
+                             + f" (pedido={pedido.importe})"))
 
 
 @rule("TOTALS_MUST_MATCH")
 def _r_totals(fields, master, config, batch) -> RuleVerdict:
     base = _num(field_by_type(fields, "base"))
     iva = _num(field_by_type(fields, "iva_amount"))
-    total = _num(field_by_type(fields, "total"))
-    if base is None or iva is None or total is None:
+    f_total = field_by_type(fields, "total")
+    if base is None or iva is None or not f_total or not f_total.values:
         return _v("TOTALS_MUST_MATCH", UNKNOWN, "base/IVA/total incompletos",
-                  _consume(None, f"base={base}, iva={iva}, total={total}"))
-    dif = abs(Decimal(str(base)) + Decimal(str(iva)) - Decimal(str(total)))
-    if dif <= Decimal(str(config.tolerancia_importe)):
-        return _v("TOTALS_MUST_MATCH", PASS, "base + IVA = total",
-                  _consume(None, f"base={base}, iva={iva}, total={total}"))
+                  {"elegido": None, "por_que":
+                   f"base={base}, iva={iva}, total={'sin candidatos' if not f_total or not f_total.values else 'ok'}"})
+    # ADR-06: evaluar TODOS los candidatos de `total` contra base + IVA.
+    elegido, matches, why = _match_all(
+        f_total,
+        lambda c: isinstance(c.value, (int, float))
+        and abs(Decimal(str(base)) + Decimal(str(iva)) - Decimal(str(c.value)))
+        <= Decimal(str(config.tolerancia_importe)),
+    )
+    if elegido is not None:
+        nota = " (varios candidatos cuadran)" if len(matches) > 1 else ""
+        return _v("TOTALS_MUST_MATCH", PASS,
+                  "base + IVA = total" + nota,
+                  _consume_match(f_total, elegido, matches,
+                                 why + f" (base={base}, iva={iva})"))
+    dif_min = min(
+        (abs(Decimal(str(base)) + Decimal(str(iva)) - Decimal(str(c.value)))
+         for c in f_total.values if isinstance(c.value, (int, float))),
+        default=None,
+    )
     return _v("TOTALS_MUST_MATCH", FAIL,
-              f"base + IVA ≠ total (dif {dif:.2f} EUR)",
-              _consume(None, f"base={base}, iva={iva}, total={total}"))
+              f"base + IVA ≠ total (dif mín {float(dif_min):.2f} EUR)"
+              if dif_min is not None else "ningún candidato de total es numérico",
+              _consume_match(f_total, elegido, matches,
+                             why + f" (base={base}, iva={iva})"))
 
 
 @rule("IVA_CONSISTENT")
 def _r_iva(fields, master, config, batch) -> RuleVerdict:
     base = _num(field_by_type(fields, "base"))
     pct = _num(field_by_type(fields, "iva_pct"))
-    iva = _num(field_by_type(fields, "iva_amount"))
-    if base is None or pct is None or iva is None:
+    f_iva = field_by_type(fields, "iva_amount")
+    if base is None or pct is None or not f_iva or not f_iva.values:
         return _v("IVA_CONSISTENT", UNKNOWN, "base/%IVA/cuota incompletos",
-                  _consume(None, f"base={base}, pct={pct}, iva={iva}"))
+                  {"elegido": None, "por_que":
+                   f"base={base}, pct={pct}, iva={'sin candidatos' if not f_iva or not f_iva.values else 'ok'}"})
+    # ADR-06: evaluar TODOS los candidatos de la cuota contra base × %.
     esperado = Decimal(str(base)) * Decimal(str(pct)) / Decimal(100)
-    dif = abs(Decimal(str(iva)) - esperado)
-    if dif <= Decimal(str(config.tolerancia_importe)):
-        return _v("IVA_CONSISTENT", PASS, "cuota IVA bien calculada",
-                  _consume(None, f"base={base}, pct={pct}, iva={iva}"))
+    elegido, matches, why = _match_all(
+        f_iva,
+        lambda c: isinstance(c.value, (int, float))
+        and abs(Decimal(str(c.value)) - esperado)
+        <= Decimal(str(config.tolerancia_importe)),
+    )
+    if elegido is not None:
+        nota = " (varios candidatos concuerdan)" if len(matches) > 1 else ""
+        return _v("IVA_CONSISTENT", PASS, "cuota IVA bien calculada" + nota,
+                  _consume_match(f_iva, elegido, matches,
+                                 why + f" (esperado={float(esperado):.2f})"))
     return _v("IVA_CONSISTENT", FAIL,
-              f"cuota IVA mal calculada (dif {float(dif):.2f} EUR)",
-              _consume(None, f"base={base}, pct={pct}, iva={iva}"))
+              f"cuota IVA mal calculada (esperado {float(esperado):.2f} EUR)",
+              _consume_match(f_iva, elegido, matches,
+                             why + f" (esperado={float(esperado):.2f})"))
 
 
 @rule("DATE_VALID_NOT_FUTURE")

@@ -47,12 +47,15 @@ def build(out_path: Path, triage_path: Path) -> dict:
 
     res: Counter = Counter()
     grupos: dict[str, list[str]] = defaultdict(list)
-    ledger_text = LEDGER.read_text(encoding="utf-8") if LEDGER.is_file() else ""
-    for line in ledger_text.splitlines():
-        r = json.loads(line)
-        res[r.get("result")] += 1
-        if r.get("result") == "ESCALAR":
-            grupos[_dominante(r.get("rule_codes", ""))].append(r.get("file_id"))
+    # estado ACTUAL del store (una fila por factura; el ledger acumula corridas)
+    con = sqlite3.connect(STORE)
+    for file_id, result, rule_codes in con.execute(
+        "select file_id, result, rule_codes from invoices"
+    ):
+        res[result] += 1
+        if result == "ESCALAR":
+            grupos[_dominante(rule_codes or "")].append(file_id)
+    con.close()
 
     review_text = REVIEW.read_text(encoding="utf-8") if REVIEW.is_file() else ""
     review_items = [json.loads(l) for l in review_text.splitlines() if l.strip()]
@@ -63,6 +66,13 @@ def build(out_path: Path, triage_path: Path) -> dict:
     total_s = None
     if runner.get("files_per_second"):
         total_s = round(runner["done"] / runner["files_per_second"], 1)
+
+    old = None
+    if out_path.is_file():
+        try:
+            old = json.loads(out_path.read_text())
+        except (OSError, ValueError):
+            old = None
 
     metrics = {
         "kind": "lote1",
@@ -95,6 +105,40 @@ def build(out_path: Path, triage_path: Path) -> dict:
         },
         "escalares": {k: len(v) for k, v in sorted(grupos.items(), key=lambda kv: -len(kv[1]))},
     }
+
+    # Tras el reproceso T18 (subset con cache caliente), los numbers de
+    # files_per_s del runner.json son del SUBSET y no comparables con la
+    # corrida completa del lote. La corrida original queda como histórico.
+    if old and old.get("engine_version") == "runner-1.0.0":
+        metrics["corrida_original"] = {
+            "engine_version": old["engine_version"],
+            "files_per_s": old.get("files_per_s"),
+            "latencia_total_s": old.get("latencia_total_s"),
+            "n_archivos": old.get("n_archivos"),
+            "distribucion": old.get("distribucion"),
+            "nota": "corrida completa del lote 1 (T14) con runner-1.0.0",
+        }
+        metrics["reproceso_t18"] = {
+            "engine_version": runner.get("engine_version"),
+            "reprocesados": runner.get("total_archivos"),
+            "files_per_s_reproceso": runner.get("files_per_second"),
+            "nota": (
+                "subset de 108 NO_PAGAR re-decidido con ADR-06 (warm cache: "
+                "files/s no comparable con la corrida completa); diff medido en "
+                ".sdd/metrics/impacto-fix-colapso.json"
+            ),
+        }
+        metrics["distribucion_final"] = dict(metrics["distribucion"])
+        # la "distribucion" del bloque original se conserva en corrida_original
+        metrics["distribucion"] = old.get("distribucion")
+        # los 45 ESCALAR no cambian con el reproceso (no se tocaron); se
+        # conserva el desglose del triage T14 — la serialización de los
+        # timeouts en la tabla invoices difiere de la del ledger
+        metrics["escalares"] = old.get("escalares")
+        metrics["escalares_nota"] = (
+            "desglose de los 45 ESCALAR del triage T14 (sin cambios en el "
+            "reproceso: solo se re-decidieron los 108 NO_PAGAR)"
+        )
 
     triage = [
         "# Triage de la cola de revisión — lote 1 (T14)",

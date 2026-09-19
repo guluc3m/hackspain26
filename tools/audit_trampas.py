@@ -250,7 +250,10 @@ class Auditor:
                     decisores[c.split(":")[0]] += 1
         dominante = decisores.most_common(1)[0][0] if decisores else None
         if not dominante or decisores.most_common(1)[0][1] < 60:
-            return "sin código dominante (>60): " + ", ".join(f"{k}={v}" for k, v in decisores.most_common())
+            return (
+                "VERDE: sin código dominante (>60) — "
+                + ", ".join(f"{k}={v}" for k, v in decisores.most_common())
+            ), 0, 0, sum(1 for r in self.outcomes.values() if r["result"] == "NO_PAGAR")
         # análisis de causa del código dominante: colapso de candidatos
         falso = []
         genuino = []
