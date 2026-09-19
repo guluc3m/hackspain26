@@ -297,6 +297,27 @@ class Store:
             config_version=row["config_version"], engine_version=row["engine_version"],
         )
 
+    def resultados_por_file(self, file_ids: list[str]) -> dict[str, str]:
+        """file_id → result en UNA query (estado del lote para la UI, T33-M2).
+
+        Antes: `decision_for` por archivo en cada tick del runner ⇒ O(N²)
+        SELECTs en un lote de 500. Mismo output, una query por tick."""
+        if not file_ids:
+            return {}
+        out: dict[str, str] = {}
+        CH = 400  # sqlite límite de params: chunks
+        for i in range(0, len(file_ids), CH):
+            chunk = list(file_ids[i:i + CH])
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._conn.execute(
+                f"SELECT file_id, result FROM invoices "
+                f"WHERE file_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            for r in rows:
+                out[r["file_id"]] = r["result"]
+        return out
+
     def run_ids(self) -> list[str]:
         rows = self._conn.execute(
             "SELECT DISTINCT run_id FROM decision_runs ORDER BY run_id"

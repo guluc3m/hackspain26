@@ -286,3 +286,25 @@ def test_transicion_cargando_a_sano_se_recupera():
         assert rows[0].outcome in ("accept", "below-threshold")
     finally:
         stub.stop()
+
+
+def test_reintentos_health_dejan_evidencia_por_intento():
+    """T33-M4: cada reintento de health del rung 4 queda en evidencia
+    (stage extract:rung4_health) — la pantalla Salud puede contarlo."""
+    stub = StubVLM(8247)
+    stub.modo = "cargando"
+    stub.start()
+    try:
+        _limpiar()
+        out = _extract(stub, "reintentos", cache_fresh=True)
+        filas = [ev for ev in out[0].evidence
+                 if ev.stage == "extract:rung4_health"]
+        assert len(filas) == 2  # vlm_health_retries=2 en la config del test
+        assert all(ev.outcome == "retry" for ev in filas)
+        assert "cargando" in filas[0].detail
+        # y los contadores de rung4_vlm no cambian de forma
+        skips = [ev for ev in out[0].evidence
+                 if ev.stage == "extract:rung4_vlm" and ev.outcome == "skipped"]
+        assert len(skips) == 1
+    finally:
+        stub.stop()
