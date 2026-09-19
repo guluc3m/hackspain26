@@ -250,3 +250,10 @@ class TestEvidenceContract:
         row = json.loads(lines[0])
         assert row["invoice_id"] == "inv-ledger"
         assert row["stage"] == "extract:rung1_pdf_text"
+
+
+class TestPdfReaderUnico:
+    def test_pagina_danada_degrada_a_texto_vacio(self, ladder):
+        """T33-M2: el reader compartido degrada sin excepción."""
+        roto = ladder._extract_text(None, 0)  # reader None ⇒ página inexistente
+        assert roto == ""
