@@ -9,6 +9,7 @@
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,7 @@ def servidor():
     # escritorio viejo en el mismo puerto → el test servía estado rancio.
     subprocess.run(["pkill", "-f", "uvicorn albertitos.ui.app"], capture_output=True, check=False)
     subprocess.run(["pkill", "-f", "albertitos.desktop"], capture_output=True, check=False)
-    import time as _t; _t.sleep(1.0)
+    time.sleep(1.0)
     # la cadena/anotaciones del test no ensucian la telemetría real
     shutil.rmtree(Path(REPO / ".sdd/telemetria"), ignore_errors=True)
 

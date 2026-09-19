@@ -91,6 +91,10 @@
       "word_conf 40.0: 89.7 % OCR pasa (cobertura 0.4: 72.4 % OCR, 100.0 % texto)",
       "calibrado con corpus (T10)"
     ],
+    "distribucionFinal": [
+      "433 PAGAR / 22 NO_PAGAR / 45 ESCALAR",
+      "medido"
+    ],
     "drillsPorNombre": [
       [
         "rung5-provider-caido",
@@ -159,9 +163,21 @@
       "86.6 % PAGAR automático",
       "medido"
     ],
+    "impactoFix": [
+      "108 reprocesados · 86 NO_PAGAR→PAGAR · 0 regresiones · validación OK",
+      "medido"
+    ],
     "impactoReprocesado": [
-      "PENDIENTE-MEDICIÓN(T14)",
-      "sin datos"
+      "{'desviacion_esperada': {'causa': 'factura_8801.pdf: el 87º falso POR IMPORTE es el duplicado FA-8801 — su ORDER_AMOUNT ",
+      "medido"
+    ],
+    "modoAlberto": [
+      "iniciar.sh de un paso (idempotente) + UI en lenguaje llano con ayuda contextual + app de escritorio con pywebview (ADR-07)",
+      "medido (implementación con tests)"
+    ],
+    "perfilCarga": [
+      "UI+2 runners simultáneos: peor p95 7.7 ms, [108.7, 110.0] files/s por runner, 0 ROJOS",
+      "medido"
     ],
     "resultadosLote1": [
       "433 PAGAR / 22 NO_PAGAR / 45 ESCALAR (500 archivos)",

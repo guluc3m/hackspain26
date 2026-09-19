@@ -119,9 +119,11 @@ def test_plantilla_cita_fuentes_de_evidencia():
     adr = (DOCS / "albertitos_plan.typ").read_text(encoding="utf-8")
     for citada in (".sdd/metrics/corpus-dryrun.json", ".sdd/metrics/drills.json", "calibracion-rung3.json"):
         assert citada in adr, citada
-    # los placeholders T14 entran vía bindings generados, no hardcodeados
+    # los placeholders/números post-fix entran vía bindings generados
     assert "resultadosLote1" in fuente and "exactitudLote1" in fuente
-    assert "impactoReprocesado" in fuente
+    assert "impactoFix" in fuente  # cierre T37: impacto del fix ADR-06 medido
+    assert "perfilCarga" in fuente and "distribucionFinal" in fuente
+    assert "modoAlberto" in fuente  # T34/ADR-07 citados en el informe
 
 
 def shutil_rmtree(base: Path) -> None:
