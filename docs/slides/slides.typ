@@ -1,7 +1,12 @@
 // 500 Sombras de Alberto — defensa (10 min) · guluc3m
-// Compilar:  typst compile --font-path fonts slides.typ
+// Compilar:  typst compile --root .. --font-path ../report/fonts slides.typ
+// Los diagramas son los mismos del informe (docs/report/diagram/): tamaños en
+// em, así que escalan con el texto de la diapositiva (envolver en text(size:)).
 
 #import "theme.typ": *
+#import "../report/diagram/arquitectura-general.typ": arquitectura-general
+#import "../report/diagram/escalera-confianza.typ": escalera-confianza
+#import "../report/diagram/colapso-candidatos.typ": colapso-candidatos
 
 #show: hs-theme.with(aspect-ratio: "16-9")
 
@@ -63,68 +68,16 @@ Dos fases separadas, un contrato común
 
 == De PDF a decisión
 
-#let fbox(title, sub: none, fill: sand, tfill: ink) = box(
-  fill: fill,
-  stroke: .9pt + ink,
-  inset: (x: .55em, y: .3em),
-  align(center, {
-    text(font: display-font, size: .52em, fill: tfill, title)
-    if sub != none {
-      linebreak()
-      text(size: .48em, fill: if tfill == ink { brown } else { sand }, sub)
-    }
-  }),
-)
+#text(size: .7em)[#arquitectura-general()]
 
-#grid(
-  columns: (1fr, auto, 1fr, auto, 1fr, auto, 1fr, auto, 1fr),
-  align: horizon,
-  fbox([PDF], sub: [input]),
-  arrow-right,
-  fbox([EXTRACCIÓN], sub: [features crudas], fill: slate),
-  arrow-right,
-  fbox([PARSER], sub: [campos + confianza], fill: slate),
-  arrow-right,
-  fbox([MOTOR], sub: [reglas], fill: gold),
-  arrow-right,
-  fbox([RESULTADO], sub: [JSONL], fill: teal, tfill: paper),
-)
-
-#v(.7em)
-#align(center)[#text(font: body-font, size: .66em, fill: brown)[#sym.arrow.b  evidencia + snapshot de configuración  #sym.arrow.b]]
-
-#v(.7em)
-#grid(
-  columns: (1fr, auto, 1fr, auto, 1fr, auto, 1fr),
-  align: horizon,
-  fbox([EVIDENCIA], fill: sand),
-  arrow-right,
-  fbox([STORE], sub: [SQLite + ledger], fill: ink, tfill: paper),
-  arrow-right,
-  fbox([UI], sub: [revisión y operación], fill: sand),
-  arrow-right,
-  fbox([RETROALIMENTACIÓN], fill: sand),
-)
-
-#v(.7em)
-#text(size: .72em, fill: brown)[Extracción y decisión no se tocan: añadir una regla no cambia la extracción, y añadir un tipo de archivo no cambia el motor.]
+#v(.55em)
+#text(size: .68em, fill: brown)[Extracción y decisión no se tocan: añadir una regla no cambia la extracción, y añadir un tipo de archivo no cambia el motor.]
 
 /* ── escalera ── */
 
 == La escalera de extracción · por página, siete peldaños
 
-#grid(
-  columns: (1fr, 1fr),
-  gutter: .6em,
-  row-gutter: .4em,
-  step(1, [Texto vectorial], [pypdf + plausibilidad · 0 € · sub-1 ms], fill: rgb("#e8f5e9")),
-  step(5, [TypeSafe System One], [tipado + probabilidades · ~0.04 \$/Mtok], fill: rgb("#e1f5fe")),
-  step(2, [Raster + QR], [pypdfium2 + zxing · 0 € · ~40 ms], fill: rgb("#f1f8e9")),
-  step(6, [Firecrawl Parse], [tablas complejas → Markdown · 1 crédito], fill: rgb("#ede7f6")),
-  step(3, [Tesseract OCR], [doble puerta: conf + cobertura · 0 € · ~150 ms], fill: rgb("#fffde7")),
-  step(7, [Cloud VLM >25B], [último recurso · pago · ~3 s], fill: rgb("#fbe9e7")),
-  step(4, [VLM local], [PaddleOCR-VL Q8 · 0 € · ~1.7 s], fill: rgb("#fff8e1")),
-)
+#text(size: .78em)[#escalera-confianza()]
 
 #v(.5em)
 #text(size: .74em, fill: brown)[Cada peldaño es *omisible*: si falta, se registra `skipped:<razón>` y se degrada — el lote nunca se detiene. (1–4 en local, 5–7 en la nube.)]
@@ -148,10 +101,13 @@ Dos fases separadas, un contrato común
   ], accent: teal),
 )
 
-#v(.5em)
-#text(size: .78em)[Nunca se colapsa un campo en el store. El escalar se elige solo en la regla que lo consume, y se registra *cuál* y *por qué*.]
+#v(.55em)
+#text(size: .78em)[Nunca se colapsa un campo en el store. El escalar se elige solo en la regla que lo consume, y se registra *cuál* y *por qué*:]
 
 #v(.4em)
+#text(size: .85em)[#colapso-candidatos()]
+
+#v(.45em)
 #text(size: .72em, fill: brown)[Multilingüe (7 idiomas) · inmune a trampas OCR · emisor ≠ cliente.]
 
 /* ── 03 · DECISIÓN ───────────────────────────────────────── */
