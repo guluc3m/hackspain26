@@ -35,6 +35,11 @@ from albertitos.emit import emit_outcomes, list_pdf_files
 from albertitos.extract.cloud import cloud_config_from_env
 from albertitos.extract.config import ExtractionConfig
 from albertitos.extract.ladder import ExtractionLadder
+from albertitos.extract.review import (
+    aplicar_overrides,
+    leer_overrides_pendientes,
+    marcar_consumidas,
+)
 from albertitos.parse.parser import parse_invoice
 from albertitos.rules import BatchContext, decide, load_config, load_master
 from albertitos.rules.config import EngineConfig
@@ -316,6 +321,24 @@ class Runner:
             confidence=None, outcome="ok" if fields else "empty",
             detail=",".join(sorted(f.type for f in fields)),
         ))
+
+        # overrides humanos (T38-F6): alimentan SOLO la extracción; el motor
+        # recalcula. Quedan marcados CONSUMIDOS para no re-inyectar.
+        ruta_overrides = self.cfg.store_root / "review-queue" / "overrides.jsonl"
+        pendientes = leer_overrides_pendientes(ruta_overrides)
+        propias = [
+            o for o in pendientes
+            if o.get("file_id") == path.name or o.get("invoice_id") == invoice_id
+        ]
+        if propias:
+            aplicadas = aplicar_overrides(fields, propias)
+            marcar_consumidas(ruta_overrides, propias)
+            self.store.record_evidence(EvidenceRow(
+                file_id=path.name, invoice_id=invoice_id, stage="override",
+                extractor="humano", extractor_version="ui", config_version=self.ecfg.config_version,
+                sha256=sha256, latency_ms=0, confidence=1.0, outcome="aplicado",
+                detail=",".join(f"{a['campo']}={a['valor']}" for a in aplicadas)[:200],
+            ))
 
         textos = tuple(str(f.data) for f in features if isinstance(f.data, str))
         decision = decide(

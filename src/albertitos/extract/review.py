@@ -190,3 +190,89 @@ class ReviewQueue:
                 if isinstance(rec, dict):
                     out.append(rec)
         return out
+
+
+# ------------------------------------------------- consumo de overrides (T38-F6)
+
+def leer_overrides_pendientes(ruta_overrides: Path) -> list[dict[str, Any]]:
+    """Overrides pendientes (schema OverrideView) del fichero de cola.
+
+    Tolerante a líneas corruptas; devuelve TODOS los pendientes — el llamador
+    filtra por file_id/invoice_id."""
+    if not Path(ruta_overrides).is_file():
+        return []
+    pendientes: list[dict[str, Any]] = []
+    for linea in Path(ruta_overrides).read_text(encoding="utf-8").splitlines():
+        if not linea.strip():
+            continue
+        try:
+            rec = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict):
+            pendientes.append(rec)
+    return pendientes
+
+
+def aplicar_overrides(fields: list, pendientes: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Inyecta cada override como CANDIDATO humano de confianza 1.0 en su campo.
+
+    El override alimenta SOLO la extracción (AGENTS.md §7): entra como una
+    lectura más con provenance y la decisión la recalcula el motor. El
+    candidato humano va PRIMERO en `values` (precedencia de corrección humana
+    documentada; los motores que colapsan con el 1er candidato usan el dato
+    humano — los que evalúan todos, lo evalúan todos).
+
+    Devuelve la lista de {campo, valor} aplicadas."""
+    from albertitos.types import Candidate, ExtractionField
+
+    aplicadas: list[dict[str, str]] = []
+    for ov in pendientes:
+        campo, valor = str(ov.get("campo", "")).strip(), str(ov.get("valor", ""))
+        if not campo or not valor:
+            continue
+        candidato = Candidate(
+            extractor="humano",
+            value=valor,
+            confidence=1.0,
+            feature_ref=f"override:{ov.get('cuando', '')}",
+        )
+        existente = next((f for f in fields if f.type == campo), None)
+        if existente is None:
+            fields.append(ExtractionField(type=campo, timestamp=time.time(), values=[candidato]))
+        else:
+            existente.values.insert(0, candidato)
+        aplicadas.append({"campo": campo, "valor": valor})
+    return aplicadas
+
+
+def marcar_consumidas(ruta_overrides: Path, consumidas: list[dict[str, Any]]) -> None:
+    """Saca las consumidas de la cola (reescribe) y las sella en
+    `overrides.consumidos.jsonl` (provenance conservada, nunca se borra)."""
+    ruta = Path(ruta_overrides)
+    if not consumidas or not ruta.is_file():
+        return
+    claves = {
+        (str(o.get("file_id", "")), str(o.get("campo", "")), str(o.get("valor", "")))
+        for o in consumidas
+    }
+    restantes: list[str] = []
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        if not linea.strip():
+            continue
+        try:
+            rec = json.loads(linea)
+        except json.JSONDecodeError:
+            restantes.append(linea)
+            continue
+        clave = (str(rec.get("file_id", "")), str(rec.get("campo", "")), str(rec.get("valor", "")))
+        if clave not in claves:
+            restantes.append(linea)
+    tmp = ruta.with_suffix(".jsonl.tmp")
+    tmp.write_text(("\n".join(restantes) + "\n") if restantes else "", encoding="utf-8")
+    tmp.replace(ruta)
+    consumidos = ruta.with_name("overrides.consumidos.jsonl")
+    with consumidos.open("a", encoding="utf-8") as fh:
+        for o in consumidas:
+            o["consumido_en"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            fh.write(json.dumps(o, ensure_ascii=False) + "\n")

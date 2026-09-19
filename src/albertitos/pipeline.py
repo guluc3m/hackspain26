@@ -15,6 +15,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from albertitos.emit import list_pdf_files
+from albertitos.extract.review import (
+    aplicar_overrides,
+    leer_overrides_pendientes,
+    marcar_consumidas,
+)
 from albertitos.parse.parser import field_by_type, parse_invoice
 from albertitos.rules import BatchContext, decide
 from albertitos.rules.config import EngineConfig
@@ -152,6 +157,24 @@ def run_batch(pdf_dir: str | Path, store: Store, deps: PipelineDeps) -> BatchRep
             outcome="ok" if fields else "empty",
             detail=",".join(sorted(f.type for f in fields)),
         ))
+
+        # overrides humanos (T38-F6): alimentan SOLO la extracción; el motor
+        # recalcula. Quedan marcados CONSUMIDOS para no re-inyectar.
+        ruta_overrides = store.root / "review-queue" / "overrides.jsonl"
+        pendientes = leer_overrides_pendientes(ruta_overrides)
+        propias = [
+            o for o in pendientes
+            if o.get("file_id") == path.name or o.get("invoice_id") == invoice_id
+        ]
+        if propias:
+            aplicadas = aplicar_overrides(fields, propias)
+            marcar_consumidas(ruta_overrides, propias)
+            store.record_evidence(EvidenceRow(
+                file_id=path.name, invoice_id=invoice_id, stage="override",
+                extractor="humano", extractor_version="ui", config_version=cfg.config_version,
+                sha256=sha256, latency_ms=0, confidence=1.0, outcome="aplicado",
+                detail=",".join(f"{a['campo']}={a['valor']}" for a in aplicadas)[:200],
+            ))
 
         textos = tuple(f.data for f in features if isinstance(f.data, str))
         numero_factura = _mejor(fields, "numero_factura")
