@@ -18,8 +18,8 @@
   },
   "distribucion": {
     "ESCALAR": 45,
-    "NO_PAGAR": 108,
-    "PAGAR": 347
+    "NO_PAGAR": 22,
+    "PAGAR": 433
   },
   "distribucion_final": {
     "ESCALAR": 45,
@@ -37,21 +37,22 @@
   },
   "escalares_nota": "desglose de los 45 ESCALAR del triage T14 (sin cambios en el reproceso: solo se re-decidieron los 108 NO_PAGAR)",
   "fallos": 0,
-  "files_per_s": 111.26,
+  "files_per_s": 4.162,
+  "files_per_s_nota": "medido en la corrida completa (T14) con runner-1.0.0; el reproceso T18 fue un subset de 108 con cache caliente (no comparable)",
   "fuente": {
     "ledger": ".sdd/ledger/ledger.jsonl",
     "outcomes": "/home/deploy/hackspain26/outcomes.jsonl",
     "runner": ".sdd/state/runner.json",
     "store": ".sdd/store.db"
   },
-  "generado": "2026-09-19 00:43:29",
+  "generado": "2026-09-19 01:01:43",
   "kind": "lote1",
-  "latencia_total_s": 1.0,
+  "latencia_total_s": 0.7,
   "medido": true,
-  "n_archivos": 108,
+  "n_archivos": 500,
   "reproceso_t18": {
     "engine_version": "runner-1.1.0",
-    "files_per_s_reproceso": 111.26,
+    "files_per_s_reproceso": 155.499,
     "nota": "subset de 108 NO_PAGAR re-decidido con ADR-06 (warm cache: files/s no comparable con la corrida completa); diff medido en .sdd/metrics/impacto-fix-colapso.json",
     "reprocesados": 108
   },
@@ -66,5 +67,10 @@
     "latencia_max_ms": 30780,
     "latencia_media_ms": 1555.2,
     "n_invocaciones": 29
-  }
+  },
+  "rungs_invocados": {
+    "rung1_pdf_text": 471,
+    "unresolved": 29
+  },
+  "validador": "OK"
 }

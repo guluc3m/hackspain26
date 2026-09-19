@@ -183,3 +183,28 @@
   queda resuelto; los pins de test congelan el estado corregido (tripwire).
 - 191 tests verde, ruff limpio. outcomes.jsonl en /home/deploy/hackspain26
   regenerado y validado 500/500.
+
+## Actualización 7: T22 · Re-auditoría post-fix + lote1.json de las 500
+- `tools/audit_postfix.py` → `.sdd/metrics/auditoria-postfix.md` (+JSON):
+  estado **VERDE**. Trampas de T17 contra el outcomes post-fix: fantasmas ×3
+  ESCALAR, FA-8801 (2ª copia NO_PAGAR por duplicado), instrucciones (0 PAGAR),
+  outlier 84700 y pendiente_revisar ESCALAR, 26 scans ESCALAR (0 confianzas
+  sospechosas en rung 4) — todas VERDE.
+- Provenance de los 86 nuevos PAGAR: verificación TOTAL recomputando el
+  veredicto con el motor determinista (runner-1.1.0, fecha ref idéntica):
+  86/86 con ORDER_AMOUNT_MATCHES:PASS cuyo candidato citado matchea el
+  maestro ±0,01, con extractor y feature_ref; muestra de 20 en el md.
+  Fallas de provenance: 0.
+- Los 22 NO_PAGAR restantes: 14 genuinos del T17 se mantienen (0 regresiones)
+  + 7 con IBAN/otros FAILs reales + factura_8801 (duplicado). Distribución por
+  código: ORDER_AMOUNT 14, IBAN 7, IVA 6, TOTALS 3, NO_DOUBLE 2 (coexisten).
+- `lote1.json` regenerado describiendo LAS 500 (schema test_defensa):
+  n_archivos=500, distribucion 433/22/45, files_per_s=4.162 (medido, corrida
+  completa T14; el reproceso T18 fue subset con cache caliente — anotado),
+  rungs_invocados {rung1_pdf_text: 471, unresolved: 29}, fallos=0, validador
+  OK. Corrida_original y reproceso_t18 quedan como bloques históricos.
+- `python -m albertitos.metrics` regenerado: resultadosLote1 y exactitudLote1
+  (86.6 % PAGAR automático) ya no son PENDIENTE — cableados a lote1.json.
+- Symlink de staging DEFENSA creado (.sdd/lote1 → .sdd, idempotente, línea
+  127 del checklist) para que las fuentes citadas existan.
+- 212 tests verde, ruff limpio.

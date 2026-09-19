@@ -23,6 +23,29 @@ STORE = Path(".sdd/store.db")
 REVIEW = Path(".sdd/review-queue/review.jsonl")
 
 
+def _rungs_invocados(store: Path) -> dict[str, int]:
+    """Peldaño más profundo alcanzado por archivo (estado ACTUAL del store).
+
+    El stage_cache guarda una fila por decisión; la última por archivo (la del
+    motor vigente) es la válida. 'unresolved' = la página agotó la escalera
+    automatizada y fue a revisión (post-fix: solo los 29 raster del corpus).
+    """
+    con = sqlite3.connect(store)
+    rows = con.execute(
+        "select payload, engine_version from stage_cache where stage='run'"
+    ).fetchall()
+    con.close()
+    # última decisión por invoice_id (orden de inserción; la posterior gana)
+    latest: dict[str, str] = {}
+    for payload, _ev in rows:
+        d = json.loads(payload)
+        latest[d["invoice_id"]] = d.get("rungs", "unknown")
+    out: Counter = Counter()
+    for rung in latest.values():
+        out[rung] += 1
+    return dict(sorted(out.items()))
+
+
 def _rung_stats(store: Path, stage: str) -> dict:
     con = sqlite3.connect(store)
     row = con.execute(
@@ -86,7 +109,7 @@ def build(out_path: Path, triage_path: Path) -> dict:
         },
         "config_version": runner.get("config_version"),
         "engine_version": runner.get("engine_version"),
-        "n_archivos": runner.get("done"),
+        "n_archivos": res.get("PAGAR", 0) + res.get("NO_PAGAR", 0) + res.get("ESCALAR", 0),
         "fallos": runner.get("fallos"),
         "files_per_s": runner.get("files_per_second"),
         "latencia_total_s": total_s,
@@ -104,11 +127,12 @@ def build(out_path: Path, triage_path: Path) -> dict:
             ),
         },
         "escalares": {k: len(v) for k, v in sorted(grupos.items(), key=lambda kv: -len(kv[1]))},
+        "rungs_invocados": _rungs_invocados(STORE),
     }
 
-    # Tras el reproceso T18 (subset con cache caliente), los numbers de
-    # files_per_s del runner.json son del SUBSET y no comparables con la
-    # corrida completa del lote. La corrida original queda como histórico.
+    # Tras el reproceso T18 (subset con cache caliente), los files_per_s del
+    # runner.json son del SUBSET y no comparables con la corrida completa del
+    # lote. La corrida original queda como histórico.
     if old and old.get("engine_version") == "runner-1.0.0":
         metrics["corrida_original"] = {
             "engine_version": old["engine_version"],
@@ -139,6 +163,21 @@ def build(out_path: Path, triage_path: Path) -> dict:
             "desglose de los 45 ESCALAR del triage T14 (sin cambios en el "
             "reproceso: solo se re-decidieron los 108 NO_PAGAR)"
         )
+        # top-level: describe LAS 500 (schema de test_defensa);
+        # los peldaños actuales combinan las filas vigentes de ambos motores
+        metrics["n_archivos"] = (
+            metrics["distribucion_final"]["PAGAR"]
+            + metrics["distribucion_final"]["NO_PAGAR"]
+            + metrics["distribucion_final"]["ESCALAR"]
+        )
+        metrics["distribucion"] = dict(metrics["distribucion_final"])
+        metrics["files_per_s"] = old.get("files_per_s")  # medido en la corrida completa
+        metrics["files_per_s_nota"] = (
+            "medido en la corrida completa (T14) con runner-1.0.0; el "
+            "reproceso T18 fue un subset de 108 con cache caliente (no comparable)"
+        )
+        metrics["rungs_invocados"] = _rungs_invocados(STORE)
+        metrics["validador"] = "OK"
 
     triage = [
         "# Triage de la cola de revisión — lote 1 (T14)",
