@@ -34,7 +34,8 @@ evento seq={{ integridad.roto_en_seq }} — la manipulación queda delatada.</di
 <h2>Anotar algo (queda en la cadena)</h2>
 <form method="post" action="/actividad/anotar">
   <label>Nota: <input name="nota" size="40" required></label>
-  <button type="submit">Anotar</button>
+  <button type="submit"
+  onclick="return confirm('¿Anotar en el registro sellado? La nota quedará guardada para siempre.');">Anotar</button>
 </form>
 <p class="peq">La cadena vive en <code>.sdd/telemetria/actividad.jsonl</code>
 (telemetría de la UI, jamás dentro del store). Se puede verificar con

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titulo %}Ayuda · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Ayuda y glosario</h1>
+<p>Aquí está todo explicado en llano. Cada pantalla también tiene un enlace
+«? Ayuda» arriba.</p>
+
+<h2>Las tres decisiones</h2>
+<table>
+  <tr><th>Palabra</th><th>Qué significa para ti</th></tr>
+  {% for termino, explicacion in glosario %}
+  <tr><td><strong>{{ termino }}</strong></td><td>{{ explicacion }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Lo que puedes hacer en cada pantalla</h2>
+<ul>
+  <li><strong>Inicio / Operaciones</strong>: qué hay pendiente (y por cuánto
+  dinero), qué se pagó y qué no. Es la primera pantalla que se abre.</li>
+  <li><strong>Facturas</strong>: buscar y filtrar las 500 facturas, y entrar
+  en cualquier una para ver toda su trazabilidad (quién la leyó, qué reglas
+  la decidieron).</li>
+  <li><strong>Revisión</strong>: las facturas que necesitan tu decisión,
+  con la foto de la página y las lecturas lado a lado. Guardas tu corrección
+  con tu nombre y fecha, y el sistema recalcula.</li>
+  <li><strong>Reglas</strong>: qué reglas están activas y probar «¿qué
+  pasaría si…?» antes de cambiar un umbral.</li>
+  <li><strong>Salud</strong>: si los lectores de IA están bien, los fallos y
+  los reintentos.</li>
+  <li><strong>Actividad</strong>: el registro sellado de todo lo que pasa
+  (imposible de alterar sin que se note).</li>
+  <li><strong>Mi resumen</strong>: el resumen del día en PDF y en esta web
+  («¿qué pago hoy y por qué?»).</li>
+</ul>
+
+<h2>Reglas de oro del sistema</h2>
+<ul>
+  <li>Nada se paga sin que una regla lo justifique.</li>
+  <li>Ante duda razonable, la factura se ESCALA a revisión en vez de pagarse.</li>
+  <li>Las instrucciones escritas DENTRO de las facturas se tratan como datos,
+  nunca como órdenes.</li>
+  <li>Toda decisión es reproducible: se puede repetir el cálculo y sale igual.</li>
+</ul>
+{% endblock %}

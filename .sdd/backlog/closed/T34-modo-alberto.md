@@ -44,3 +44,37 @@ trivial.
 - Las 5 pantallas + inicio sin jerga sin traducir (grep de términos técnicos
   fuera de tooltips/detalles técnicos).
 - pytest+ruff verde; ticket a closed en el mismo commit.
+
+## Cerrado — decisiones tomadas (W3)
+
+- **`iniciar.sh`** (raíz, ejecutable, idempotente): comprueba `uv` con
+  mensaje claro si falta, crea la .venv con `uv sync` (solo primera vez),
+  elige el store real (`.sdd/lote1/ledger`, symlink SOLO LECTURA) o datos de
+  prueba marcados, arranca uvicorn en segundo plano con log en
+  `.sdd/telemetria/ui.log`, espera la readiness y abre el navegador
+  (xdg-open/open o imprime la URL grande). Segunda llamada ⇒ «ya está
+  encendido», solo abre navegador (testeado: arranque real en puerto de
+  prueba + idempotencia).
+- **Lenguaje llano en toda la UI**: NOMBRES_RUNG/EXTRACTOR/STAGE/DRILL
+  traducidos («Texto del PDF», «Lector visual con IA (local)», «OCR»…); los
+  códigos técnicos quedan en tooltips (`title=`) — test anti-jerga que
+  limpia los tooltips y verifica que rung1-5/WAL no aparecen crudos en el
+  flujo principal. ESCALAR mantenido (palabra del contrato) explicado en el
+  glosario y en pantalla.
+- **Inicio = la operación de Alberto**: «Lo que te toca hoy» (X facturas por
+  € Y en riesgo, con el maestro auto-detectado), se pagarán N por € M, no se
+  pagan K — un botón grande por acción (Revisarlas / Ver mi resumen / Ver
+  no pagadas). Nada de JSON ni rutas en el flujo principal.
+- **Confirmaciones con consecuencias**: Guardar corrección (Revisión) y
+  Anotar (Actividad) con `confirm()` explicando qué pasará.
+- **Ayuda contextual**: pantalla `/ayuda` con glosario completo (las 3
+  decisiones, los lectores, las pantallas, las reglas de oro) + enlace «?
+  Ayuda» en la navegación; `/resumen-ejecutivo` sirve el resumen de T26
+  dentro de la UI (sin terminal).
+- **Sin datos ⇒ PENDIENTE honesto** también en el inicio (sin maestro).
+- Compatibilidad del suite: T32 `presentacion.py` ahora cae al store del
+  lote 1 real si no hay store local (1 línea, aditivo); T31 test actualizado
+  a los encabezados llano nuevos; test de imágenes de Revisión tolera la
+  cola vaciada por W1 (degradación honesta); DEFENSA.md fuente [3]
+  actualizada.
+- Suite: 272 passed, ruff limpio, sin secretos.

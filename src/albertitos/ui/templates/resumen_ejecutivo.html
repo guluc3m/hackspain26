@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block titulo %}Mi resumen · Albertitos{% endblock %}
+{% block cuerpo %}
+<h1>Mi resumen — ¿qué pago hoy y por qué?</h1>
+{% if error %}<p class="aviso">{{ error }}</p>
+<p><a href="/">← Volver al inicio</a></p>
+{% else %}
+<p class="peq">Generado ahora mismo desde tu registro de actividad y el maestro
+de proveedores. Fuentes: <code>{{ datos.fuentes.store }}</code> y
+<code>{{ datos.fuentes.maestro }}</code> — solo lectura, nada se modifica.</p>
+
+<h2>1 · Hoy se pagan</h2>
+<div class="tarjeta">
+  <div class="num">{{ datos.pago.n.valor }}</div>
+  <div>facturas con todas las reglas en verde
+    <span class="etq {{ datos.pago.n.etiqueta }}">{{ datos.pago.n.etiqueta }}</span></div>
+</div>
+<div class="tarjeta">
+  <div class="num">{{ datos.pago.total_eur.valor }}</div>
+  <div>TOTAL a pagar <span class="etq {{ datos.pago.total_eur.etiqueta }}">{{ datos.pago.total_eur.etiqueta }}</span></div>
+</div>
+{% if datos.pago.top10 %}
+<table>
+  <tr><th>#</th><th>Factura</th><th>Pedido</th><th>Importe</th></tr>
+  {% for x in datos.pago.top10 %}
+  <tr><td>{{ loop.index }}</td><td>{{ x.file_id }}</td><td>{{ x.pedido }}</td>
+      <td>{{ '%.2f'|format(x.importe_eur) }} EUR</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="aviso">PENDIENTE: sin importes en el maestro — no se muestra un total falso.</p>
+{% endif %}
+{% if datos.pago.sin_importe %}<p class="peq">Aviso: {{ datos.pago.sin_importe | length }}
+factura(s) PAGAR sin importe en el maestro: {{ datos.pago.sin_importe | join(', ') }}.</p>{% endif %}
+
+<h2>2 · No se pagan</h2>
+<p>{{ datos.no_pago.n.valor }} facturas — y por qué:</p>
+<table>
+  <tr><th>Motivo</th><th>Cuántas</th><th>Ejemplos</th></tr>
+  {% for motivo, g in datos.no_pago.motivos.items() %}
+  <tr><td>{{ motivo }}</td><td>{{ g.n }}</td><td>{{ g.ejemplos | join(', ') }}</td></tr>
+  {% else %}
+  <tr><td colspan="3">Ninguna.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>3 · Te toca mirar (necesitan tu decisión)</h2>
+<p>{{ datos.revisar.n.valor }} facturas, ordenadas por importe. Están en la
+<a href="/revision">cola de Revisión</a> con la foto de la página.</p>
+<table>
+  <tr><th>Factura</th><th>Importe</th><th>Motivo</th></tr>
+  {% for x in datos.revisar.lista %}
+  <tr><td>{{ x.file_id }}</td>
+      <td>{% if x.importe_eur is not none %}{{ '%.2f'|format(x.importe_eur) }} EUR{% else %}<em>sin importe en el maestro</em>{% endif %}</td>
+      <td>{{ x.motivo }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>4 · Avisos</h2>
+<ul>
+  <li>Duplicados detectados: <strong>{{ datos.avisos.duplicados | length }}</strong></li>
+  <li>Proveedores no dados de alta: <strong>{{ datos.avisos.proveedores_fantasma | length }}</strong></li>
+  <li>Sin texto legible o muy lentas: <strong>{{ datos.avisos.sin_texto | length }}</strong></li>
+  {% for a in datos.avisos.maestro %}<li>{{ a }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

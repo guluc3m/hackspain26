@@ -200,7 +200,7 @@ def test_operaciones_con_escalera_y_actividad():
     c = TestClient(create_app(store_dir=base / "lote1" / "ledger"))
     r = c.get("/")
     assert r.status_code == 200
-    assert "Vista Escalera" in r.text and "Stats VLM" in r.text
+    assert "¿Quién lee cada factura" in r.text and "Los lectores con IA" in r.text
     assert "medido" in r.text
     # pantalla Actividad con la cadena
     r2 = c.get("/actividad")

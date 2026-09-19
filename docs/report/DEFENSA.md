@@ -195,8 +195,10 @@ página en Facturas → Detalle.
 - [1] `.sdd/metrics/lote1.json` (T14/T18): corrida original (500 archivos, 0 fallos, 347/108/45, 4.162 files/s) y distribucion_final tras el reprocesado (433/22/45, runner-1.1.0, 111,26 files/s en el subset).
 - [2] `/home/deploy/fleet/w1/.sdd/state/runner.json` (leído por la UI):
   done=500, fallos=0, resultados 347/108/45, llama-server up, serializado.
-- [3] `.sdd/lote1/review-queue/review.jsonl` (T14): cola de revisión real con
-  campos, candidatas e imágenes por página.
+- [3] `.sdd/lote1/ledger/ledger.jsonl` (motivos de los 45 escalados) y la
+  cola de Revisión de la UI (imagen de página y candidatas cuando la corrida
+  las registró — en el estado actual post-reprocesado, degrada a la cadena de
+  evidencia con aviso honesto).
 - [4] `.sdd/metrics/outcomes-lote1.jsonl` (500 líneas) + ledger
   `.sdd/lote1/ledger/ledger.jsonl` (rule_codes por factura, trazable a
   invoice_id).

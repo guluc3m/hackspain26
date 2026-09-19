@@ -3,6 +3,8 @@
 {% block titulo %}Salud · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Salud del sistema</h1>
+<p><em>Si algo falla (lectores de IA, red), aquí se cuenta y el lote sigue
+funcionando por otra vía. Un problema aquí no impide trabajar.</em></p>
 {% if runner %}
 <div class="tarjeta">
   <strong>Rung 4 — llama-server (127.0.0.1:8080)</strong>: estado
@@ -17,7 +19,7 @@
   <span class="etq {{ 'medido' if 'fail: 0' not in drills.resumen[0] else 'medido' }}">{{ drills.resumen[1] }}</span>
   <ul>
     {% for nombre, estado in drills.por_nombre %}
-    <li>{{ nombre }} — <strong>{{ estado }}</strong></li>
+    <li title="nombre del ensayo: {{ nombre }}">{{ nombres_drill[nombre] if nombre in nombres_drill else nombre }} — <strong>{{ estado }}</strong></li>
     {% endfor %}
   </ul>
   <p>Fuente: <code>.sdd/metrics/drills.json</code>. Correr de nuevo:
@@ -38,7 +40,7 @@
   <tr><th>Factura</th><th>Fase</th><th>Extractor</th><th>Detalle</th></tr>
   {% for e in estado.errores %}
   <tr><td><a href="/facturas/{{ e.invoice_id }}">{{ e.invoice_id }}</a></td>
-      <td>{{ e.stage }}</td><td><code>{{ e.extractor }}</code></td>
+      <td>{{ e.stage }}</td><td title="código técnico: {{ e.extractor }}">{{ nombres_extractor[e.extractor] if e.extractor in nombres_extractor else e.extractor }}</td>
       <td>{{ e.detail }}</td></tr>
   {% else %}
   <tr><td colspan="4">Sin fallos registrados. ✔</td></tr>
@@ -50,7 +52,7 @@
   <tr><th>Factura</th><th>Fase</th><th>Extractor</th><th>Intentos</th></tr>
   {% for r in estado.reintentos %}
   <tr><td>{{ r.invoice_id }}</td><td>{{ r.stage }}</td>
-      <td><code>{{ r.extractor }}</code></td><td>{{ r.veces }} {{ m.etq('medido') }}</td></tr>
+      <td title="código técnico: {{ r.extractor }}">{{ nombres_extractor[r.extractor] if r.extractor in nombres_extractor else r.extractor }}</td><td>{{ r.veces }} {{ m.etq('medido') }}</td></tr>
   {% else %}
   <tr><td colspan="4">Sin reintentos.</td></tr>
   {% endfor %}
@@ -60,7 +62,7 @@
 <table>
   <tr><th>Factura</th><th>Extractor</th><th>Motivo</th></tr>
   {% for e in estado.omitidos %}
-  <tr><td>{{ e.invoice_id }}</td><td><code>{{ e.extractor }}</code></td>
+  <tr><td>{{ e.invoice_id }}</td><td title="código técnico: {{ e.extractor }}">{{ nombres_extractor[e.extractor] if e.extractor in nombres_extractor else e.extractor }}</td>
       <td>{{ e.outcome.removeprefix('skipped:') }}</td></tr>
   {% else %}
   <tr><td colspan="3">Todos los extractores disponibles. ✔</td></tr>
