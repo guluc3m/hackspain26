@@ -335,9 +335,23 @@ def metricas_t10_t12(metrics_dir: Path | None = None) -> dict[str, Any]:
         else ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
     )
 
-    # ---- T14: corrida real del lote 1
-    out["resultadosLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
-    out["exactitudLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+    # ---- T14/T18: corrida real del lote 1 (lote1.json describe las 500)
+    lote1 = _cargar_json(base / "lote1.json")
+    if lote1:
+        dist = lote1.get("distribucion", {})
+        p = int(dist.get("PAGAR", 0) or 0)
+        n = int(dist.get("NO_PAGAR", 0) or 0)
+        e = int(dist.get("ESCALAR", 0) or 0)
+        total = p + n + e
+        out["resultadosLote1"] = (
+            (f"{p} PAGAR / {n} NO_PAGAR / {e} ESCALAR (500 archivos)", "medido")
+            if total == 500 else (str(dist), "medido")
+        )
+        exactitud = f"{100 * p / total:.1f} % PAGAR automático" if total else "—"
+        out["exactitudLote1"] = (exactitud, "medido")
+    else:
+        out["resultadosLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+        out["exactitudLote1"] = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
     return out
 
 

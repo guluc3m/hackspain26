@@ -91,10 +91,27 @@
       "word_conf 40.0: 89.7 % OCR pasa (cobertura 0.4: 72.4 % OCR, 100.0 % texto)",
       "calibrado con corpus (T10)"
     ],
-    "drillsPorNombre": [],
+    "drillsPorNombre": [
+      [
+        "rung5-provider-caido",
+        "PASS"
+      ],
+      [
+        "backoff-429",
+        "PASS"
+      ],
+      [
+        "crash-reanudacion",
+        "PASS"
+      ],
+      [
+        "ledger-corrupto",
+        "PASS"
+      ]
+    ],
     "drillsResumen": [
-      "PENDIENTE-MEDICIÓN(T14)",
-      "sin datos"
+      "4 pass / 0 fail",
+      "medido (drills automatizados, sin red real)"
     ],
     "dryrunLatenciaRung1": [
       [
@@ -139,16 +156,16 @@
       "medido"
     ],
     "exactitudLote1": [
-      "PENDIENTE-MEDICIÓN(T14)",
-      "sin datos"
+      "86.6 % PAGAR automático",
+      "medido"
     ],
     "impactoReprocesado": [
       "PENDIENTE-MEDICIÓN(T14)",
       "sin datos"
     ],
     "resultadosLote1": [
-      "PENDIENTE-MEDICIÓN(T14)",
-      "sin datos"
+      "433 PAGAR / 22 NO_PAGAR / 45 ESCALAR (500 archivos)",
+      "medido"
     ]
   }
 }
