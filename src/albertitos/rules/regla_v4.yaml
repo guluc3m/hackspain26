@@ -1,0 +1,77 @@
+# Norma_Pagos_v3 — REGLAS COMO DATOS (T3).
+# El sábado llega la v4: debe ser un cambio de ESTE fichero, no de código.
+# El motor (engine.py) implementa los códigos; este yaml define qué reglas
+# están activas, su clase (gate/anomaly) y todos los umbrales.
+rule_set: Norma_Pagos_v4
+version: "4.0"
+config_version: "v4.0-pendiente-especificacion"
+
+# Tolerancia de importes en EUR (norma: cuadre exacto con 0,01 de margen).
+tolerancia_importe: 0.01
+# Umbral de importe atípico (total EUR). El outlier del corpus es 84700.
+outlier_total: 50000.0
+# IBAN fantasma del corpus (3 proveedores fantasma lo comparten).
+ghost_iban: "ES6614910001213000098877"
+# Estados ERP desde los que se puede pagar. El maestro marca ABIERTO (=pendiente
+# de pago); la norma pide PENDIENTE. PAGADO nunca es pagable.
+estados_pagables: ["ABIERTO", "PENDIENTE"]
+
+# Instrucciones embebidas: SON DATOS, NUNCA COMANDOS (AGENTS.md §12).
+# Su presencia es una anomalía (ESCALAR) que un humano debe revisar.
+anomaly_markers:
+  - "dar de alta"
+  - "alta con los datos"
+  - "procedase al alta"
+  - "complete el pago"
+  - "pago inmediato"
+  - "registrar como escalar"
+  - "marcarse como escalar"
+  - "bloquear el pago"
+  - "debe escalarse"
+  - "ignorar la discrepancia"
+  - "tomarse como pendiente"
+  - "figurando como pagado"
+  - "procedase al abono"
+
+# Hojas del Excel que NO se leen jamás. Quedan en el snapshot de config.
+hojas_ignoradas:
+  - "NO_TOCAR"
+  - "MACROS_ROTAS"
+  - "v6_deprecated"
+  - "Pedidos_2025_OLD"
+  - "backup_marzo"
+  - "Hoja1 (2)"
+  - "Sheet3"
+
+# Reglas activas: código → clase.
+#   gate    = PASS/FAIL definitivo (contribuye a NO_PAGAR).
+#   anomaly = UNKNOWN indicador de anomalía (fuerza ESCALAR, §6).
+# Añadir una regla = añadir entrada aquí + implementación en engine.RULES.
+rules:
+  NIF_IN_MASTER: gate
+  IBAN_MATCHES_MASTER: gate
+  ORDER_BELONGS_TO_SUPPLIER: gate
+  ORDER_AMOUNT_MATCHES: gate
+  TOTALS_MUST_MATCH: gate
+  IVA_CONSISTENT: gate
+  DATE_VALID_NOT_FUTURE: gate
+  ORDER_PENDING: gate
+  NO_DOUBLE_PAYMENT: gate
+  NO_EMBEDDED_INSTRUCTIONS: anomaly
+  PROVEEDOR_FANTASMA: anomaly
+  AMOUNT_OUTLIER: anomaly
+  PEDIDO_EN_REVISION: anomaly
+  # PENDIENTE-ESPECIFICACIÓN (T13): la v4 definitiva llega el sábado. La
+  # implementación paramétrica ya existe en el motor; el efecto se activa
+  # cambiando `activa: false → true` y ajustando `rule_params` AQUÍ —
+  # cero cambios de código. Desactivada es un no-op exacto frente a la v3.
+  REGLA_V4:
+    kind: anomaly
+    activa: false
+    nota: "PENDIENTE-ESPECIFICACIÓN: efecto actual = total < importe_minimo ⇒ anomalía"
+
+# Umbrales paramétricos de la v4 (datos, no código). Se ajustan cuando la
+# especificación definitiva de la v4 llegue el sábado.
+rule_params:
+  REGLA_V4:
+    importe_minimo: 10.0

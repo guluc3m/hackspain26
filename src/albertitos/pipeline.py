@@ -163,8 +163,11 @@ def run_batch(pdf_dir: str | Path, store: Store, deps: PipelineDeps) -> BatchRep
                          pedidos_pagados=frozenset(prev_pedidos)),
             invoice_id=invoice_id, file_id=path.name,
         )
-        store.record_decision(decision, sha256, numero_factura=numero_factura,
-                              pedido=pedido_id, engine_version=deps.engine_version)
+        store.record_decision(
+            decision, sha256, numero_factura=numero_factura,
+            pedido=pedido_id, engine_version=deps.engine_version,
+            nif=_mejor(fields, "nif"), iban=_mejor(fields, "iban"),
+        )
         store.record_evidence(EvidenceRow(
             file_id=path.name, invoice_id=invoice_id, stage=STAGE_DECISION,
             extractor="rule-engine", extractor_version=deps.engine_version,

@@ -26,6 +26,15 @@ class EngineConfig:
     hojas_ignoradas: tuple[str, ...]
     fecha_referencia: str  # ISO YYYY-MM-DD; "fecha futura" se juzga contra esto
     extractor_versions: tuple[tuple[str, str], ...] = ()
+    # T13: reglas definidas en el yaml pero DESACTIVADAS (pendientes de
+    # especificación). Están en el snapshot; el motor no las evalúa.
+    reglas_pendientes: tuple[str, ...] = ()
+    # T13: umbrales paramétricos por regla (los pide la implementación).
+    rule_params: tuple[tuple[str, dict], ...] = ()
+
+    def params_for(self, code: str) -> dict:
+        """Parámetros declarados en el yaml para una regla (datos, no código)."""
+        return dict(dict(self.rule_params).get(code, {}))
 
     def snapshot(self) -> dict:
         """Snapshot determinista de la configuración activa (AGENTS.md §4)."""
@@ -34,6 +43,8 @@ class EngineConfig:
             "version": self.version,
             "config_version": self.config_version,
             "rules": {code: kind for code, kind in self.rules},
+            "reglas_pendientes": list(self.reglas_pendientes),
+            "rule_params": {code: dict(p) for code, p in self.rule_params},
             "tolerancia_importe": self.tolerancia_importe,
             "outlier_total": self.outlier_total,
             "estados_pagables": list(self.estados_pagables),
@@ -53,15 +64,36 @@ def load_config(path: str | pathlib.Path, *, fecha_referencia: str) -> EngineCon
     from albertitos.rules.engine import RULES  # import perezoso: evita ciclo
 
     data = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8"))
-    rules = tuple((str(code), str(kind)) for code, kind in data["rules"].items())
-    desconocidas = [code for code, _ in rules if code not in RULES]
-    if desconocidas:
-        raise ValueError(f"reglas sin implementación en engine.RULES: {desconocidas}")
+    raw_rules = data["rules"]
+    activas: list[tuple[str, str]] = []
+    pendientes: list[str] = []
+    for code, spec in raw_rules.items():
+        code, activa, kind = str(code), True, None
+        if isinstance(spec, dict):
+            kind = spec.get("kind")
+            activa = bool(spec.get("activa", True))
+        else:
+            kind = str(spec)
+        if code not in RULES:
+            raise ValueError(f"regla sin implementación en engine.RULES: {code}")
+        if kind not in ("gate", "anomaly"):
+            raise ValueError(f"clase de regla desconocida para {code}: {kind!r}")
+        if activa:
+            activas.append((code, str(kind)))
+        else:
+            pendientes.append(code)
+    rules = tuple(activas)
+    params = tuple(
+        (str(code), dict(p or {}))
+        for code, p in (data.get("rule_params") or {}).items()
+    )
     return EngineConfig(
         rule_set=str(data["rule_set"]),
         version=str(data["version"]),
         config_version=str(data["config_version"]),
         rules=rules,
+        reglas_pendientes=tuple(pendientes),
+        rule_params=params,
         tolerancia_importe=float(data["tolerancia_importe"]),
         outlier_total=float(data["outlier_total"]),
         ghost_iban=str(data["ghost_iban"]),

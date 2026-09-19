@@ -324,11 +324,36 @@ def _r_en_revision(fields, master, config, batch, textos: tuple[str, ...]) -> Ru
               _consume(None, f"pedido={pedido_id}"))
 
 
+@rule("REGLA_V4")
+def _r_v4(fields, master, config, batch, textos: tuple[str, ...]) -> RuleVerdict:
+    """Regla paramétrica de la v4 (umbrales 100% en el yaml, T13).
+
+    Efecto configurado hoy (marcada PENDIENTE-ESPECIFICACIÓN en regla_v4.yaml,
+    desactivada por defecto): facturas cuyo TOTAL queda por debajo de
+    `importe_minimo` son una anomalía para ojos humanos (UNKNOWN). Cuando la
+    v4 real llegue con su especificación definitiva, se ajusta EL YAML —
+    el motor no cambia.
+    """
+    params = config.params_for("REGLA_V4")
+    importe_minimo = float(params.get("importe_minimo", 0.0))
+    total = _num(field_by_type(fields, "total"))
+    if total is None:
+        return _v("REGLA_V4", UNKNOWN, "sin total legible",
+                  _consume(None, f"importe_minimo={importe_minimo}"))
+    if total < importe_minimo:
+        return _v("REGLA_V4", UNKNOWN,
+                  f"importe por debajo del mínimo configurado "
+                  f"({total:.2f} < {importe_minimo:.2f} EUR)",
+                  _consume(None, f"total={total}, importe_minimo={importe_minimo}"))
+    return _v("REGLA_V4", PASS, "importe por encima del mínimo configurado",
+              _consume(None, f"total={total}, importe_minimo={importe_minimo}"))
+
+
 RULES: dict[str, object] = {
     fn.code: fn for fn in (
         _r_nif, _r_iban, _r_order_supplier, _r_order_amount, _r_totals,
         _r_iva, _r_fecha, _r_order_pending, _r_double, _r_embedded,
-        _r_fantasma, _r_outlier, _r_en_revision,
+        _r_fantasma, _r_outlier, _r_en_revision, _r_v4,
     )
 }
 

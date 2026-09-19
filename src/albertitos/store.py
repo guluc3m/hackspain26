@@ -36,6 +36,8 @@ class StoredDecision:
     pedido: str
     config_version: str
     engine_version: str
+    nif: str = ""
+    iban: str = ""
 
 
 def invoice_uuid(sha256: str) -> str:
@@ -74,7 +76,26 @@ class Store:
                 pedido TEXT,
                 config_version TEXT NOT NULL,
                 engine_version TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                nif TEXT DEFAULT '',
+                iban TEXT DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS decision_runs (
+                file_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                invoice_id TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                result TEXT NOT NULL,
+                rule_codes TEXT NOT NULL,
+                numero_factura TEXT,
+                pedido TEXT,
+                nif TEXT DEFAULT '',
+                iban TEXT DEFAULT '',
+                config_version TEXT NOT NULL,
+                engine_version TEXT NOT NULL,
+                motivo TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (file_id, run_id)
             );
             CREATE TABLE IF NOT EXISTS evidence (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +132,15 @@ class Store:
             );
             """
         )
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Migraciones idempotentes de esquema (stores creados antes de T13)."""
+        cols = {r["name"] for r in self._conn.execute(
+            "PRAGMA table_info(invoices)").fetchall()}
+        for col in ("nif", "iban"):
+            if col not in cols:
+                self._conn.execute(f"ALTER TABLE invoices ADD COLUMN {col} TEXT DEFAULT ''")
         self._conn.commit()
 
     # ---------------------------------------------------------------- cache
@@ -163,12 +193,16 @@ class Store:
 
     def record_decision(self, decision: Decision, sha256: str, *,
                         numero_factura: str, pedido: str,
-                        engine_version: str) -> bool:
-        """UPSERT de la decisión. Devuelve True si el estado cambió (y por
-        tanto se escribe evento en el ledger)."""
+                        engine_version: str, run_id: str = "base",
+                        nif: str = "", iban: str = "") -> bool:
+        """UPSERT de la decisión (estado actual) + fila de histórico en
+        `decision_runs` (file_id, run_id) — T13: cada decisión nueva COEXISTE
+        con la anterior (run_id distinto), jamás se sobreescribe el histórico.
+        Devuelve True si el estado actual cambió (y se escribe en el ledger)."""
         codes = ",".join(
             f"{v.code}:{v.outcome}" for v in decision.rule_verdicts
         )
+        motivo = str(decision.config_snapshot.get("motivo", ""))
         row = self._conn.execute(
             "SELECT result, rule_codes FROM invoices WHERE file_id=?",
             (decision.file_id,),
@@ -178,16 +212,27 @@ class Store:
         self._conn.execute(
             "INSERT INTO invoices (file_id, invoice_id, sha256, result, "
             "rule_codes, numero_factura, pedido, config_version, engine_version, "
-            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "
+            "updated_at, nif, iban) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(file_id) DO UPDATE SET invoice_id=excluded.invoice_id, "
             "sha256=excluded.sha256, result=excluded.result, "
             "rule_codes=excluded.rule_codes, numero_factura=excluded.numero_factura, "
             "pedido=excluded.pedido, config_version=excluded.config_version, "
-            "engine_version=excluded.engine_version, updated_at=excluded.updated_at",
+            "engine_version=excluded.engine_version, updated_at=excluded.updated_at, "
+            "nif=excluded.nif, iban=excluded.iban",
             (decision.file_id, decision.invoice_id, sha256, decision.result,
              codes, numero_factura, pedido,
              decision.config_snapshot.get("config_version", ""),
-             engine_version, _now()),
+             engine_version, _now(), nif, iban),
+        )
+        self._conn.execute(
+            "INSERT OR REPLACE INTO decision_runs (file_id, run_id, invoice_id, "
+            "sha256, result, rule_codes, numero_factura, pedido, nif, iban, "
+            "config_version, engine_version, motivo, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (decision.file_id, run_id, decision.invoice_id, sha256,
+             decision.result, codes, numero_factura, pedido, nif, iban,
+             decision.config_snapshot.get("config_version", ""),
+             engine_version, motivo, _now()),
         )
         self._conn.commit()
         if changed:
@@ -199,6 +244,7 @@ class Store:
                 "result": decision.result,
                 "rule_codes": codes,
                 "config_version": decision.config_snapshot.get("config_version"),
+                "run_id": run_id,
             })
         return changed
 
@@ -214,11 +260,52 @@ class Store:
             rule_codes=row["rule_codes"].split(","), numero_factura=row["numero_factura"],
             pedido=row["pedido"], config_version=row["config_version"],
             engine_version=row["engine_version"],
+            nif=_row_val(row, "nif"),
+            iban=_row_val(row, "iban"),
         )
 
     def all_decisions(self) -> list[StoredDecision]:
         rows = self._conn.execute(
             "SELECT * FROM invoices ORDER BY file_id"
+        ).fetchall()
+        return [
+            StoredDecision(
+                file_id=r["file_id"], invoice_id=r["invoice_id"],
+                sha256=r["sha256"], result=r["result"],
+                rule_codes=r["rule_codes"].split(",") if r["rule_codes"] else [],
+                numero_factura=r["numero_factura"] or "",
+                pedido=r["pedido"] or "",
+                config_version=r["config_version"], engine_version=r["engine_version"],
+            )
+            for r in rows
+        ]
+
+    def decision_run_for(self, file_id: str, run_id: str = "base") -> StoredDecision | None:
+        row = self._conn.execute(
+            "SELECT * FROM decision_runs WHERE file_id=? AND run_id=?",
+            (file_id, run_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return StoredDecision(
+            file_id=row["file_id"], invoice_id=row["invoice_id"],
+            sha256=row["sha256"], result=row["result"],
+            rule_codes=row["rule_codes"].split(",") if row["rule_codes"] else [],
+            numero_factura=row["numero_factura"] or "",
+            pedido=row["pedido"] or "",
+            config_version=row["config_version"], engine_version=row["engine_version"],
+        )
+
+    def run_ids(self) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT DISTINCT run_id FROM decision_runs ORDER BY run_id"
+        ).fetchall()
+        return [r["run_id"] for r in rows]
+
+    def run_decisions(self, run_id: str = "base") -> list[StoredDecision]:
+        rows = self._conn.execute(
+            "SELECT * FROM decision_runs WHERE run_id=? ORDER BY file_id",
+            (run_id,),
         ).fetchall()
         return [
             StoredDecision(
@@ -273,6 +360,14 @@ class Store:
 
     def close(self) -> None:
         self._conn.close()
+
+
+def _row_val(row, col: str) -> str:
+    """Valor de columna tolerante a esquemas antiguos (sqlite3.Row sin .get)."""
+    try:
+        return row[col] or ""
+    except IndexError:
+        return ""
 
 
 def _now() -> str:
