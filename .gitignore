@@ -46,10 +46,8 @@ dist/
 !.sdd/metrics/entrega.json
 !.sdd/metrics/simulacro.json
 
-# T21: sandbox de la simulación del lote 2 y tmp de tests (estado, no código)
-.sdd/lote2-sim/
+# sandbox tmp de tests (estado, no código)
 .sdd/pytest-tmp/
->>>>>>> worker/w2
 
 # sandbox del drill T24 (estado en disco; la evidencia consolidada va en metrics/drill-rung4-live.json)
 .sdd/drill-live/
