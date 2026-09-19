@@ -1,6 +1,7 @@
 // Diagrama: Arquitectura general del sistema.
 // Flujo de 5 fases (ingesta → extracción → parser → motor → entrega) más los
 // carriles laterales de almacén y revisión humana.
+// Tamaños en em: escala con el texto ambiente (10.5pt informe, 18pt diapositivas).
 #import "../lib.typ": *
 #import "../utils.typ": lane-card, stage-card
 
@@ -10,15 +11,15 @@
 /// -> content
 #let pipe-arrow(caption) = align(center)[#v(-2pt)#text(
     font: display-font,
-    size: 6.5pt,
+    size: 0.619em,
     fill: brown,
-  )[▼ #text(font: body-font, size: 6.5pt, style: "italic")[#caption]]#v(-2pt)]
+  )[▼ #text(font: body-font, style: "italic")[#caption]]#v(-2pt)]
 
 /// Arquitectura general: pipeline de decisión + almacén + revisión humana.
 /// -> content
 #let arquitectura-general() = grid(
   columns: (1.5fr, 1fr),
-  column-gutter: 12pt,
+  column-gutter: 1.143em,
   align: (top + left, top + left),
   {
     stage-card(
@@ -65,9 +66,9 @@
     v(7.5em)
     align(center)[#v(-2pt)#text(
         font: display-font,
-        size: 6.5pt,
+        size: 0.619em,
         fill: brown,
-      )[◀ #text(font: body-font, size: 6.5pt, style: "italic")[evidencia de cada
+      )[◀ #text(font: body-font, size: 0.619em, style: "italic")[evidencia de cada
           fase]]#v(-2pt)]
     v(2.5pt)
     lane-card(

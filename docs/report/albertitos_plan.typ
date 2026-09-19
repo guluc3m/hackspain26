@@ -3,10 +3,10 @@
 #show: conf.with(
   event: [MAISA · HACKSPAIN 2026],
   challenge: "500 Sombras de Alberto",
-  title: [ALBERTITOS PLAN],
-  subtitle: [Arquitectura, decisiones de diseño y trade-offs del sistema de decisión de facturas],
+  title: [filemaid],
+  subtitle: [Arquitectura y ADRs],
   place: [ETSIT UPM · MADRID],
-  date: [Entrega · dom 20 sep 2026 · 11:00],
+  date: [dom 20 sep 2026 · 11:00],
   chips: ([FACTURA], [DECISIÓN], [TRAZA]),
   logo: "img/gul-logo.svg",
   team: [guluc3m],

@@ -1,4 +1,5 @@
 // Diagrama: La Escalera de Confianza Multiescalón (7 escalones de extracción).
+// Tamaños en em: escala con el texto ambiente (10.5pt informe, 18pt diapositivas).
 #import "../lib.typ": *
 
 /// Tarjeta de un escalón: número, técnica, descripción y coste/latencia.
@@ -13,26 +14,26 @@
 #let step-card(num, tech, desc, cost, speed, fill-col: sand) = box(
   fill: fill-col,
   stroke: 1.1pt + ink,
-  inset: (x: 8pt, y: 6pt),
+  inset: (x: 0.762em, y: 0.571em),
   radius: 2pt,
   width: 100%,
   grid(
-    columns: (22pt, 1fr, auto),
-    gutter: 8pt,
+    columns: (2.095em, 1fr, auto),
+    gutter: 0.762em,
     align: (center + horizon, left + horizon, right + horizon),
-    circle(radius: 8pt, fill: ink, text(
+    circle(radius: 0.762em, fill: ink, text(
       font: display-font,
-      size: 7pt,
+      size: 0.667em,
       fill: paper,
       num,
     )),
     [
       #text(font: body-font, weight: 800, fill: ink, tech) \
-      #text(size: 7.5pt, fill: brown, desc)
+      #text(size: 0.714em, fill: brown, desc)
     ],
     [
-      #text(font: display-font, size: 6.5pt, fill: teal, speed) \
-      #text(font: display-font, size: 6.5pt, fill: orange, cost)
+      #text(font: display-font, size: 0.619em, fill: teal, speed) \
+      #text(font: display-font, size: 0.619em, fill: orange, cost)
     ],
   ),
 )
@@ -40,9 +41,9 @@
 /// Conector vertical entre escalones.
 #let flow-arrow = align(center)[#v(-2pt)#text(
     font: display-font,
-    size: 6.5pt,
+    size: 0.619em,
     fill: brown,
-  )[▼ #text(font: body-font, size: 6.5pt, style: "italic")[degrada al siguiente
+  )[▼ #text(font: body-font, style: "italic")[degrada al siguiente
       escalón]]#v(-2pt)]
 
 /// Escalera de confianza multiescalón: 7 escalones, del texto vectorial al

@@ -1,5 +1,6 @@
 // Diagrama: Colapso de candidatos.
 // Cómo un campo con `values[]` se reduce a un escalar elegido (o a UNKNOWN).
+// Tamaños en em: escala con el texto ambiente (10.5pt informe, 18pt diapositivas).
 #import "../lib.typ": *
 
 /// Tarjeta de una etapa del colapso (número, técnica y descripción centrados).
@@ -12,26 +13,26 @@
 #let colapso-card(num, tech, desc, fill-col: sand) = box(
   fill: fill-col,
   stroke: 1.1pt + ink,
-  inset: (x: 4pt, y: 5pt),
+  inset: (x: 0.381em, y: 0.476em),
   radius: 2pt,
   width: 100%,
   {
-    align(center, circle(radius: 7pt, fill: ink, text(
+    align(center, circle(radius: 0.667em, fill: ink, text(
       font: display-font,
-      size: 6.5pt,
+      size: 0.619em,
       fill: paper,
       num,
     )))
-    v(3pt)
+    v(0.286em)
     align(center, text(
       font: body-font,
-      size: 8pt,
+      size: 0.762em,
       weight: 800,
       fill: ink,
       tech,
     ))
-    v(2.5pt)
-    align(center, text(size: 6.1pt, fill: brown, desc))
+    v(0.238em)
+    align(center, text(size: 0.581em, fill: brown, desc))
   },
 )
 
@@ -44,34 +45,34 @@
 #let colapso-input(tech, desc) = box(
   fill: ink,
   stroke: 1.1pt + ink,
-  inset: (x: 4pt, y: 5pt),
+  inset: (x: 0.381em, y: 0.476em),
   radius: 2pt,
   width: 100%,
   {
     align(center, text(
       font: display-font,
-      size: 6.5pt,
+      size: 0.619em,
       fill: gold,
       tracking: 0.09em,
       [INPUT],
     ))
-    v(3pt)
+    v(0.286em)
     align(center, text(
       font: body-font,
-      size: 8pt,
+      size: 0.762em,
       weight: 800,
       fill: paper,
       tech,
     ))
-    v(2.5pt)
-    align(center, text(size: 6.1pt, fill: sand, desc))
+    v(0.238em)
+    align(center, text(size: 0.581em, fill: sand, desc))
   },
 )
 
 /// Conector horizontal entre etapas del colapso.
 #let colapso-arrow = align(center + horizon, text(
   font: display-font,
-  size: 8.5pt,
+  size: 0.81em,
   fill: orange,
 )[→])
 
@@ -79,7 +80,7 @@
 /// -> content
 #let colapso-candidatos() = grid(
   columns: (1fr, auto, 1fr, auto, 1fr, auto, 1fr, auto, 1fr),
-  gutter: 3pt,
+  gutter: 0.286em,
   align: horizon,
   colapso-input([candidatos], [(extractor, confianza)]),
   colapso-arrow,

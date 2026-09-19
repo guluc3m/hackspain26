@@ -54,21 +54,11 @@
 /// labeled row, e.g. `contexto: [...]`, `alternativas: [...]`.
 ///
 /// - title (content): Decision title
-/// - status (str): `ACEPTADA`, `PROPUESTA`, `RECHAZADA` or any custom status
 /// -> content
-#let adr(title, status: "ACEPTADA", ..fields) = {
+#let adr(title, ..fields) = {
   counter("adr").step()
   context {
     let n = counter("adr").get().first()
-    let fill = if upper(status).contains("ACEPT") {
-      gold
-    } else if upper(status).contains("PROPUESTA") {
-      slate
-    } else if upper(status).contains("RECHAZ") {
-      red
-    } else {
-      sand
-    }
     block(
       width: 100%,
       breakable: true,
@@ -80,17 +70,11 @@
           width: 100%,
           fill: ink,
           inset: (x: 11pt, y: 8pt),
-          grid(
-            columns: (1fr, auto),
-            gutter: 10pt,
-            align: (horizon + left, horizon + right),
-            text(font: display-font, size: 9.5pt, fill: paper, {
-              text(fill: gold)[ADR #if n < 10 { "0" + str(n) } else { str(n) }]
-              h(9pt)
-              title
-            }),
-            chip(status, fill: fill),
-          ),
+          text(font: display-font, size: 9.5pt, fill: paper, {
+            text(fill: gold)[ADR #if n < 10 { "0" + str(n) } else { str(n) }]
+            h(9pt)
+            title
+          }),
         )
         block(width: 100%, inset: (x: 11pt, y: 11pt), {
           for (name, body) in fields.named() {
@@ -256,7 +240,7 @@
       let heads = query(heading.where(level: 1)).filter(h => h.numbering != none)
       let page = here().page()
       let visible = heads.filter(h => h.location().page() <= page)
-      let section = if visible.len() > 0 { visible.last().body } else { [albertitos_plan] }
+      let section = if visible.len() > 0 { visible.last().body } else []
       grid(
         columns: (auto, 1fr, auto),
         gutter: 10pt,
@@ -277,6 +261,7 @@
         align: (bottom, bottom),
         if team != none {
           text(size: 8.5pt, weight: 700, fill: brown, tracking: 0.05em, upper(team))
+          text(size: 8pt, fill: brown, tracking: 0.06em, weight: 700, [ -- #upper(title)])
         },
         box(
           fill: gold,
