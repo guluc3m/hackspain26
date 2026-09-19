@@ -178,7 +178,7 @@ def test_revision_escalados_paginados():
     assert r2.status_code == 200  # renderiza TODO sin bloquear
     # alguna página muestra imagen real de página (las hay: 24 entradas)
     alguna = any(
-        "data:image/png;base64," in c.get("/revision", params={"pagina": p}).text
+        "/revision/imagen/" in c.get("/revision", params={"pagina": p}).text
         for p in range(1, n_paginas + 1)
     )
     assert alguna or con_img == 0
@@ -306,7 +306,7 @@ def test_store_real_truncado_50_filas():
         # la vació (post-reprocesado), la degradación honesta se muestra
         rev_real = Path(".sdd/lote1/review-queue/review.jsonl")
         con_imagen = any(
-            "data:image/png;base64," in c.get("/revision", params={"pagina": p}).text
+            "/revision/imagen/" in c.get("/revision", params={"pagina": p}).text
             for p in range(1, 9)
         )
         assert con_imagen or "Sin imagen almacenada" in c.get("/revision").text

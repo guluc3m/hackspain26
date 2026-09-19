@@ -279,6 +279,9 @@ def build_view(
                     continue
             if imagenes:
                 vista.images_by_invoice[iid] = imagenes
+                fid = str(rec.get("file_id", ""))
+                if fid and fid != iid:
+                    vista.images_by_invoice.setdefault(fid, imagenes)
     return vista
 
 

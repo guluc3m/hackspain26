@@ -55,7 +55,7 @@ def test_revision_responde_200():
     r = cliente().get("/revision")
     assert r.status_code == 200
     assert "escan_ilegible_07.pdf" in r.text
-    assert "data:image/png;base64," in r.text  # imagen de página junto a candidatas
+    assert "/revision/imagen/" in r.text  # imagen servida por endpoint, no base64 en el HTML
     assert "los extractores discrepan" in r.text  # desacuerdo resaltado
 
 
