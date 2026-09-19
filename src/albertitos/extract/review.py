@@ -8,8 +8,9 @@ UI already consumes (`src/albertitos/ui/ledger.py`, worker/w3):
 
 Human overrides arrive from the UI at `.sdd/review-queue/overrides.jsonl`
 (schema: OverrideView). They feed EXTRACTION ONLY — the decision is always
-recomputed deterministically by the rule engine. This module only reads them;
-it never duplicates the override mechanism.
+recomputed deterministically by the rule engine. The runner reads the pending
+ones (`read_overrides_pendientes`), injects each as a candidate and marks it
+consumed (`marcar_consumidas`, append-only); this module never decides.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from typing import Any
 
 REVIEW_FILE = "review.jsonl"
 OVERRIDES_FILE = "overrides.jsonl"
+KIND_CONSUMIDO = "consumido"  # marcador append-only de override consumido (T38-F6)
 
 
 def _candidate_confidence(feat) -> float:
@@ -172,6 +174,67 @@ class ReviewQueue:
         with provenance; the decision is recomputed by the rule engine.
         """
         return self._read(self.overrides_path)
+
+    def read_overrides_pendientes(self) -> list[dict[str, Any]]:
+        """Overrides aún no consumidos por el pipeline (T38-F6).
+
+        Un override queda CONSUMIDO cuando el runner lo inyecta como
+        candidato y recalcula la decisión; el marcador `kind=consumido` es
+        append-only (el histórico jamás se reescribe ni se borra).
+        """
+        consumidas = {
+            self._clave_consumido(rec)
+            for rec in self._read(self.overrides_path)
+            if rec.get("kind") == KIND_CONSUMIDO
+        }
+        return [
+            rec
+            for rec in self.read_overrides()
+            if rec.get("kind") != KIND_CONSUMIDO
+            and self._clave_consumido(rec) not in consumidas
+        ]
+
+    @staticmethod
+    def _clave_consumido(rec: dict[str, Any]) -> tuple:
+        """Identidad de un override (misma corrección, mismo momento)."""
+        return (
+            rec.get("invoice_id"),
+            rec.get("file_id"),
+            rec.get("campo"),
+            str(rec.get("valor")),
+            rec.get("cuando"),
+        )
+
+    def marcar_consumidas(self, overrides: list[dict[str, Any]]) -> int:
+        """Append de marcadores `kind=consumido` para los overrides dados.
+
+        Idempotente en la práctica: si el runner crashea entre inyectar y
+        marcar, el re-run re-inyecta el override (misma decisión byte a
+        byte — el motor es determinista) y vuelve a marcar.
+        """
+        if not overrides:
+            return 0
+        self.root.mkdir(parents=True, exist_ok=True)
+        ahora = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        with self.overrides_path.open("a", encoding="utf-8") as fh:
+            for rec in overrides:
+                fh.write(
+                    json.dumps(
+                        {
+                            "kind": KIND_CONSUMIDO,
+                            "invoice_id": rec.get("invoice_id", ""),
+                            "file_id": rec.get("file_id", ""),
+                            "campo": rec.get("campo", ""),
+                            "valor": str(rec.get("valor", "")),
+                            "cuando": rec.get("cuando", ""),
+                            "consumido": ahora,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+        return len(overrides)
 
     @staticmethod
     def _read(path: Path) -> list[dict[str, Any]]:

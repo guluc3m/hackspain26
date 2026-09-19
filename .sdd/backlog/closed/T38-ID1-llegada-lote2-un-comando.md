@@ -33,3 +33,24 @@ validador. Caso negativo: un PDF repetido del lote 1 ⇒ fallo limpio.
 T38 (IDEAS): las ideas pequeñas y seguras llevan su ticket listo para
 implementar; implementarlo es del EVALUADOR-IMPLEMENTADOR del ciclo
 siguiente. ~60 líneas de bash + test.
+
+## Resolución (W4, T39 — ciclo evaluador-implementador)
+APROBADO e implementado (p1, el propio ticket lo delega al evaluador-
+implementador del ciclo siguiente; el lote 2 llega HOY 16:00 UTC).
+
+- `scripts/lote2_llego.sh <dir-lote2>`: chequeo previo que FALLA LIMPIO sin
+  tocar nada (dir existe, EXACTAMENTE ESPERADOS_LOTE2 PDFs —default 40—,
+  CERO solapación de basename con el lote 1, regla v4 y maestro presentes) →
+  ingesta con el flujo EXACTO de T21 (`-m albertitos.run --facturas …
+  --rules regla_v4.yaml --run-id lote2 --emit-scope lote`, validador
+  integrado) → `stage_delivery.sh` con FACTURAS_LOTE2 correcto (2→3
+  entregables) → resumen legible en español (n ingestados, distribución
+  PAGAR/NO_PAGAR/ESCALAR, lote 1 intacto).
+- Entregables intocables: `outcomes.jsonl` del lote 1 verificado byte a
+  byte (hash antes/después en el test).
+- Tests: `tests/test_lote2_llego.py` (4): e2e 0→2 líneas + staging 2→3
+  entregables + resumen; fallo limpio por sobreposición de file_id; fallo
+  limpio por cuenta incorrecta; sin ingesta ni staging en los negativos.
+- Todo el estado de test bajo `.sdd/pytest-tmp` (jamás /tmp, §8).
+- Verificado: pytest verde, ruff limpio, validador 500/500 lote 1, bash -n,
+  higiene de secretos limpia.

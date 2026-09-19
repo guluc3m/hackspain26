@@ -33,7 +33,10 @@ def parse_amount(token: str) -> Decimal | None:
             if len(s.rsplit(",", 1)[1]) in (1, 2):
                 miles, dec = "", ","
             else:
-                miles, dec = ",", ""  # T38-F3: coma de MILES ("12,345"), no decimal
+                # coma de miles anglosajona sin decimales ("12,345" → 12345);
+                # T38-F3: antes se asignaba miles="." — carácter que NO está
+                # en el token ⇒ Decimal InvalidOperation ⇒ None.
+                miles, dec = ",", ""
         elif "." in s:
             parts = s.split(".")
             if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]) and len(parts[-1]) == 3:
@@ -79,8 +82,11 @@ _RE_FECHA_TEXTO = re.compile(
 def parse_fecha(texto: str) -> str | None:
     """Extrae la primera fecha VÁLIDA del texto y la devuelve ISO YYYY-MM-DD.
 
-    T38-F4: una fecha imposible (30/02/2026) NO anula el campo — se itera
-    hasta la primera válida (las imposibles son ruido de tipografía)."""
+    T38-F4: una fecha inválida (30/02/2026) NO anula el campo entero — se
+    itera con `finditer` y se devuelve la primera que sea una fecha real.
+    Las inválidas no generan valor (inventar ambigüedad es peor señal); si
+    solo hay inválidas, None — como siempre.
+    """
     for m in _RE_FECHA_NUM.finditer(texto):
         d, mm, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try:
@@ -88,15 +94,17 @@ def parse_fecha(texto: str) -> str | None:
             return f"{y:04d}-{mm:02d}-{d:02d}"
         except ValueError:
             continue
+        return f"{y:04d}-{mm:02d}-{d:02d}"
     for m in _RE_FECHA_TEXTO.finditer(texto):
-        d, mes, y = int(m.group(1)), _MESES.get(m.group(2).lower(), 0), int(m.group(3))
+        d, y = int(m.group(1)), int(m.group(3))
+        mes = _MESES.get(m.group(2).lower(), 0)
         if not mes:
             continue
         try:
             datetime.date(y, mes, d)
-            return f"{y:04d}-{mes:02d}-{d:02d}"
         except ValueError:
             continue
+        return f"{y:04d}-{mes:02d}-{d:02d}"
     return None
 
 
