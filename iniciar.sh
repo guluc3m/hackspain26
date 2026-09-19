@@ -7,9 +7,8 @@
 # puede, la abre en el navegador. Sin argumentos, sin terminal que aprender:
 # al final verás "Listo". Idempotente: si ya está encendido, solo abre.
 #
-# Requisitos (se comprueban aquí mismo, con mensaje claro si falta algo):
-#   - `uv` en el PATH  → https://docs.astral.sh/uv/
-#   - nada más: el resto se descarga/crea solo (la .venv se crea con uv).
+# Requisito único: `uv`. Si falta, se instala solo (usuario, sin root).
+# Nada más: el resto se descarga/crea solo (la .venv se crea con uv).
 
 set -euo pipefail
 
@@ -19,8 +18,7 @@ cd "$(dirname "$0")"
 
 aviso() { echo "ERROR: $*" >&2; exit 1; }
 
-command -v uv >/dev/null 2>&1 || aviso "Falta uv — instálalo con:
-  curl -LsSf https://astral.sh/uv/install.sh | sh"
+. "$(dirname "$0")/scripts/_ensure_uv.sh"
 [ -n "$STORE" ] && export ALBERTITOS_STORE="$STORE"
 mkdir -p .sdd/telemetria
 
@@ -34,14 +32,10 @@ VIVA() { curl -sf "http://127.0.0.1:$PUERTO/" >/dev/null 2>&1; }
 
 # ------------------------------------------------ 2 · ¿ya está funcionando?
 if VIVA; then
-	echo "El sistema ya está encendido (no lo vuelvo a arrancar)."
-	if uv run python -c "import webview" >/dev/null 2>&1; then
-		nohup uv run python -m albertitos.desktop --solo-ventana >/dev/null 2>&1 &
-	else
-		NAVEGADOR "http://localhost:$PUERTO"
-	fi
+	echo "El sistema ya está encendido — abro la pestaña."
+	NAVEGADOR "http://localhost:$PUERTO"
 	echo ""
-	echo "Listo. Mira la ventana (o tu navegador): http://localhost:$PUERTO"
+	echo "Listo. Mira tu navegador: http://localhost:$PUERTO"
 	exit 0
 fi
 

@@ -28,6 +28,7 @@ PLAN_PDF="${PLAN_PDF:-albertitos_plan.pdf}"
 FACTURAS_LOTE1="${FACTURAS_LOTE1:-caja-de-alberto/facturas}"
 FACTURAS_LOTE2="${FACTURAS_LOTE2:-$FACTURAS_LOTE1}"
 DESTINO="${DESTINO:-$HOME/delivery-repo}"
+. "$(dirname "$0")/_ensure_uv.sh"
 PYTHON="${PYTHON:-uv run python}"
 
 err() {

@@ -3,5 +3,5 @@
 # Idempotente y sin root: todo va en el .venv local.
 set -euo pipefail
 cd "$(dirname "$0")"
-command -v uv >/dev/null || { echo "Falta uv — instálalo con: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
+. "$(dirname "$0")/scripts/_ensure_uv.sh"
 exec uv run python -m albertitos.desktop "$@"

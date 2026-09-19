@@ -5,4 +5,5 @@
 # Al terminar, el servidor queda UP (el drill lo relanza con su cmdline).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. "$(dirname "$0")/_ensure_uv.sh"
 exec nice -n 10 uv run python -m albertitos.drill_rung4_live "$@"

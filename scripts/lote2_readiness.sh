@@ -17,4 +17,5 @@
 #   bash scripts/stage_delivery.sh   # re-staging con lote2
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. "$(dirname "$0")/_ensure_uv.sh"
 exec uv run python -m albertitos.lote2 --dry-run "$@"

@@ -32,6 +32,7 @@ err() {
 }
 
 cd "$(dirname "$0")/.."
+. "$(dirname "$0")/_ensure_uv.sh"
 PYTHON="${PYTHON:-uv run python}"
 DIR_LOTE2="${1:-}"
 ESPERADOS="${ESPERADOS_LOTE2:-40}"
