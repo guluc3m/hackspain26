@@ -1,3 +1,5 @@
+#import "diagram/colapso-candidatos.typ": colapso-candidatos
+
 == Motor de reglas y decisión
 
 El motor consume los campos que entrega el _parser_ (incluyendo todos sus
@@ -88,6 +90,9 @@ desempate). La elección se registra en la evaluación de la regla. Si no
 sobrevive ningún candidato (campo ausente, todos rechazados por formato o por
 debajo del umbral), la regla devuelve `UNKNOWN` y el motor escala.
 
+#figure(colapso-candidatos(), caption: [Arquitectura general])
+
+
 
 === Configuración y maestros
 
@@ -95,29 +100,29 @@ Los _thresholds_ y la selección de candidatos viven en la base de datos y puede
 ser cargados a través de un YAML versionado cuyo hash forma parte del
 _snapshot_, con una entrada por código de regla:
 
-```yaml
-rule_set_version: v1
-rules:
-  enabled:
-    - TOTALS_MUST_MATCH
-    - NIF_IN_MASTER
-    # ...
-thresholds:
-  TOTALS_MUST_MATCH:
-    min_confidence: 0.7
-outcomes:
-  default: NO_PAGAR
-  on_fail:
-    NIF_IN_MASTER: ESCALAR
-seleccion:
-  default_score_threshold: 0.3
-  default_extractor_weights:
-    pypdf: 1.0
-    tesseract: 0.9
-  fields:
-    nif:
-      format_tests: [NIF_FORMAT]
-```
+// ```yaml
+// rule_set_version: v1
+// rules:
+//   enabled:
+//     - TOTALS_MUST_MATCH
+//     - NIF_IN_MASTER
+//     # ...
+// thresholds:
+//   TOTALS_MUST_MATCH:
+//     min_confidence: 0.7
+// outcomes:
+//   default: NO_PAGAR
+//   on_fail:
+//     NIF_IN_MASTER: ESCALAR
+// seleccion:
+//   default_score_threshold: 0.3
+//   default_extractor_weights:
+//     pypdf: 1.0
+//     tesseract: 0.9
+//   fields:
+//     nif:
+//       format_tests: [NIF_FORMAT]
+// ```
 
 Cada regla fija la confianza mínima exigida a los campos que consume; si el
 mejor candidato no la supera, la regla devuelve `UNKNOWN` en lugar de

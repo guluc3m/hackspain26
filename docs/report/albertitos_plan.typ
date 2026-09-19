@@ -22,5 +22,4 @@
 
 #include "architecture.typ"
 #include "architecture-rules.typ"
-#include "implementation.typ"
 #include "adrs-tradeoffs.typ"
