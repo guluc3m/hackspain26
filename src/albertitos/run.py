@@ -387,16 +387,15 @@ class Runner:
 
     def _write_state(self, files: list[Path], report: RunReport,
                      started: float | None = None) -> None:
-        """Estado para la UI (T5): números medidos, nunca estimados."""
+        """Estado para la UI (T5): números medidos, nunca estimados.
+
+        T33-M2: un SELECT por tick (era O(N²): decision_for por archivo)."""
         resultados: dict[str, int] = {"PAGAR": 0, "NO_PAGAR": 0, "ESCALAR": 0}
-        done = 0
-        for path in files:
-            d = self.store.decision_for(path.name)
-            if d is None:
-                continue
-            done += 1
-            if d.result in resultados:
-                resultados[d.result] += 1
+        mapa = self.store.resultados_por_file([p.name for p in files])
+        done = len(mapa)
+        for result in mapa.values():
+            if result in resultados:
+                resultados[result] += 1
         elapsed = time.monotonic() - started if started else report.elapsed_s
         state = {
             "actualizado": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
