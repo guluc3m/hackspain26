@@ -55,6 +55,19 @@ def test_importe_espanol_punto_miles_coma_decimal_exacto():
     assert parse_amount("no-es-un-importe") is None
 
 
+def test_importe_coma_miles_anglosajona_sin_decimales_T38F3():
+    """T38-F3: "12,345" antes devolvía None (miles='.' erróneo ⇒
+    InvalidOperation). Ahora, igual que la rama de punto: coma de miles."""
+    assert parse_amount("12,345") == Decimal(12345)
+    assert parse_amount("1,234") == Decimal(1234)
+    assert parse_amount_float("12,345") == 12345.0
+    # sin regresión: los casos correctos de siempre
+    assert parse_amount_float("1.234,56") == 1234.56
+    assert parse_amount_float("2.345") == 2345.0
+    assert parse_amount_float("12.345.678") == 12345678.0
+    assert parse_amount_float("12,34") == 12.34  # coma decimal sigue mandando
+
+
 def test_fecha_formatos():
     assert parse_fecha("Fecha: 08/04/2026") == "2026-04-08"
     assert parse_fecha("25 de enero de 2026") == "2026-01-25"

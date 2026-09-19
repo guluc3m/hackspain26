@@ -33,7 +33,10 @@ def parse_amount(token: str) -> Decimal | None:
             if len(s.rsplit(",", 1)[1]) in (1, 2):
                 miles, dec = "", ","
             else:
-                miles, dec = ".", ""
+                # coma de miles anglosajona sin decimales ("12,345" → 12345);
+                # T38-F3: antes se asignaba miles="." — carácter que NO está
+                # en el token ⇒ Decimal InvalidOperation ⇒ None.
+                miles, dec = ",", ""
         elif "." in s:
             parts = s.split(".")
             if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]) and len(parts[-1]) == 3:

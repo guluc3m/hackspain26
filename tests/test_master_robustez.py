@@ -35,16 +35,15 @@ def test_importe_como_texto_espanol(tmp_path):
 
 
 def test_importe_como_texto_anglosajon(tmp_path):
-    # "1,234" hoy NO lo resuelve parse_amount (bug T38-F3, fix para W3 al
-    # principio de la cola): load_master no crashea y deja señal de aviso.
-    # Cuando F3 aterrice este test DEBE pasar a esperar 1234.0 sin avisos.
+    # Tras el fix T38-F3, "1,234" (coma de miles anglosajona) SÍ se resuelve
+    # y el fallback de load_master lo carga sin avisos.
     path = _guardar(tmp_path, _wb_pedidos(
         [("PO-2026-0222", "P001", "B46102331", "1,234", "PENDIENTE",
           "2026-01-20")],
     ))
     m = load_master(path)
-    assert m.pedidos["PO-2026-0222"].importe == 0.0
-    assert "pedido_importe_ilegible:PO-2026-0222" in m.avisos
+    assert m.pedidos["PO-2026-0222"].importe == 1234.0
+    assert not any("pedido_importe" in a for a in m.avisos)
 
 
 def test_importe_ilegible_deja_aviso_y_no_crash(tmp_path):
