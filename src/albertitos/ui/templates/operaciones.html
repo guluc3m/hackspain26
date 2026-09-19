@@ -32,6 +32,62 @@
     <div>{{ m.etq('medido') }}</div></div>
 </div>
 
+
+<h2>Vista Escalera (T31, comparable por tramo)</h2>
+<p>Tiempo consumido por cada tramo de la escalera — para ver la deriva tras
+cambios de un vistazo. Ventana: <strong>corrida actual</strong> (última
+config_version) y <strong>histórico</strong>.</p>
+{% for ventana in ['corrida_actual', 'historico'] %}
+<h3>{{ 'Corrida actual' if ventana == 'corrida_actual' else 'Histórico' }}
+  {{ m.etq('medido') }}</h3>
+<table>
+  <tr><th>Rung</th><th>Ejecuciones</th><th>p50</th><th>p95</th>
+      <th>% filas</th><th>Descarte</th><th>Coste</th></tr>
+  {% for rung, s in escalera[ventana].rungs | dictsort %}
+  <tr>
+    <td><code>{{ rung }}</code></td>
+    <td>{{ s.n }}</td>
+    <td>{% if s.p50_ms is not none %}{{ s.p50_ms }} ms{% else %}—{% endif %}</td>
+    <td>{% if s.p95_ms is not none %}{{ s.p95_ms }} ms{% else %}—{% endif %}</td>
+    <td>{% if s.pct_filas is not none %}{{ s.pct_filas }} %{% else %}—{% endif %}</td>
+    <td>{% if s.ratio_descarte is not none %}{{ s.ratio_descarte }} %{% else %}—{% endif %}</td>
+    <td>{{ s.coste_eur }} EUR</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">Sin evidencia registrada todavía.</td></tr>
+  {% endfor %}
+</table>
+{% endfor %}
+
+<h2>Stats VLM (rung 4 llama-server y rung 5 cloud)</h2>
+<table>
+  <tr><th>Componente</th><th>Invocaciones</th><th>Lat. media</th><th>Lat. máx</th>
+      <th>Cache hit/miss</th><th>Truncado</th><th>Coste</th></tr>
+  {% for nombre, s in vlm | dictsort if s.n_invocaciones is defined %}
+  <tr><td>{{ nombre }}</td>
+      <td>{{ s.n_invocaciones }} {{ m.etq(s.etiqueta if s.etiqueta in ['medido'] else 'sin datos') }}</td>
+      <td>{% if s.latencia_media_ms is not none %}{{ s.latencia_media_ms }} ms{% else %}—{% endif %}</td>
+      <td>{% if s.latencia_max_ms is not none %}{{ s.latencia_max_ms }} ms{% else %}—{% endif %}</td>
+      <td>{{ s.cache_hit }} / {{ s.cache_miss }}</td>
+      <td>{% if s.tasa_truncado is not none %}{{ s.tasa_truncado }} %{% else %}sin datos{% endif %}</td>
+      <td>{{ s.coste_eur.valor }} <span class="etq {{ s.coste_eur.etiqueta if s.coste_eur.etiqueta in ['medido', 'estimado'] else 'sin datos' }}">{{ s.coste_eur.etiqueta }}</span></td></tr>
+  {% endfor %}
+</table>
+{% if vlm.cache_paginas_almacenadas %}<p class="peq">Páginas en caché
+(page_sha256 × engine × config_version): {{ vlm.cache_paginas_almacenadas.valor }}
+{{ m.etq('medido') }}.</p>{% endif %}
+
+{% if llama %}
+<h2>Sonda llama-server (rung 4)</h2>
+<div class="tarjeta">
+  <p>Estado: <strong>{{ llama.estado[0] }}</strong> {{ m.etq('medido') }} —
+  <code>{{ llama.url }}</code></p>
+  {% if llama.modelo %}<p>Modelo: {{ llama.modelo.valor }} {{ m.etq(llama.modelo.etiqueta) }}</p>{% endif %}
+  {% if llama.cola_rung4 %}<p>Cola rung 4: {{ llama.cola_rung4.valor }} {{ m.etq(llama.cola_rung4.etiqueta) }}</p>{% endif %}
+  {% if llama.contadores %}<p>Contadores Prometheus: {{ llama.contadores.valor }} {{ m.etq(llama.contadores.etiqueta) }}</p>{% endif %}
+</div>
+{% endif %}
+
 <h2>Resultados</h2>
 <table>
   <tr><th>Resultado</th><th>Facturas</th></tr>

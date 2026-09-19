@@ -25,6 +25,8 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
+
 from .demo import demo_records
 from .ledger import (
     OverrideView,
@@ -40,6 +42,33 @@ from .ledger import (
     revision_queue,
     what_if,
 )
+
+_sonda_cache: tuple[float, Any] | None = None  # (ts, resultado) — sonda acotada
+
+
+def _ruta_actividad() -> Path:
+    """Cadena de actividad: telemetría de la UI, JAMÁS dentro del store."""
+    return Path(".sdd") / "telemetria" / "actividad.jsonl"
+
+
+def _cache_root() -> Path | None:
+    candidato = Path(".sdd/lote1/cache")
+    return candidato if candidato.is_dir() else None
+
+
+def _sonda_con_cache(base_url: str = "http://127.0.0.1:8080", ttl_s: float = 60.0) -> Any:
+    """Sonda llama-server con caché de 60 s: nunca satura el sidecar."""
+    global _sonda_cache
+    ahora = time.monotonic()
+    if _sonda_cache is not None and ahora - _sonda_cache[0] < ttl_s:
+        return _sonda_cache[1]
+    from albertitos.telemetria import sonda_llama
+
+    resultado = sonda_llama(base_url)
+    _sonda_cache = (ahora, resultado)
+    return resultado
+
+
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -89,6 +118,7 @@ def create_app(
         drills = None
 
     aplicacion.state.view = build_view(registros)
+    aplicacion.state.registros = registros
     aplicacion.state.override_dir = destino
     aplicacion.state.demo = demo
     aplicacion.state.runner = estado
@@ -124,10 +154,18 @@ def create_app(
 
     @aplicacion.get("/", response_class=HTMLResponse)
     def operaciones(request: Request):
+        stats = stats_por_rung(aplicacion.state.registros)
+        vlm = stats_vlm(aplicacion.state.registros, cache_root=_cache_root())
+        sondea = _sonda_con_cache()
         return _TEMPLATES.TemplateResponse(
             request,
             "operaciones.html",
-            ctx(resumen=ops_summary(aplicacion.state.view)),
+            ctx(
+                resumen=ops_summary(aplicacion.state.view),
+                escalera=stats["ventanas"],
+                vlm=vlm,
+                llama=sondea,
+            ),
         )
 
     @aplicacion.get("/facturas", response_class=HTMLResponse)
@@ -214,7 +252,36 @@ def create_app(
                 cuando=time.strftime("%Y-%m-%d %H:%M:%S"),
             )
         )
+        # telemetría: el evento de corrección queda en la cadena encadenada
+        try:
+            EventChain(_ruta_actividad()).append(
+                "override-revision",
+                {"invoice_id": invoice_id, "file_id": file_id, "campo": campo},
+            )
+        except OSError:
+            pass  # la telemetría nunca bloquea la revisión
         return RedirectResponse("/revision", status_code=303)
+
+    @aplicacion.get("/actividad", response_class=HTMLResponse)
+    def actividad(request: Request):
+        cadena = EventChain(_ruta_actividad())
+        return _TEMPLATES.TemplateResponse(
+            request,
+            "actividad.html",
+            ctx(
+                eventos=cadena.leer()[-50:],
+                integridad=cadena.verificar(),
+                total=len(cadena.leer()),
+            ),
+        )
+
+    @aplicacion.post("/actividad/anotar")
+    async def actividad_anotar(nota: str = Form(...)):
+        EventChain(_ruta_actividad()).append(
+            "anotacion-humana",
+            {"nota": nota, "quien": "alberto-ui"},
+        )
+        return RedirectResponse("/actividad", status_code=303)
 
     @aplicacion.get("/reglas", response_class=HTMLResponse)
     def reglas(request: Request, codigo: str = "", nuevo_umbral: str = ""):
