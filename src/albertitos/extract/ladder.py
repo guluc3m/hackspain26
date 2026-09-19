@@ -6,14 +6,18 @@
 4. VLM local (PaddleOCR-VL Q8 vía llama-server, temp 0) — misma doble puerta.
 5. VLM cloud (>25B, multimodal) — vía de escalado; su lectura es otro candidato, nunca respuesta automática.
 
-Cada escalón registra una ExtractionFeature (engine+version+latencia+hash) y es
+Cada escalón registra ExtractionFeatures (engine+version+latencia+hash) y es
 skippable: dependencia ausente ⇒ `skipped:<reason>` y se sigue; degrada calidad,
 nunca para el lote. Escalones 2–5 cachean en (page_sha256, extractor_version,
 config_version).
-"""
 
+La interfaz es uniforme: cada escalón es `extract(PageContext) -> RungResult`
+y decide por sí mismo si puede detener la escalera (`auto_stop`). Añadir un
+escalón = añadirlo a _RUNGS; tocar el bucle jamás.
+"""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,6 +26,7 @@ from albertitos.types import ExtractionFeature
 
 from .cache import FeatureCache
 from .rungs import cloud_vlm, qr, tesseract, text_layer, vlm_local
+from .rungs.context import PageContext
 
 
 @dataclass(slots=True)
@@ -32,6 +37,32 @@ class PageExtraction:
     features: list[ExtractionFeature] = field(default_factory=list)
     content: str = ""  # mejor lectura de contenido disponible (o payload QR)
     stopped_at: str | None = None  # escalón que dio por buena la página
+
+
+@dataclass(slots=True)
+class RungResult:
+    """Salida uniforme de un escalón: features, contenido y si la página está resuelta."""
+
+    features: list[ExtractionFeature] = field(default_factory=list)
+    content: str = ""
+    resolved: bool = False  # True ⇒ la escalera para aquí (stopped_at = NAME del escalón)
+
+
+def _wrap_text(feat: ExtractionFeature) -> RungResult:
+    """Adaptador para escalones que devuelven una feature simple."""
+    data = feat.data if isinstance(feat.data, str) else ""
+    ok = not feat.extraction_method.startswith("skipped") and bool(data)
+    return RungResult([feat], content=data, resolved=ok)
+
+
+_RUNGS: list[tuple[str, Callable[[PageContext], Any], bool, Callable[[ExtractionFeature], RungResult] | None]] = [
+    # (name, módulo.extract, auto_stop, adaptador opcional)
+    (text_layer.NAME, text_layer.extract, True, _wrap_text),
+    (qr.NAME, qr.extract, True, None),  # QrRungResult ya trae resolved implícito vía qr_only
+    (tesseract.NAME, tesseract.extract, True, _wrap_text),
+    (vlm_local.NAME, vlm_local.extract, True, _wrap_text),
+    (cloud_vlm.NAME, cloud_vlm.extract, False, _wrap_text),  # el cloud nunca es respuesta automática
+]
 
 
 class ExtractionLadder:
@@ -47,32 +78,31 @@ class ExtractionLadder:
 
     def extract_page(self, pdf_path: Path, page_index: int) -> PageExtraction:
         out = PageExtraction(page=page_index)
+        ctx = PageContext(
+            pdf_path=pdf_path,
+            page_index=page_index,
+            cache=self.cache,
+            config=self.config,
+            pages_dir=self.pages_dir,
+        )
 
-        # Escalón 1: capa de texto
-        feat = text_layer.extract(pdf_path, page_index)
-        out.features.append(feat)
-        if feat.extraction_method == "pypdf" and isinstance(feat.data, str):
-            out.content = feat.data
-            out.stopped_at = feat.extraction_method
-            return out
+        for name, rung_extract, auto_stop, adapter in _RUNGS:
+            result = rung_extract(ctx)
+            if isinstance(result, RungResult):
+                rr = result
+            elif isinstance(result, qr.QrRungResult):
+                # el QR-only es la única resolución que no pasa por _wrap_text:
+                # el payload ES el contenido (dato no confiado, nunca instrucciones)
+                rr = RungResult(result.features, content=result.content, resolved=result.qr_only)
+            else:
+                rr = adapter(result) if adapter else RungResult([result])
 
-        # Escalón 2: rasterizado + QR
-        render = qr.extract(pdf_path, page_index, self.cache, self.config, self.pages_dir)
-        out.features.append(render.feature)
-        if render.page_image_sha:
-            out.content = render.content or out.content
-            if render.qr_only:
-                out.stopped_at = "zxing"
+            out.features.extend(rr.features)
+            if rr.content:
+                out.content = rr.content
+            if rr.resolved and auto_stop:
+                out.stopped_at = name
                 return out
-
-        # Escalones 3–5: OCR / VLM local / VLM cloud (cada uno con su puerta de confianza)
-        for rung in (tesseract, vlm_local, cloud_vlm):
-            feat = rung.extract(pdf_path, page_index, render.page_image_sha, self.cache, self.config)
-            out.features.append(feat)
-            if feat.extraction_method == rung.NAME and isinstance(feat.data, str) and feat.data:
-                out.content = feat.data
-                if rung.NAME != cloud_vlm.NAME:  # el cloud nunca es respuesta automática
-                    out.stopped_at = rung.NAME
         return out
 
 
