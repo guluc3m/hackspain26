@@ -1,0 +1,103 @@
+{
+  "generado": "2026-09-19 01:09:00",
+  "regimen": {
+    "n_runners": 2,
+    "runner_limit": 50,
+    "ui_requests": 10,
+    "ui_arrancada": true,
+    "etiqueta": "medido"
+  },
+  "componentes": {
+    "ui": {
+      "rss_mb": 96.0,
+      "etiqueta": "medido",
+      "cpu_pct": {
+        "cpu_pct": 0.0,
+        "etiqueta": "medido"
+      }
+    },
+    "runner_50766": {
+      "rss_mb": 38.2,
+      "etiqueta": "medido",
+      "cpu_pct": {
+        "cpu_pct": 46.0,
+        "etiqueta": "medido"
+      }
+    },
+    "runner_50767": {
+      "rss_mb": 38.3,
+      "etiqueta": "medido",
+      "cpu_pct": {
+        "cpu_pct": 50.0,
+        "etiqueta": "medido"
+      }
+    }
+  },
+  "llama_server": {
+    "estado": [
+      "up",
+      "medido"
+    ],
+    "url": "http://127.0.0.1:8080/health"
+  },
+  "pantallas": {
+    "/": {
+      "n": 10,
+      "p50_ms": 0.9,
+      "p95_ms": 7.3,
+      "max_ms": 7.3,
+      "etiqueta": "medido"
+    },
+    "/facturas": {
+      "n": 10,
+      "p50_ms": 2.6,
+      "p95_ms": 7.7,
+      "max_ms": 7.7,
+      "etiqueta": "medido"
+    },
+    "/revision": {
+      "n": 10,
+      "p50_ms": 1.3,
+      "p95_ms": 7.3,
+      "max_ms": 7.3,
+      "etiqueta": "medido"
+    },
+    "/reglas": {
+      "n": 10,
+      "p50_ms": 0.9,
+      "p95_ms": 4.7,
+      "max_ms": 4.7,
+      "etiqueta": "medido"
+    },
+    "/salud": {
+      "n": 10,
+      "p50_ms": 0.9,
+      "p95_ms": 1.0,
+      "max_ms": 1.0,
+      "etiqueta": "medido"
+    }
+  },
+  "ram_sistema": {
+    "total_gb": 12.0,
+    "disponible_gb": 8.0,
+    "etiqueta": "medido"
+  },
+  "runners_files_por_s": [
+    108.722,
+    109.986
+  ],
+  "concurrencia": {
+    "regimen_medido": "2 runners (limit 50) + UI con el lote completo simultáneos en esta caja",
+    "soportada": true,
+    "etiqueta": "medido",
+    "limite_estimado": "con 8 núcleos y rung 4 serializado (≈1 core por runner), el régimen cómodo estimado es ~4-6 runners + UI; el límite real lo marcaría el contencioso de CPU en rung 3/4, no la RAM",
+    "nota_mas_ram": "con 12.0 GB y RSS medidos de ~96.0 MB por componente, la RAM NO es el cuello (sobran GB): con más RAM el régimen no cambia; el límite es CPU en rung 3/4 (estimado)"
+  },
+  "rojos": [],
+  "fuentes": {
+    "rss": "/proc/<pid>/status VmRSS",
+    "cpu": "/proc/<pid>/stat utime+stime",
+    "latencias": "httpx contra 127.0.0.1 (loopback)",
+    "ram": "/proc/meminfo"
+  }
+}

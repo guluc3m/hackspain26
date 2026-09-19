@@ -121,3 +121,17 @@
   usa la medición real.
 - Test: DEFENSA.md validada (secciones, checklist, fuentes existentes,
   números contra JSON). 187 passed, ruff limpio.
+
+## Sesión 8 — T23 cerrado (commit 4894e44)
+
+- Perfil de carga MEDIDO del régimen completo (`.sdd/metrics/perfil-carga.json`):
+  UI real (lote 1, 500 facturas) + 2 runners concurrentes (limit 50, stores
+  temporales) + llama-server up → UI p95 < 12 ms, 108-110 files/s por runner,
+  RSS 96/38 MB, 8 GB RAM libres, 0 ROJOS. Concurrencia soportada MEDIDA;
+  límite práctico estimado: CPU en rung 3/4 (~1 core/runner serializado),
+  no la RAM. Párrafo en escalabilidad.typ (PDF recompilado).
+- `albertitos.perfil`: re-ejecutable (`python -m albertitos.perfil`), /proc
+  para RSS/CPU sin psutil; runners sobre COPIAS temporales jamás el store real.
+- DEFENSA.md sincronizado con lote1.json post-fix T18 (433/22/45 final);
+  test dinámico: el guion debe citar la medición actual (si lote1.json
+  evoluciona, el test avisa para actualizar el guion).

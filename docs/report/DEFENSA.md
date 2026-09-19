@@ -18,7 +18,7 @@ las 500 están decididas: 347 PAGAR, 108 NO_PAGAR, 45 para revisión.» [1]
    archivos/s (rung 4 serializado), reglas v3.0-2026-09-19, llama-server up. [2]
 2. **Facturas** — filtrar por NO_PAGAR; abrir una factura real con su traza
    (ej. `factura_8801.pdf`: NO_PAGAR por `NO_DOUBLE_PAYMENT`, duplicada de
-   `2026-05-28_P005.pdf`). [2][4]
+   `2026-05-28_P005.pdf` — correcto incluso tras el reprocesado). [2][4]
 3. **Revisión** — un escalado real con imagen de página y lectura candidata
    lado a lado (ej. `copia_2026_0518.pdf`, lectura VLM visible); explicar que
    Alberto acepta/edita con provenance y el motor recalcula. [3]
@@ -44,9 +44,10 @@ escribe evidencia; store SQLite + ledger append-only; UI solo lectura.
 - Rung 3 calibrado con el corpus (`extract-v2`): word-conf 40 y cobertura 0.4
   — la distribución es bimodal y el umbral 40 deja debajo exactamente los 3
   escaneos ilegibles que anuncia la doctrina (§11). [6]
-- Rung 4 (VLM local, CPU, serializado): media 15,8 s/página, máx 33,7 s
-  (n=9 invocaciones del lote 1). [7]
-- Rung 5 (nube, solo escalada): 9 invocaciones, media 524,6 ms. [7]
+- Rung 4 (VLM local, CPU, serializado): media 33,9 s/página, máx 60,1 s
+  (n=28 invocaciones del lote 1 post-reprocesado — incluye timeouts de
+  páginas difíciles, que escalan en vez de bloquear). [7]
+- Rung 5 (nube, solo escalada): 29 invocaciones, media 1,6 s. [7]
 
 **5 ADRs (uno por frasa):**
 - ADR 01 — Motor determinista con reglas-como-datos v3→v4 (umbrales =
@@ -66,6 +67,12 @@ regla y su config_version → misma fila en `outcomes-lote1.jsonl` con
 `invoice_id` (UUID estable) → evidencia por rung → decisión. Todo con
 timestamp y hash; reprocesar el mismo lote es un no-op. [1][8]
 
+**Reprocesado medido (reglas-como-datos v3→v4 en acción):** el fix T18
+(ADR-06) re-decidió los 108 NO_PAGAR con warm cache a 111,26 files/s:
+86 NO_PAGAR→PAGAR, 0 regresiones, validación OK, y la desviación esperada
+documentada (factura_8801 sigue NO_PAGAR por NO_DOUBLE_PAYMENT — §6).
+Distribución final: 433/22/45. [13]
+
 **Trampas del corpus (auditoría T17 sobre el outcomes real):** [10]
 - 3 proveedores fantasma (IBAN compartido) → ninguna pagada;
 - duplicado FA-8801 → 2ª copia NO_PAGAR por NO_DOUBLE_PAYMENT;
@@ -74,9 +81,9 @@ timestamp y hash; reprocesar el mismo lote es un no-op. [1][8]
 - outlier 84 700 € → ESCALAR.
 
 **Escala — medido vs estimado:** [1][5][7]
-- Lote 1 completo (500 archivos, rung 4 serializado): 4,162 archivos/s medidos
-  en la primera corrida; en re-ejecución con caché, 112,5 archivos/s medidos
-  (idempotencia = no re-procesar). [1][2]
+- Primera corrida completa (500 archivos, rung 4 serializado): 4,162
+  archivos/s medidos. Reprocesado del subset (108 NO_PAGAR) con warm cache:
+  111,3 archivos/s medidos — idempotencia = no re-procesar lo bueno. [1][2][13]
 - Throughput rung 1 solo: 2 636 archivos/s (dry-run, 2 workers). [5]
 - Límite: lo marca el rung 4 (15,8 s/página serializado) — paralelizable si
   el hardware lo permite. Rung 1-2 son órdenes de magnitud más baratos. [7]
@@ -164,8 +171,7 @@ página en Facturas → Detalle.
 
 ### Fuentes (los números existen en .sdd/metrics/ — nada de memoria)
 
-- [1] `.sdd/metrics/lote1.json` (T14): 500 archivos, 0 fallos, distribución
-  PAGAR 347 / NO_PAGAR 108 / ESCALAR 45, files_per_s 4.162, rung4 serializado.
+- [1] `.sdd/metrics/lote1.json` (T14/T18): corrida original (500 archivos, 0 fallos, 347/108/45, 4.162 files/s) y distribucion_final tras el reprocesado (433/22/45, runner-1.1.0, 111,26 files/s en el subset).
 - [2] `/home/deploy/fleet/w1/.sdd/state/runner.json` (leído por la UI):
   done=500, fallos=0, resultados 347/108/45, llama-server up, serializado.
 - [3] `.sdd/lote1/review-queue/review.jsonl` (T14): cola de revisión real con
@@ -192,6 +198,7 @@ página en Facturas → Detalle.
 - [11] `.sdd/backlog/closed/` (T13/T18): nuevas fuentes de datos y reglas
   como datos v3→v4 sin tocar el motor.
 - [12] `.sdd/metrics/drills.json` (T12): 4/4 PASS con mediciones por drill.
+- [13] `.sdd/metrics/impacto-fix-colapso.json` (T18): 500 archivos, 108 reprocesados, 86 NO_PAGAR→PAGAR, 0 regresiones, validación OK.
 
 **Pendientes declarados**: exactitud contra referencia privada y reprocesado
 post-fix (T18/T19) — PENDIENTE-MEDICIÓN(T14-referencia); coste por factura del
