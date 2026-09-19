@@ -29,3 +29,14 @@ maestro_fixture con pedido importe=1705.37).
 - `total\s+\w{3,15}\s*[:.\-]*` para «Total facturado/documento/…».
 ATENCIÓN: cambiar los candidatos puede cambiar resultados ⇒ supervisor decide
 y reprocesar con diff (mecanismo T13/impacto).
+
+## Evaluación (W4, T39 — 2026-09-19): DE ACUERDO con el ticket, ADR del supervisor
+El cambio de `_RE_LABEL_TOTAL` es correcto en concepto (frontera a la
+izquierda para no matchear «Subtotal»; extensión para «Total facturado») y
+recupera un candidato real que hoy se pierde (falso NO_PAGAR que ADR-06 no
+puede salvar al no haber segundo candidato). Pero CAMBIA RESULTADOS ⇒ fuera
+del alcance del loop (regla dura 2 de T38): el supervisor decide + reproceso
+con diff (T13) y posible bump de ENGINE_VERSION. Nota técnica: la alternativa
+propuesta `total\s+\w{3,15}\s*[:.\-]*` debe probarse contra «Total a pagar»
+(ya cubierta) y contra líneas tipo «Total facturado en euros» para no crear
+candidatos dobles; en el ADR, incluir fixture con ambos labels.

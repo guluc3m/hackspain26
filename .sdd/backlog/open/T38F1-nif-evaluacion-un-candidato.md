@@ -34,3 +34,13 @@ p1 — falso NO_PAGAR (violación definitiva) por selección de candidato, no po
 datos. Fix propuesto (para ADR): extender ADR-06 a los cruces de match exacto
 (NIF/fecha/numero_factura): si algún candidato matchea ⇒ PASS con provenance;
 ninguno ⇒ FAIL. NO implementar sin supervisor (cambia resultados).
+
+## Evaluación (W4, T39 — 2026-09-19): DE ACUERDO, ADR del supervisor requerido
+El repro es correcto (verificado el mecanismo: `_r_nif` usa `_pick` = 1er
+candidato por confianza, no `_match_all` como los cruces ADR-06). NO se
+implementa desde el loop: cambia resultados del lote (falsos NO_PAGAR en la
+clase de la misma familia que T17). W3 ya dejó tests xfail del repro en su
+rama. Punto de atención para el ADR: la inyección de overrides humanos
+(T38-F6, ya implementada) usa conf 1.0 y por tanto GANA el `_pick` — si el
+ADR extiende `_match_all` a NIF/fecha/numero_factura, verificar que el
+candidato humano siga pesando en los matches (debe: conf 1.0).
