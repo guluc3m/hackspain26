@@ -1,0 +1,28 @@
+rule_set_version: v1
+rules:
+  enabled:
+    - DATE_VALID_NOT_FUTURE
+    - IBAN_MATCHES_MASTER
+    - IVA_CONSISTENT
+    - NIF_IN_MASTER
+    - NO_DOUBLE_PAYMENT
+    - ORDER_BELONGS_TO_SUPPLIER
+    - ORDER_PENDING
+    - TOTALS_MUST_MATCH
+thresholds:
+  DATE_VALID_NOT_FUTURE:
+    min_confidence: 0.6
+  IBAN_MATCHES_MASTER:
+    min_confidence: 0.7
+  IVA_CONSISTENT:
+    min_confidence: 0.6
+  NIF_IN_MASTER:
+    min_confidence: 0.7
+  NO_DOUBLE_PAYMENT:
+    min_confidence: 0.7
+  ORDER_BELONGS_TO_SUPPLIER:
+    min_confidence: 0.7
+  ORDER_PENDING:
+    min_confidence: 0.7
+  TOTALS_MUST_MATCH:
+    min_confidence: 0.7
