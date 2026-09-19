@@ -443,6 +443,17 @@ class Runner:
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True),
                        encoding="utf-8")
         os.replace(tmp, self.state_path)
+        # T38 SUGERENCIA-9 (W1): histórico append-only — runner.json vigente se
+        # pisa en cada corrida y la serie temporal no era comparable (T18 pisó
+        # las métricas de T14). El snapshot de ESTA corrida se sella también
+        # en corridas.jsonl (run_id + ts + métricas).
+        corridas = self.state_path.parent / "corridas.jsonl"
+        with corridas.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                {"run_id": self.cfg.run_id, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                 "engine_version": ENGINE_VERSION, "medido": True, **state},
+                ensure_ascii=False,
+            ) + "\n")
 
 
 # ------------------------------------------------------------ helpers
