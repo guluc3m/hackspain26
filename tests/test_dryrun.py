@@ -40,13 +40,19 @@ class TestIdempotencia:
         a.pop("wall_seconds"), b.pop("wall_seconds")
         assert a == b
 
-        # 0 re-procesos: la 2ª corrida solo añade filas cache_hit
+        # 0 re-procesos: la 2ª corrida solo añade filas cache_hit… más los
+        # REINTENTOS del rung 4 (T24): un skip TRANSIENTE de proveedor no se
+        # cachea, así el re-run lo reintenta (recuperación posible). Ese
+        # reintento es gratis (local, sin billing) y determinista.
         fresh_second = [
-            line
+            json.loads(line)
             for line in opts.evidence_path.read_text().splitlines()[n_evidence_1:]
             if json.loads(line)["outcome"] != "cache_hit"
         ]
-        assert fresh_second == []
+        assert all(
+            ev["stage"] == "extract:rung4_vlm" and ev["outcome"] == "skipped"
+            for ev in fresh_second
+        ), fresh_second
         assert n_evidence_2 > n_evidence_1  # se registran los cache_hit (traza)
 
     def test_metrics_file_generated_and_valid(self, tmp_path):

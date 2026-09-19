@@ -184,7 +184,13 @@ class TestPageCache:
         # evidence: first run has one row per rung; second run replays from cache
         assert len(first[0].evidence) == 5  # rungs 1..5 evaluated (5 skipped: unconfigured)
         second_stages = [ev for ev in second[0].evidence if ev.outcome == "cache_hit"]
-        assert len(second_stages) == 5  # rungs 1–5 replayed (rung 1 también en cache)
+        # T24: 4 de 5 — el skip TRANSIENTE del rung 4 (llama-server caído) no
+        # se cachea: el re-run lo REINTENTA (recuperación posible). Los skips
+        # estables (tesseract-not-on-PATH, cloud-not-configured) sí se cachean.
+        assert len(second_stages) == 4
+        cacheados = {ev.stage for ev in second_stages}
+        assert "extract:rung4_vlm" not in cacheados
+        assert "extract:rung5_cloud_vlm" in cacheados  # estable: no-configurado
         assert all(ev.latency_ms == 0 for ev in second_stages)
 
         # same features, no re-billing: skipped features still present
