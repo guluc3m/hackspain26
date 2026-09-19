@@ -271,7 +271,6 @@ implementa con ticket propio; lo grande/riesgoso vive aquí.
   además el render ya está verificado y no quiero re-renderizar antes de la
   entrega sin necesidad.
 - **Prioridad**: baja. Quién: W2 (con Alberto decidiendo si entra en la defensa).
->>>>>>> worker/w2
 
 ---
 
