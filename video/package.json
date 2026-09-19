@@ -1,0 +1,22 @@
+{
+  "name": "filemaid-video",
+  "version": "1.0.0",
+  "description": "Vídeo Remotion 3 min del proyecto filemaid (HackSpain 2026)",
+  "scripts": {
+    "render": "remotion render src/index.tsx filemaid out/filemaid.mp4",
+    "still": "remotion still"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@remotion/cli": "^4.0.526",
+    "@remotion/renderer": "^4.0.526",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.526"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
