@@ -33,6 +33,7 @@ class ExtractionConfig:
     # cobertura=0.4: el 100% de las capas de texto usables puntúa ≥ 0.8 (margen
     # alto), y el 72.4% de las páginas OCRizadas en el dry-run lo alcanza.
     tesseract_bin: str | None = None  # None = shutil.which("tesseract")
+    tesseract_psm: int = 6  # 6 = «single uniform block», como en la calibración T10
     tesseract_min_word_conf: float = 40.0
     tesseract_min_field_coverage: float = 0.4
 
