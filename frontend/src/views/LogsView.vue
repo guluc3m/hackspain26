@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { api, fmtHora, type LogsResponse } from '../api'
+import { logsInvoice } from '../nav'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 
 const q = ref('')
 const eventType = ref('')
+const invoiceFiltro = ref('')
 const limit = ref(200)
 const data = ref<LogsResponse | null>(null)
 const error = ref('')
@@ -14,7 +16,12 @@ const cargando = ref(false)
 async function load() {
   cargando.value = true
   try {
-    data.value = await api.logs({ q: q.value, event_type: eventType.value, limit: limit.value })
+    data.value = await api.logs({
+      q: q.value,
+      event_type: eventType.value,
+      invoice: invoiceFiltro.value,
+      limit: limit.value
+    })
     error.value = ''
   } catch (e) {
     error.value = String(e)
@@ -22,7 +29,16 @@ async function load() {
     cargando.value = false
   }
 }
-onMounted(load)
+
+// llega de un botón «logs» de una factura: mismo sistema de filtro
+onMounted(() => {
+  invoiceFiltro.value = logsInvoice.value
+  load()
+})
+watch(logsInvoice, (v) => {
+  invoiceFiltro.value = v
+  load()
+})
 
 // las entradas son referencias mínimas; `resumen` viene resuelto contra la
 // base de datos, y el json crudo muestra la entrada tal cual está guardada
@@ -40,6 +56,13 @@ function bruto(e: unknown): string {
 
   <div class="toolbar">
     <input
+      v-model="invoiceFiltro"
+      class="por-factura"
+      placeholder="filtrar por factura (nombre de fichero)…"
+      title="Solo las entradas de esta factura"
+      @keyup.enter="load"
+    />
+    <input
       v-model="q"
       placeholder="buscar (texto libre sobre la entrada)…"
       @keyup.enter="load"
@@ -54,6 +77,9 @@ function bruto(e: unknown): string {
       <option :value="500">500</option>
     </select>
     <button class="primary" :disabled="cargando" @click="load">Buscar</button>
+    <button v-if="invoiceFiltro" class="link" @click="invoiceFiltro = ''; load()">
+      quitar filtro de factura
+    </button>
   </div>
 
   <p v-if="error" class="error">{{ error }}</p>
@@ -82,7 +108,8 @@ function bruto(e: unknown): string {
 
 <style scoped>
 .toolbar { margin-bottom: 10px; }
-.toolbar input { min-width: 280px; }
+.toolbar input { min-width: 240px; }
+.toolbar .por-factura { min-width: 260px; }
 .contador { margin: 0 0 8px; }
 .lista { padding: 4px 12px; }
 .evento {

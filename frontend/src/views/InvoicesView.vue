@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api, type FacturaRow, type Resultado } from '../api'
+import { irALogsDe } from '../nav'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 import InvoiceTable from '../components/InvoiceTable.vue'
 
@@ -65,7 +66,12 @@ const visibles = computed(() =>
   <p v-if="error" class="error">{{ error }}</p>
 
   <div class="panel table-panel">
-    <InvoiceTable :rows="visibles" show-folder @open="drawerId = $event.id" />
+    <InvoiceTable
+      :rows="visibles"
+      show-folder
+      @open="drawerId = $event.id"
+      @logs="irALogsDe($event.file_id)"
+    />
   </div>
 
   <InvoiceDrawer :invoice-id="drawerId" @close="drawerId = null" @updated="load" />

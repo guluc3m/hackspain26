@@ -20,7 +20,13 @@ with sync_playwright() as p:
     page.wait_for_selector("table")
     page.screenshot(path=str(OUT / "invoices.png"), full_page=True)
 
-    page.click("text=Logs")
+    # botón «logs» de la primera factura -> Logs con el filtro puesto
+    page.click("tbody tr >> nth=0 >> text=logs")
+    page.wait_for_selector(".evento")
+    page.screenshot(path=str(OUT / "logs_filtro.png"), full_page=True)
+
+    # quitar el filtro -> logs completos
+    page.click("text=quitar filtro de factura")
     page.wait_for_selector(".evento")
     page.screenshot(path=str(OUT / "logs.png"), full_page=True)
 

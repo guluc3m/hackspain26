@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, confirmarLectura, fileExt, type FacturaRow } from '../api'
+import { irALogsDe } from '../nav'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 import InvoiceTable from '../components/InvoiceTable.vue'
 
@@ -118,6 +119,7 @@ async function procesar(row: FacturaRow) {
       @accept="aceptar"
       @decline="drawerId = $event.id"
       @process="procesar"
+      @logs="irALogsDe($event.file_id)"
     />
   </div>
 

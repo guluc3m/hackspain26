@@ -32,7 +32,8 @@ src/filemaid/
   api/              FastAPI: comparte types, store y motor con el pipeline
 master/             datos maestros y thresholds de reglas (versionados)
 frontend/           Vue 3 + Vite (TS, pnpm): Dashboard (cola de revisión),
-                    Invoices (facturas + carpeta) y Logs (buscador de entradas)
+                    Invoices (facturas + carpeta) y Logs (buscador de entradas,
+                    filtrables por factura desde cada fila)
 ```
 
 TypeSafe (`jev-latest`, escalón 5) evalúa el texto disponible de la página con

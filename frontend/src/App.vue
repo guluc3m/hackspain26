@@ -1,27 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { SINTETICO } from './api'
+import { irA, tab, tabs } from './nav'
 import DashboardView from './views/DashboardView.vue'
 import InvoicesView from './views/InvoicesView.vue'
 import LogsView from './views/LogsView.vue'
-
-type Tab = 'dashboard' | 'invoices' | 'logs'
-
-const tab = ref<Tab>((() => {
-  const h = window.location.hash.replace('#', '')
-  return h === 'invoices' || h === 'logs' ? h : 'dashboard'
-})())
-
-const tabs: { id: Tab; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'invoices', label: 'Invoices' },
-  { id: 'logs', label: 'Logs' }
-]
-
-function go(t: Tab) {
-  tab.value = t
-  window.location.hash = t
-}
 </script>
 
 <template>
@@ -32,7 +14,7 @@ function go(t: Tab) {
         :key="t.id"
         class="tab"
         :class="{ active: tab === t.id }"
-        @click="go(t.id)"
+        @click="irA(t.id)"
       >
         {{ t.label }}
       </button>

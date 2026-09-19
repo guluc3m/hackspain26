@@ -526,10 +526,18 @@ function resumenDe(e: Evento): string {
   }
 }
 
-function logs(params: { q?: string; event_type?: string; limit?: number; offset?: number }): LogsResponse {
+function logs(params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }): LogsResponse {
   const types = [...new Set(eventos.map((e) => e.type))].sort()
   let filtrados = [...eventos]
   if (params.event_type) filtrados = filtrados.filter((e) => e.type === params.event_type)
+  if (params.invoice) {
+    // filtro por nombre de factura: se resuelve contra las tablas
+    const aguja = params.invoice.toLowerCase()
+    filtrados = filtrados.filter((e) => {
+      const f = facturas.get(e.invoice_id)
+      return (f?.file_id ?? '').toLowerCase().includes(aguja)
+    })
+  }
   if (params.q) {
     const needle = params.q.toLowerCase()
     filtrados = filtrados.filter((e) => {
@@ -558,5 +566,6 @@ export const mockApi = {
   reprocesar: async (fileId: string) => reprocesar(fileId),
   reglas: async () => REGLAS,
   salud: async () => SALUD,
-  logs: async (params: { q?: string; event_type?: string; limit?: number; offset?: number }) => logs(params)
+  logs: async (params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }) =>
+    logs(params)
 }

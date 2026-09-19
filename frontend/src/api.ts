@@ -124,7 +124,7 @@ export interface Api {
   reprocesar(fileId: string): Promise<{ file_id: string; result: Resultado }>
   reglas(): Promise<Reglas>
   salud(): Promise<Salud>
-  logs(params: { q?: string; event_type?: string; limit?: number; offset?: number }): Promise<LogsResponse>
+  logs(params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }): Promise<LogsResponse>
 }
 
 // Conexión real: vacía a propósito. Se rellenará cuando el backend exponga
