@@ -4,6 +4,10 @@ El stub es un llama-server OpenAI-compatible en un hilo: responde
 /v1/models (health) y /v1/chat/completions. Al `kill`, deja de aceptar
 conexiones (las llamadas nuevas fallan al instante, como un proceso muerto).
 La recuperación vuelve a levantar el stub en el MISMO puerto.
+
+T40F2: el puerto del stub es EFÍMERO (bind :0, el SO asigna) y el tmp es
+tmp_path de pytest por test — nada de puertos fijos ni directorios
+compartidos que otra corrida (u otro worker del loop) pueda pisar.
 """
 
 from __future__ import annotations
@@ -23,9 +27,6 @@ from albertitos.drill_rung4_live import (
 from albertitos.run import _vlm_up
 
 REPO = Path(__file__).resolve().parent.parent
-DRILL_TMP = REPO / ".sdd" / "pytest-tmp" / "drill-live"
-STUB_PORT = 8231
-STUB_URL = f"http://127.0.0.1:{STUB_PORT}"
 
 
 class StubLlamaServer:
@@ -118,9 +119,17 @@ class StubLlamaServer:
 
         return H
 
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
     def start(self) -> None:
+        # T40F2: bind :0 ⇒ el SO da un puerto efímero (sin carreras con
+        # otros procesos ni con el rango efímero); nos quedamos el REAL
+        # para que restart() revincule al mismo puerto (requisito del drill).
         self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port),
                                           self._handler())
+        self.port = self._httpd.server_address[1]
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(
             target=self._httpd.serve_forever, daemon=True)
@@ -156,7 +165,7 @@ class StubLlamaServer:
 
 
 def _hooks_stub(stub: StubLlamaServer) -> DrillHooks:
-    url = f"http://127.0.0.1:{stub.port}"
+    url = stub.url
 
     def health() -> bool:
         return _vlm_up(url, timeout_s=2.0, ready=True)  # T29: listo de verdad
@@ -182,15 +191,11 @@ def _hooks_stub_con_kill_when(stub: StubLlamaServer) -> DrillHooks:
     return replace(h, descripcion=h.descripcion + " + kill_when")
 
 
-def _limpiar() -> None:
-    if DRILL_TMP.exists():
-        shutil.rmtree(DRILL_TMP)
-    DRILL_TMP.mkdir(parents=True)
+def _pdfs_sandbox(base: Path, n_scans: int = 2, n_texto: int = 3) -> Path:
+    """Directorio con n_scans scans + n_texto facturas de texto (fixtures).
 
-
-def _pdfs_sandbox(n_scans: int = 2, n_texto: int = 3) -> Path:
-    """Directorio con n_scans scans + n_texto facturas de texto (fixtures)."""
-    d = DRILL_TMP / "pdfs"
+    `base` es tmp_path de pytest: aislado por test y por proceso (T40F2)."""
+    d = base / "pdfs"
     d.mkdir(parents=True, exist_ok=True)
     for f in sorted((REPO / "tests/fixtures/scans").glob("scan_*.pdf"))[:n_scans]:
         shutil.copy(f, d / f.name)
@@ -199,43 +204,42 @@ def _pdfs_sandbox(n_scans: int = 2, n_texto: int = 3) -> Path:
     return d
 
 
-def _cfg(fecha: str = "2026-09-19", **kwargs) -> DrillConfig:
+def _cfg(stub: StubLlamaServer, base: Path, fecha: str = "2026-09-19",
+         **kwargs) -> DrillConfig:
     return DrillConfig(
-        facturas_dir=DRILL_TMP / "pdfs",
-        store_root=DRILL_TMP / "sandbox",
+        facturas_dir=base / "pdfs",
+        store_root=base / "sandbox",
         fecha_referencia=fecha,
         n_scans=2, n_texto=3, total=5,
         kill_after_files=2,
         kill_timeout_s=12.0,
         timeout_por_archivo_s=20.0,
-        vlm_base_url=STUB_URL,
+        vlm_base_url=stub.url,
         **kwargs,
     )
 
 
 def test_stub_llama_server_salud_y_muerte():
-    _limpiar()
-    stub = StubLlamaServer(STUB_PORT, delay_s=0.05)
+    stub = StubLlamaServer(0, delay_s=0.05)
     stub.start()
     try:
-        assert _vlm_up(STUB_URL, timeout_s=2.0)
+        assert _vlm_up(stub.url, timeout_s=2.0)
         assert stub.calls == 0
     finally:
         stub.stop()
-    assert not _vlm_up(STUB_URL, timeout_s=2.0)  # muerto ⇒ health down
+    assert not _vlm_up(stub.url, timeout_s=2.0)  # muerto ⇒ health down
 
 
-def test_drill_stub_kill_degrada_y_recupera_outcomes_identicos():
+def test_drill_stub_kill_degrada_y_recupera_outcomes_identicos(tmp_path):
     """El drill completo con stub: kill a mitad ⇒ degradación medida ⇒
     recuperación (reprocesado dirigido) ⇒ outcomes byte a byte idénticos a
     una corrida sin kill. Sin red real."""
-    _limpiar()
-    stub = StubLlamaServer(STUB_PORT, delay_s=0.8)
+    stub = StubLlamaServer(0, delay_s=0.8)
     stub.start()
     try:
         # seleccion: 2 scans (van a rung 4 forzado) + 3 con texto (rung 1)
-        _pdfs_sandbox(n_scans=2, n_texto=3)
-        cfg = _cfg(kill_when=lambda: stub.calls >= 1)
+        _pdfs_sandbox(tmp_path, n_scans=2, n_texto=3)
+        cfg = _cfg(stub, tmp_path, kill_when=lambda: stub.calls >= 1)
 
         resultado = ejecutar_drill(cfg, _hooks_stub(stub))
         assert resultado["hooks"] == _hooks_stub(stub).descripcion
@@ -265,45 +269,44 @@ def test_drill_stub_kill_degrada_y_recupera_outcomes_identicos():
         stub.stop()
 
 
-def test_drill_sin_kill_igual_al_recuperado():
+def test_drill_sin_kill_igual_al_recuperado(tmp_path):
     """'Sin kill' (corrida base del drill) == corrida con kill tras recuperar:
     mismos resultados (criterio de aceptación)."""
-    _limpiar()
-    stub = StubLlamaServer(STUB_PORT + 1, delay_s=0.4)
+    stub = StubLlamaServer(0, delay_s=0.4)
     stub.start()
     try:
-        _pdfs_sandbox(n_scans=2, n_texto=3)
+        _pdfs_sandbox(tmp_path, n_scans=2, n_texto=3)
         ejecutar_drill(
-            _cfg(kill_when=lambda: False),  # el watchdog nunca dispara
+            _cfg(stub, tmp_path, kill_when=lambda: False),
+            # el watchdog nunca dispara
             _hooks_stub(stub))
-        base_sin_kill = (DRILL_TMP / "sandbox" / "base" / "outcomes.jsonl"
+        base_sin_kill = (tmp_path / "sandbox" / "base" / "outcomes.jsonl"
                          ).read_bytes()
         # re-ejecutar el drill completo (kill activo, otra vez)
-        _pdfs_sandbox(n_scans=2, n_texto=3)
-        cfg2 = _cfg(kill_when=lambda: stub.calls >= 1)
+        _pdfs_sandbox(tmp_path, n_scans=2, n_texto=3)
+        cfg2 = _cfg(stub, tmp_path, kill_when=lambda: stub.calls >= 1)
         ejecutar_drill(cfg2, _hooks_stub(stub))
-        recuperado = (DRILL_TMP / "sandbox" / "kill" / "outcomes.jsonl"
+        recuperado = (tmp_path / "sandbox" / "kill" / "outcomes.jsonl"
                       ).read_bytes()
         assert recuperado == base_sin_kill
     finally:
         stub.stop()
 
 
-def test_drill_store_real_intacto():
+def test_drill_store_real_intacto(tmp_path):
     """El drill usa SOLO su sandbox: el store real del lote 1 no se abre."""
-    _limpiar()
     store_db = REPO / ".sdd" / "store.db"
     antes = store_db.read_bytes() if store_db.exists() else None
-    stub = StubLlamaServer(STUB_PORT + 2, delay_s=0.3)
+    stub = StubLlamaServer(0, delay_s=0.3)
     stub.start()
     try:
-        _pdfs_sandbox()
-        ejecutar_drill(_cfg(), _hooks_stub(stub))
+        _pdfs_sandbox(tmp_path)
+        ejecutar_drill(_cfg(stub, tmp_path), _hooks_stub(stub))
     finally:
         stub.stop()
     if antes is not None:
         assert store_db.read_bytes() == antes  # byte a byte intacto
-    assert (DRILL_TMP / "sandbox").is_dir()  # todo el estado en el sandbox
+    assert (tmp_path / "sandbox").is_dir()  # todo el estado en el sandbox
 
 
 # ---------------------------------------------------------- T29 · 4 estados
@@ -317,10 +320,9 @@ def test_health_cuatro_estados_del_stub():
     """
     from albertitos.run import _vlm_up
 
-    _limpiar()
-    stub = StubLlamaServer(STUB_PORT + 4, delay_s=0.05)
+    stub = StubLlamaServer(0, delay_s=0.05)
     stub.start()
-    url = f"http://127.0.0.1:{stub.port}"
+    url = stub.url
     try:
         # up: listo
         assert _vlm_up(url, timeout_s=2.0, ready=True) is True
@@ -339,19 +341,18 @@ def test_health_cuatro_estados_del_stub():
         stub.stop()
 
 
-def test_drill_aborta_limpio_con_stub_cargando():
+def test_drill_aborta_limpio_con_stub_cargando(tmp_path):
     """El gate de arranque NO deja correr el drill con el modelo cargando
     (race T24): fallo limpio con mensaje claro, sin tocar el sandbox."""
 
-    _limpiar()
-    stub = StubLlamaServer(STUB_PORT + 5, delay_s=0.05)
+    stub = StubLlamaServer(0, delay_s=0.05)
     stub.start()
     try:
-        _pdfs_sandbox()
+        _pdfs_sandbox(tmp_path)
         stub.set_state("loading")
-        sandbox = DRILL_TMP / "sandbox"
+        sandbox = tmp_path / "sandbox"
         try:
-            ejecutar_drill(_cfg(), _hooks_stub(stub))
+            ejecutar_drill(_cfg(stub, tmp_path), _hooks_stub(stub))
         except RuntimeError as e:
             assert "no está LISTO" in str(e)
         else:
@@ -371,7 +372,7 @@ def test_esperar_health_no_cuelga_con_stub_hung_o_caido():
     el bound (la timeline registra 'UP=False', nunca se cuelga)."""
     from albertitos.drill_rung4_live import _esperar_health
 
-    stub = StubLlamaServer(STUB_PORT + 6, delay_s=0.05)
+    stub = StubLlamaServer(0, delay_s=0.05)
     stub.start()
     try:
         for estado in ("hung", "down"):
@@ -392,7 +393,7 @@ def test_recuperacion_con_loading_no_arranca_antes_de_tiempo():
     False (el drill registra UP=False y no re-decide contra un modelo a medias)."""
     from albertitos.drill_rung4_live import _esperar_health
 
-    stub = StubLlamaServer(STUB_PORT + 7, delay_s=0.05)
+    stub = StubLlamaServer(0, delay_s=0.05)
     stub.start()
     hooks = _hooks_stub(stub)
     try:
