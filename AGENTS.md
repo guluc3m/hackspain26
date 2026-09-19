@@ -30,6 +30,17 @@ PDF ──▶ EXTRACTION ──▶ FEATURES ──▶ PARSER ──▶ FIELDS �
                                                     evidence + config snapshot ──▶ STORE ──▶ UI
 ```
 
+### Structure: modular, expandable, simple
+
+The codebase is organised in **small independent modules**, each with one clear
+responsibility and a narrow interface. Two hard properties:
+
+- **Expandable** — new rules, extractors, file types, fields or storage backends
+  plug in without touching unrelated code (§4: adding a rule never touches extraction;
+  adding a file type never touches the rule engine).
+- **Simple (KISS)** — the simplest thing that works wins. If a module grows beyond
+  one responsibility, split it; dead or duplicated code is deleted, not worked around.
+
 Two phases, strictly separated:
 
 1. **Extraction** produces `ExtractionFeature` — raw material, no interpretation.
