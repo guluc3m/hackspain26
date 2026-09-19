@@ -29,7 +29,12 @@ def servidor():
         ["bash", "iniciar.sh"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120, check=False,
     )
     yield proceso
+    # mata AMBOS modos de arranque (uvicorn clásico y escritorio pywebview):
+    # el pkill de solo "uvicorn albertitos.ui.app" dejaba vivo un servidor
+    # escritorio viejo en el mismo puerto → el test servía estado rancio.
     subprocess.run(["pkill", "-f", "uvicorn albertitos.ui.app"], capture_output=True, check=False)
+    subprocess.run(["pkill", "-f", "albertitos.desktop"], capture_output=True, check=False)
+    import time as _t; _t.sleep(1.0)
     # la cadena/anotaciones del test no ensucian la telemetría real
     shutil.rmtree(Path(REPO / ".sdd/telemetria"), ignore_errors=True)
 

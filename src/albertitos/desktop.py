@@ -25,9 +25,12 @@ from albertitos.ui.app import create_app
 TITULO = "Albertitos — Facturas y decisiones"
 
 
-def _store_dir() -> Path:
-    """El mismo contrato que la UI: ALBERTITOS_STORE (lote 1 por defecto)."""
-    return Path(os.environ.get("ALBERTITOS_STORE", ".sdd/ledger"))
+def _store_dir() -> Path | None:
+    """El mismo contrato que la UI: ALBERTITOS_STORE; vacío ⇒ None (la app
+    aplica su propia cadena de fallback: .sdd/ledger → .sdd/lote1/ledger →
+    demo). Un Path("") rompería el arranque con la cola vacía."""
+    valor = os.environ.get("ALBERTITOS_STORE", "").strip()
+    return Path(valor) if valor else None
 
 
 def arrancar_servidor(store_dir: Path | None = None, port: int = 0):
@@ -100,9 +103,23 @@ def abrir_ventana(url: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="albertitos.desktop")
+    parser.add_argument("--puerto", "--port", type=int, default=0,
+                        help="puerto del servidor interno (0 = efímero)")
+    parser.add_argument("--solo-ventana", action="store_true",
+                        help="no arrancar servidor nuevo: solo abrir la "
+                             "ventana sobre uno ya corriendo")
+    args = parser.parse_args(argv)
+
     store = _store_dir()
-    server, url = arrancar_servidor(store)
-    listo = _esperar_listo(url)
+    if args.solo_ventana:
+        url = f"http://127.0.0.1:{args.puerto}"
+        server = None
+    else:
+        server, url = arrancar_servidor(store, port=args.puerto)
+    listo = True if args.solo_ventana else _esperar_listo(url)
     if not listo:
         print(f"La UI tarda en responder en {url} — se abre igualmente.")
 
@@ -122,8 +139,9 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             pass
 
-    apagar(server)
-    print("Servidor detenido. Hasta luego, Alberto.")
+    if server is not None:
+        apagar(server)
+        print("Servidor detenido. Hasta luego, Alberto.")
     return 0
 
 

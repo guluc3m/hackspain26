@@ -186,7 +186,18 @@ def create_app(
 
     demo = records is None
     if records is None:
-        base = Path(store_dir) if store_dir else Path(".sdd") / "ledger"
+        base = Path(store_dir) if store_dir else None
+        if base is None:
+            # Modo Alberto: el store real del lote vive en .sdd/lote1/ledger
+            # (copia congelada tras la corrida). Usa .sdd/ledger solo si tiene
+            # contenido; si no, el lote 1; si no, demo.
+            candidatos = [Path(".sdd") / "ledger", Path(".sdd") / "lote1" / "ledger"]
+            base = next(
+                (c for c in candidatos
+                 if (c / "ledger.jsonl").is_file()
+                 and (c / "ledger.jsonl").stat().st_size > 0),
+                candidatos[0],
+            )
         registros = load_ledger(base)
         # cola de revisión del lote real (campos + imágenes por página)
         cola_rev = base.parent / "review-queue"
@@ -455,4 +466,12 @@ def create_app(
 
 # Store configurable por entorno: `ALBERTITOS_STORE=.sdd/lote1/ledger` para la
 # demo con el lote 1 real (symlink SOLO LECTURA); default = `.sdd/ledger`.
-app = create_app(store_dir=Path(os.environ.get("ALBERTITOS_STORE", ".sdd/ledger")))
+# uvicorn directo: mismo contrato que desktop/launcher — vacío ⇒ cadena de
+# fallback de create_app (.sdd/ledger → .sdd/lote1/ledger → demo)
+app = create_app(
+    store_dir=(
+        Path(os.environ["ALBERTITOS_STORE"])
+        if os.environ.get("ALBERTITOS_STORE", "").strip()
+        else None
+    )
+)

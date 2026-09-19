@@ -21,7 +21,7 @@ aviso() { echo "ERROR: $*" >&2; exit 1; }
 
 command -v uv >/dev/null 2>&1 || aviso "Falta uv — instálalo con:
   curl -LsSf https://astral.sh/uv/install.sh | sh"
-export ALBERTITOS_STORE="$STORE"
+[ -n "$STORE" ] && export ALBERTITOS_STORE="$STORE"
 mkdir -p .sdd/telemetria
 
 NAVEGADOR() {
