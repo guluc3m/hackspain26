@@ -301,6 +301,41 @@ def test_procedencia_solo_tras_entrega_nativa(tmp_path, cfg):
     assert "notificación" in watcher.estado()["error"]
 
 
+def test_fallo_nativo_se_reintenta_en_la_misma_sesion(tmp_path, cfg, monkeypatch):
+    """Si la entrega nativa falla, la reconciliación reintenta sin reiniciar la app."""
+    monkeypatch.setattr("filemaid.desktop.watcher._RETRY_NOTIF_S", 0.0)
+    carpeta = _carpeta(tmp_path)
+    destino = carpeta / "factura.pdf"
+    shutil.copyfile(PDF_REAL, destino)
+    fake = FakeIngesta(resultado="ESCALAR")
+    noti = FakeNotificador(ok=False)
+    _activar(cfg, carpeta)
+    watcher = _watcher(cfg, fake, noti)
+    for _ in range(3):
+        watcher.escanear()
+    assert len(noti.mensajes) == 1  # se intentó y falló
+    assert "notificación" in watcher.estado()["error"]
+
+    # El pipeline registró la decisión en PouchDB (como hace la ingestión real).
+    sha = sha256_file(destino)
+    PouchStore(cfg.root).put(
+        {
+            "_id": "decision:job-1",
+            "kind": "decision",
+            "file_id": "factura.pdf",
+            "file_key": file_key("factura.pdf", sha),
+            "scan_id": "job-1",
+            "timestamp": 1.0,
+            "decision": {"result": "ESCALAR"},
+        }
+    )
+
+    noti.ok = True
+    watcher.escanear()  # reconciliación acotada: reintento en la misma sesión
+    assert len(noti.mensajes) == 2
+    assert "ESCALAR" in noti.mensajes[1][1]
+    assert PouchStore(cfg.root).local_get(NOTIFIED_ID)
+
 def test_pdf_truncado_no_se_encola_y_se_reintenta_al_completarse(tmp_path, cfg):
     carpeta = _carpeta(tmp_path)
     destino = carpeta / "factura.pdf"

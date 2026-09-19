@@ -395,10 +395,18 @@ class Watcher:
                         )
                     continue
                 if item.get("result") == "ESCALAR":
-                    self._notificar_disputa(item.get("decision_id"), nombre)
-                if entrada is not None:
-                    with self._lock:
+                    notificado = self._notificar_disputa(item.get("decision_id"), nombre)
+                else:
+                    notificado = True
+                if entrada is None:
+                    continue
+                with self._lock:
+                    if notificado:
                         self._pendientes.discard(entrada[1])
+                    else:
+                        # Entrega nativa fallida: conservar la clave para que
+                        # la reconciliación reintente en esta misma sesión.
+                        self._pendientes.add(entrada[1])
             with self._lock:
                 self._jobs.pop(job_id, None)
 
