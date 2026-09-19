@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from filemaid.store.trace import capture_artifact, capture_response
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
@@ -128,6 +129,8 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         "options": (None, json.dumps({"formats": ["markdown"]}), "application/json"),
     }
 
+    capture_artifact(NAME, f"page_{ctx.page_index}.pdf", pdf_bytes, "application/pdf")
+    resp = None
     try:
         resp = httpx.post(
             api_url,
@@ -140,6 +143,9 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     except Exception as exc:
         latency_ms = int((time.monotonic() - t0) * 1000)
         return _skip(f"firecrawl-error:{exc.__class__.__name__}", latency_ms=latency_ms)
+    finally:
+        if resp is not None:
+            capture_response(NAME, resp)
 
     latency_ms = int((time.monotonic() - t0) * 1000)
 

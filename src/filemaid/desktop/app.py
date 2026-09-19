@@ -4,10 +4,8 @@ La app (Python) aloja el front construido (frontend/dist) y expone a la UI un
 puente (window.pywebview.api) capaz de llamar a los dos motores de la
 arquitectura: engines.extraction y engines.decision.
 
-Todas las llamadas a los motores están SIN DEFINIR: los métodos del puente
-existen como superficie de contrato y propagan NotImplementedError. La UI
-sigue consumiendo la referencia sintética (frontend/src/mock/data.ts, targets
-*_syncth), así que la ventana funciona igual que el front en navegador.
+La conexión real utiliza el mismo FastAPI local que el navegador. Los motores
+del puente histórico no participan en la persistencia de ingestión.
 """
 
 from __future__ import annotations
@@ -66,11 +64,43 @@ def ui_destino() -> str:
         return url
     dist = _dist_index()
     if dist.exists():
-        return str(dist)
+        return _start_api()
     raise SystemExit(
-        "UI no construida: pnpm --dir frontend build_syncth "
-        "(o ALBERTITOS_UI_URL=http://127.0.0.1:5173 con dev_syncth)"
+        "UI no construida: uv run -- npm --prefix frontend run build "
+        "(o ALBERTITOS_UI_URL=http://127.0.0.1:5173 con dev)"
     )
+
+
+def _start_api() -> str:
+    """Serve the built UI and API on an OS-selected loopback port."""
+    import atexit
+    import socket
+    import time
+
+    import uvicorn
+
+    from filemaid.api.app import create_app
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(create_app(), log_level="warning"))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started and thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    if not server.started:
+        sock.close()
+        raise RuntimeError("No se pudo arrancar FastAPI local")
+
+    def stop():
+        server.should_exit = True
+        thread.join(timeout=5)
+        sock.close()
+
+    atexit.register(stop)
+    return f"http://127.0.0.1:{port}"
 
 
 def _gui_backend() -> str | None:

@@ -20,7 +20,9 @@ import type {
   Reglas,
   Resultado,
   RuleEvaluationRow,
-  Salud
+  RuntimeConfig,
+  Salud,
+  SyncStatus
 } from '../api'
 
 const AHORA = () => Date.now() / 1000
@@ -523,6 +525,8 @@ function resumenDe(e: Evento): string {
         ? `override #${o.id} · ${o.field_type}: ${o.before} → ${o.after} · ${o.who}`
         : `override · ${fileId}`
     }
+    default:
+      return `${fileId} · ${e.type}`
   }
 }
 
@@ -559,6 +563,18 @@ function logs(params: { q?: string; event_type?: string; invoice?: string; limit
   return { total: filtrados.length, types, items }
 }
 
+let mockConfig: RuntimeConfig = {
+  mode: 'standalone',
+  sync_url: '',
+  vlm_url: '',
+  vlm_model: ''
+}
+let mockSyncStatus: SyncStatus = {
+  ok: true,
+  state: 'standalone',
+  error: null
+}
+
 export const mockApi = {
   facturas: async () => [...facturas.values()].map(aFila),
   factura: async (id: string) => detalleDe(id),
@@ -567,5 +583,23 @@ export const mockApi = {
   reglas: async () => REGLAS,
   salud: async () => SALUD,
   logs: async (params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }) =>
-    logs(params)
+    logs(params),
+  getConfig: async () => ({ ...mockConfig }),
+  saveConfig: async (cfg: RuntimeConfig) => {
+    mockConfig = { ...cfg }
+    mockSyncStatus = {
+      ok: true,
+      state: cfg.mode === 'server' ? 'synced' : 'standalone',
+      error: null
+    }
+    return { ...mockConfig }
+  },
+  sync: async () => {
+    if (mockConfig.mode !== 'server') {
+      throw new Error('La sincronización requiere modo servidor')
+    }
+    mockSyncStatus = { ok: true, state: 'synced', error: null }
+    return { ok: true, pushed: 0, pulled: 0 }
+  },
+  syncStatus: async () => ({ ...mockSyncStatus })
 }

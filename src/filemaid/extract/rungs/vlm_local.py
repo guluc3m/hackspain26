@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 import time
+from typing import Any
 
 import httpx
 
+from filemaid.store.trace import capture_artifact, capture_response
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
@@ -29,8 +32,6 @@ _MIN_TEXT_WORDS = 5
 
 
 def extract(ctx: PageContext) -> ExtractionFeature:
-    from filemaid.llama_manager import get_manager
-
     if ctx.page_image_sha is None:
         return _skip("no-page-image")
 
@@ -39,10 +40,33 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     if cached is not None:
         return cached
 
-    mgr = get_manager()
-    if not mgr.ensure_started():
-        return _skip("llama-unavailable", latency_ms=int((time.monotonic() - t0) * 1000))
-    mgr.touch()
+    vlm_base_url = (ctx.config.get("vlm_base_url") or "").strip().rstrip("/")
+    headers: dict[str, str] = {}
+    vlm_model = ctx.config.get("vlm_model") or ""
+
+    if vlm_base_url:
+        # Remote or custom endpoint: avoid starting local llama
+        endpoint_url = (
+            f"{vlm_base_url}/chat/completions"
+            if vlm_base_url.endswith("/v1")
+            else f"{vlm_base_url}/v1/chat/completions"
+        )
+        if ctx.config.get("vlm_server_auth"):
+            token = ctx.config.get("sync_token") or os.environ.get("FILEMAID_SYNC_TOKEN", "")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+        else:
+            custom_key = os.environ.get("FILEMAID_VLM_KEY", "").strip()
+            if custom_key:
+                headers["Authorization"] = f"Bearer {custom_key}"
+    else:
+        from filemaid.llama_manager import get_manager
+
+        mgr = get_manager()
+        if not mgr.ensure_started():
+            return _skip("llama-unavailable", latency_ms=int((time.monotonic() - t0) * 1000))
+        mgr.touch()
+        endpoint_url = f"{mgr.base_url}/v1/chat/completions"
 
     # la imagen de página ya existe (el escalón 2 la renderizó/guardó);
     # si no se guardó en disco, re-render no vale la pena: usamos el PNG
@@ -53,26 +77,35 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     min_conf = threshold(ctx, "vlm_local", "min_field_coverage", 0.5)
 
     def _query_vlm(img_bytes: bytes) -> str | None:
+        r = None
         try:
+            payload: dict[str, Any] = {
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(img_bytes).decode()}},
+                        {"type": "text", "text": _PROMPT},
+                    ],
+                }],
+                "temperature": 0,
+                "max_tokens": 1024,
+            }
+            if vlm_model:
+                payload["model"] = vlm_model
             r = httpx.post(
-                f"{mgr.base_url}/v1/chat/completions",
+                endpoint_url,
+                headers=headers,
                 timeout=120.0,
-                json={
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(img_bytes).decode()}},
-                            {"type": "text", "text": _PROMPT},
-                        ],
-                    }],
-                    "temperature": 0,
-                    "max_tokens": 1024,
-                },
+                json=payload,
             )
             r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+            response = r.json()
+            return response["choices"][0]["message"]["content"]
         except (httpx.HTTPError, KeyError, IndexError):
             return None
+        finally:
+            if r is not None:
+                capture_response(NAME, r)
 
     text = _query_vlm(png)
     if text is None:
@@ -84,6 +117,7 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     if confidence < min_conf:
         enhanced_png = enhance_scan_image(png)
         if enhanced_png != png:
+            capture_artifact(NAME, "enhanced.png", enhanced_png, "image/png")
             text_retry = _query_vlm(enhanced_png)
             if text_retry and text_is_plausible(text_retry) and len(text_retry.split()) >= _MIN_TEXT_WORDS:
                 conf_retry = _field_coverage(text_retry)

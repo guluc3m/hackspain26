@@ -65,7 +65,7 @@ async function aceptar(row: FacturaRow) {
 async function procesar(row: FacturaRow) {
   busyId.value = row.id
   try {
-    await api.reprocesar(row.file_id)
+    await api.reprocesar(row.file_id, row.id)
     await load()
   } catch (e) {
     error.value = String(e)

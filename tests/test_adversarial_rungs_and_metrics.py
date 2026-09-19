@@ -383,24 +383,24 @@ def test_pipeline_never_crashes_mid_batch_on_api_adversities(tmp_path: Path):
     outcomes_lines = [json.loads(line) for line in outcomes_path.read_text().splitlines()]
     assert len(outcomes_lines) == 2
 
-    # Ledger recorded the item_error for invoice_3.pdf
-    ledger_records = [json.loads(line) for line in cfg.ledger_path.read_text().splitlines()]
-    item_errors = [r for r in ledger_records if r.get("type") == "item_error"]
+    # PouchStore recorded the item_error for invoice_3.pdf
+    events = [pipe.store.hydrate(d) for d in pipe.store.list("event:")]
+    item_errors = [e["payload"] for e in events if e.get("type") == "item_error"]
     assert len(item_errors) == 1
     assert item_errors[0]["file_id"] == "invoice_3.pdf"
     assert "RuntimeError" in item_errors[0]["error"]
 
     # Verify invoice_1 recorded skipped feature in store with latency measured
-    features_f1 = pipe.store.features_for(decisions[0].invoice_id)
-    assert any(f["outcome"].startswith("skipped:") and f["latency_ms"] == 125 for f in features_f1)
-
+    records_f1 = pipe.store.for_file("invoice_1.pdf")
+    features_f1 = [pipe.store.hydrate(d) for d in records_f1 if d.get("kind") == "feature"]
+    assert any(f["feature"]["extraction_method"].startswith("skipped:") and f["feature"]["latency_ms"] == 125 for f in features_f1)
 
 def test_stage_metrics_integrity_and_tolerance(tmp_path: Path):
     """Verify metrics integrity:
     1. extraction_ms >= 0, parser_ms >= 0, evaluation_ms >= 0, total_ms >= 0
     2. extraction_ms + parser_ms + evaluation_ms <= total_ms + tolerance (tolerance = 10ms)
     3. timings dict contains per-rung latencies
-    4. SQLite store and Ledger match decision timings exactly
+    4. PouchStore matches decision timings exactly
     """
     cfg = _setup_app_config(tmp_path)
     pdf_path = tmp_path / "valid_invoice.pdf"
@@ -452,26 +452,25 @@ def test_stage_metrics_integrity_and_tolerance(tmp_path: Path):
     assert decision.timings["evaluation_ms"] == decision.evaluation_ms
     assert decision.timings["total_ms"] == decision.total_ms
 
-    # 4. Check SQLite store decision row
-    rows = pipe.store.decision_rows_for_run(pipe.rule_config.version)
-    assert len(rows) == 1
-    db_decision = rows[0]
+    # 4. Check PouchStore decision doc
+    decisions = [pipe.store.hydrate(d) for d in pipe.store.list("decision:")]
+    assert len(decisions) == 1
+    db_decision = decisions[0]["decision"]
     assert db_decision["extraction_ms"] == decision.extraction_ms
     assert db_decision["parser_ms"] == decision.parser_ms
     assert db_decision["evaluation_ms"] == decision.evaluation_ms
     assert db_decision["total_ms"] == decision.total_ms
 
-    # 5. Check Ledger record
-    ledger_records = [json.loads(line) for line in cfg.ledger_path.read_text().splitlines()]
-    decision_events = [r for r in ledger_records if r.get("type") == "decision"]
+    # 5. Check PouchStore decision event
+    events = [pipe.store.hydrate(d) for d in pipe.store.list("event:")]
+    decision_events = [e["payload"] for e in events if e.get("type") == "decision"]
     assert len(decision_events) == 1
-    ledger_dec = decision_events[0]
-    assert ledger_dec["extraction_ms"] == decision.extraction_ms
-    assert ledger_dec["parser_ms"] == decision.parser_ms
-    assert ledger_dec["evaluation_ms"] == decision.evaluation_ms
-    assert ledger_dec["total_ms"] == decision.total_ms
-    assert ledger_dec["timings"] == decision.timings
-
+    event_dec = decision_events[0]
+    assert event_dec["extraction_ms"] == decision.extraction_ms
+    assert event_dec["parser_ms"] == decision.parser_ms
+    assert event_dec["evaluation_ms"] == decision.evaluation_ms
+    assert event_dec["total_ms"] == decision.total_ms
+    assert event_dec["timings"] == decision.timings
 
 # ==============================================================================
 # Adversarial Attack: Zero-Second and Boundary Latency Cases

@@ -1,0 +1,7 @@
+{
+  "name": "filemaid-persistence",
+  "private": true,
+  "type": "module",
+  "dependencies": { "pouchdb": "9.0.0" },
+  "engines": { "node": ">=20" }
+}

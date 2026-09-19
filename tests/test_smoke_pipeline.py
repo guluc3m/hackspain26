@@ -70,9 +70,12 @@ def test_pipeline_smoke_end_to_end(tmp_path: Path, monkeypatch) -> None:
     ]
     assert len(outcomes_lines) == len(decisions)
 
-    db_rows = pipeline.store.decision_rows_for_run(pipeline.rule_config.version)
-    assert len(db_rows) == len(decisions)
-    db_rows_by_file = {r["file_id"]: r for r in db_rows}
+    stored_decisions = [
+        pipeline.store.hydrate(d) for d in pipeline.store.list("decision:")
+        if pipeline.store.hydrate(d).get("run_id") == pipeline.rule_config.version
+    ]
+    assert len(stored_decisions) == len(decisions)
+    db_rows_by_file = {r["file_id"]: r["decision"] for r in stored_decisions}
 
     for d in decisions:
         assert d.file_id in db_rows_by_file

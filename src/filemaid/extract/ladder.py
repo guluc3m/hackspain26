@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from filemaid.store.trace import current_trace
 from filemaid.types import ExtractionFeature
 
 from .cache import FeatureCache
@@ -109,6 +110,8 @@ class ExtractionLadder:
                 rr = RungResult(result.features, content=result.content, resolved=result.qr_only)
             else:
                 rr = adapter(result) if adapter else RungResult([result])
+            if trace := current_trace():
+                trace.rung(page_index, name, rr.features, self.pages_dir)
 
             out.features.extend(rr.features)
             if rr.content:
@@ -116,7 +119,11 @@ class ExtractionLadder:
                 ctx.ocr_text = rr.content
             if rr.resolved and auto_stop:
                 out.stopped_at = name
+                if trace := current_trace():
+                    trace.page(out)
                 return out
+        if trace := current_trace():
+            trace.page(out)
         return out
 
     def extract_page(self, pdf_path: Path, page_index: int) -> PageExtraction:

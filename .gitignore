@@ -70,3 +70,8 @@ presentation/render.log
 presentation/public/capturas/
 presentation/render-anuncio.log
 presentation/render.log
+
+# PouchDB local y estado de agentes: nunca se entregan.
+/src/filemaid/store/pouchdb/node_modules/
+/.sdd/
+/src/filemaid/store/pouchdb/data/

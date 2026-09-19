@@ -50,16 +50,16 @@
   alternativas: [Monolito secuencial; repartir en microservicios desde el inicio; integrar el ERP de verdad dentro del pipeline.],
   decision: [Pipeline en Python con colas entre bloques de extracción, _parser_ y decisión, de modo que cada bloque escale horizontalmente de forma independiente y un fallo del proveedor de LLM no bloquee el resto. El ERP se toca SOLO a través de una costura de adaptador (`ERP_STATE_PENDING` consulta el estado del pedido vía interfaz intercambiable); ningún módulo del pipeline conoce el ERP concreto.],
   consecuencias: [Infraestructura algo mayor que un script secuencial; a cambio, escalado por bloque, reintentos aislados y recuperación sin duplicados (idempotencia por _invoice id_ y por (sha256, stage, versión)), y el día de mañana se conecta un ERP real sin tocar reglas ni extracción.],
-  evidencia: [Store SQLite + ledger JSONL idempotente (T4): re-procesar el mismo lote es un no-op que reutiliza evidencia; un crash a mitad de lote pierde como mucho el ítem en vuelo. DRILL MEDIDO (`.sdd/metrics/drills.json`, T12): crash del runner real en el ítem 2 ⇒ reanudación completa del lote, 0 duplicados, reutilizados por caché = decididos pre-crash; drill `backoff-429`: Retry-After respetado, 0 llamadas extra. Métricas de archivos/s y coste por lote generadas desde el ledger (T9).],
+  evidencia: [El pipeline actual conserva evidencia por escalón y decisiones por scan en PouchDB. Los tests de persistencia cubren fallos parciales, recuperación de originales, inmutabilidad y enlace exacto de informes; las mediciones históricas del runner anterior no describen el coste del puente Node actual.],
 )
 
 #adr([Trazabilidad e histórico en base de datos],
   status: "ACEPTADA",
   contexto: [Muchas legislaciones exigen conservar histórico de facturas y decisiones; Alberto necesita reproducir cualquier decisión y alimentar futuros entrenamientos con los casos escalados.],
-  alternativas: [Logs planos en ficheros; guardar solo el resultado final en el JSONL.],
-  decision: [Cada paso del proceso persiste _logs_, datos intermedios y resultados en la base de datos; las resoluciones de los casos escalados se guardan para reentrenamiento y auditoría.],
-  consecuencias: [Almacenamiento creciente y necesidad de retención; a cambio, trazabilidad completa input → evidencia → decisión y base para mejoras futuras.],
-  evidencia: [Consulta por _invoice id_ que recupera features, campos, reglas y decisión con su configuración del momento.],
+  alternativas: [Logs planos, doble almacenamiento relacional/documental, servidor CouchDB externo, guardar solo el resultado final.],
+  decision: [PouchDB JS local como único motor: documentos dinámicos con todos los candidatos, eventos, caché y decisiones inmutables; adjuntos fragmentados para artefactos. Modo servidor mediante sincronización entre bases PouchDB y escalador VLM alojados en FastAPI, sin CouchDB. Configuración local excluida del intercambio.],
+  consecuencias: [Un motor y esquema dinámico, con recuperación sin ficheros originales. Coste de arranque del puente Node por operación; conflictos de contenido se rechazan, no se resuelven con último escritor. El modo se elige en la UI sin bloquear el batch.],
+  evidencia: [Contrato en docs/db-mig.md; pruebas de ingestión y recuperación en tests/test_pouch_persistence.py y tests/test_pouch_identity.py; protocolo servidor en tests/test_sync_server.py.],
 )
 
 #adr([Rung 5 en la nube: deepseek-v4.1-flash; revisión humana no bloqueante],
@@ -84,9 +84,9 @@
   status: "ACEPTADA",
   contexto: [El requisito del usuario: que funcione también en Windows y Mac, con integración de app «tipo Electron o similar». Alberto usa la app desde Linux, pero la demo debe portarse a otros escritorios.],
   alternativas: [Electron (runtime ~200 MB, toolchain Node adicional, empaquetado por OS); PWA sola (requiere navegador abierto); app nativa por OS (tres codebases).],
-  decision: [pywebview: ventana nativa con el webview del OS (WebKit en Mac, WebView2/Edge en Windows, GTK en Linux) sobre nuestra UI FastAPI/HTMX existente, arrancada por `python -m filemaid.desktop` (uvicorn en hilo, puerto efímero, cierre limpio con la ventana). Launchers `iniciar.sh/.command/.bat/.ps1` de un paso. Fallback: sin webview, aviso en español y navegador.],
-  consecuencias: [Cero Node, cero runtime extra en la base (pywebview es extra opcional `desktop`); la misma UI sirve a navegador y ventana. Límite honesto: un instalador .exe/.dmg firmado exige una máquina por OS — desde Linux entregamos fuente + arranque de un paso, suficiente para la defensa.],
-  evidencia: [Tests del bootstrap (tests/test_desktop.py): servidor en hilo responde y se apaga limpio; degradación a navegador sin webview y si falla el init del webkit; launchers idempotentes. ADR citado en el informe y en `desktop.py`.],
+  decision: [pywebview aloja la misma UI Vue que el navegador. FastAPI arranca en un hilo sobre loopback y puerto efímero. La UI solicita modo local/servidor y configura los endpoints sin duplicar el motor de reglas.],
+  consecuencias: [La ventana es opcional, pero Node es requerido por PouchDB. La misma UI sirve a navegador y ventana con selección de modo al inicio. La distribución firmada por OS requiere verificación específica; el bloqueo actual de persistencia usa fcntl en Linux.],
+  evidencia: [src/filemaid/desktop/app.py comparte create_app con el servidor local; tests/test_engines_desktop.py cubre el arranque y la selección de backend de ventana. La verificación de la UI web se hace contra el mismo frontend construido.],
 )
 
 #adr([Resultado configurable por regla: `outcomes.on_fail` (FAIL → NO_PAGAR/ESCALAR) (ADR-08)],

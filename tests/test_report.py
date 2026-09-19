@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 from filemaid.rules.engine import evaluate
 from filemaid.rules.report import collect_run, write_report
+from filemaid.store.trace import ScanTrace
 from filemaid.types import ExtractionField
 
 
@@ -18,35 +20,22 @@ def _fields_ok() -> dict[str, ExtractionField]:
     return {
         "nif": _field("nif", "B12345678"),
         "iban": _field("iban", "ES9121000418450200051332"),
-        "pedido": _field("pedido", "P-2026-001"),
         "total": _field("total", 121.00),
-        "base": _field("base", 100.00),
+        "pedido": _field("pedido", "P-2026-001"),
         "iva_amount": _field("iva_amount", 21.00),
         "iva_rate": _field("iva_rate", 21),
         "fecha": _field("fecha", "01/01/2026"),
     }
 
 
-def _persist(store, master, rule_config, invoice_id: str, file_id: str, fields: dict) -> None:
+def _persist(store, master, rule_config, invoice_id: str, file_id: str, fields: dict, config_version: str | None = None) -> None:
     d = evaluate(fields, master, rule_config, invoice_id, file_id)
-    store.upsert_invoice(invoice_id, file_id, f"sha-{invoice_id}")
-    store.start_run(rule_config.version, rule_config.version, master.sha256)
-    for f in fields.values():
-        store.add_field(
-            invoice_id,
-            f.type,
-            [
-                {"extractor": c.extractor, "value": c.value, "confidence": c.confidence}
-                for c in f.values
-            ],
-        )
-    store.add_rule_evaluations(
-        invoice_id,
-        rule_config.version,
-        [{**asdict(e), "verdict": e.verdict.value} for e in d.rule_evaluations],
-    )
-    store.save_decision(invoice_id, rule_config.version, d.result.value, asdict(d.config_snapshot))
-    store.finish_run(rule_config.version)
+    version = config_version or rule_config.version
+    trace = ScanTrace(store, Path(file_id), f"sha-{invoice_id}", invoice_id)
+    with trace.active():
+        trace.begin(version, "extract-v1", master.sha256)
+        trace.fields(list(fields.values()), 10)
+        trace.decision(d, version)
 
 
 def _lote(store, master, rule_config) -> None:
@@ -92,10 +81,8 @@ def test_collect_run_resumen_por_resultado(store, cfg, master, rule_config):
 
 
 def test_collect_run_avisa_si_la_config_del_run_no_es_la_actual(store, cfg, master, rule_config):
-    _persist(store, master, rule_config, "inv-ok", "a.pdf", _fields_ok())
-    store.conn.execute("UPDATE runs SET config_version = 'otra-version'")
-    store.conn.commit()
-    run = collect_run(store, cfg, rule_config.version)
+    _persist(store, master, rule_config, "inv-ok", "a.pdf", _fields_ok(), config_version="otra-version")
+    run = collect_run(store, cfg, "otra-version")
     assert run["config_mismatch"]
 
 
@@ -146,7 +133,6 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert "latencia media" in index
     assert "extracción · parser · reglas" in index
 
-
     detalle = (out / "facturas" / "inv-no.html").read_text(encoding="utf-8")
     assert "NIF_IN_MASTER" in detalle and "NO_PAGAR" in detalle
     assert "IVA_CONSISTENT" in detalle  # el resto de reglas también se listan
@@ -158,7 +144,6 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert "extracción (escalera)" in inv_ok
     assert "parser (candidatos)" in inv_ok
     assert "evaluación de reglas" in inv_ok
-
 
     lineas = [
         json.loads(l) for l in (out / "detalle.jsonl").read_text(encoding="utf-8").splitlines()

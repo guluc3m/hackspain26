@@ -28,8 +28,9 @@ src/filemaid/
                     6 Firecrawl · 7 VLM cloud (solo candidato)
   parse/            features → campos: todos los candidatos se conservan
   rules/            motor puro y determinista + 8 reglas + maestros (CSV/Excel)
-  store/            SQLite (WAL) + ledger JSONL append-only
+  store/            PouchDB JS local: datos, adjuntos, caché, eventos y configuración
   api/              FastAPI: comparte types, store y motor con el pipeline
+  server.py         sincronización PouchDB + escalador VLM remoto (sin CouchDB)
 master/             datos maestros y thresholds de reglas (versionados)
 frontend/           Vue 3 + Vite (TS, pnpm): Dashboard (cola de revisión),
                     Invoices (facturas + carpeta) y Logs (buscador de entradas,
@@ -52,28 +53,26 @@ misma página sin cambiar la configuración, el juicio cacheado puede quedar obs
 
 ```sh
 uv sync                              # entorno (Python 3.13, user-space)
+uv run -- npm ci --prefix src/filemaid/store/pouchdb  # motor PouchDB; requiere Node >=20
 uv run filemaid run --lote caja-de-alberto/facturas --out outcomes.jsonl
 uv run filemaid emit               # re-emite outcomes desde el store
 uv run filemaid serve              # API de revisión
-uv run filemaid clean              # borra store.db (pide confirmación)
+uv run filemaid server             # servicio sync + VLM, puerto 8001
 uv run pytest                        # tests
 uv run ruff check src tests          # lint
-pnpm --dir frontend install          # dependencias de la UI
-pnpm --dir frontend dev_syncth       # UI con datos sintéticos de referencia
-pnpm --dir frontend build_syncth     # build de la UI sintética
+uv run -- npx pnpm --dir frontend install
+uv run -- npx pnpm --dir frontend build   # UI real, servida por FastAPI
+uv run -- npx pnpm --dir frontend dev_syncth  # demo sintética opcional
 uv sync --extra desktop              # pywebview para la ventana nativa
 uv run albertitos-desktop            # ventana nativa con la misma UI
 ```
 
 ### Modo sintético y UI
 
-La ventana nativa (pywebview) carga el front construido
-(`frontend/dist`, assets relativos para file://) y expone
-`window.pywebview.api`: `ping` (puente vivo) y las llamadas a los dos motores
-de la arquitectura (`extraer` → engines.extraction, `decidir` →
-engines.decision), aún **sin definir**: propagan NotImplementedError. La UI
-sigue consumiendo la referencia sintética. En dev, con `dev_syncth` corriendo:
-`ALBERTITOS_UI_URL=http://127.0.0.1:5173 uv run albertitos-desktop`.
+La ventana nativa sirve el front construido (`frontend/dist`) mediante el mismo
+FastAPI local que la versión web, en un puerto loopback asignado por el SO.
+El puente histórico `extraer`/`decidir` no participa en esta conexión.
+En desarrollo: `ALBERTITOS_UI_URL=http://127.0.0.1:5173 uv run albertitos-desktop`.
 
 El lanzador fuerza el backend QT cuando está disponible (sin sondeo GTK).
 Las sondas del sistema que escriben en stderr durante el arranque (Vulkan
@@ -82,37 +81,41 @@ muestran como diagnóstico si la ventana no llega a abrirse. En máquinas con
 ICD de Vulkan instalados (p. ej. mesa-vulkan-drivers, paquete del sistema)
 la sonda ni siquiera se produce.
 
-La UI consume los datos de la base de datos (sqlite) que expone el backend.
-Mientras esa conexión no existe, los targets `*_syncth` ejecutan la interfaz
-con una referencia sintética de esa base (`src/mock/data.ts`): decisiones con
-ID asignado y entradas de log mínimas (solo tipo + IDs; el detalle vive en las
-tablas). La conexión real queda vacía a propósito en `src/api.ts`, igual que
-las llamadas a los motores en el puente de la ventana nativa.
+La UI real consulta facturas, decisiones y logs persistidos en PouchDB. El botón
+«logs» aplica un filtro por basename exacto; los detalles conservan todos los
+candidatos. `uv run filemaid serve` sirve la API y `frontend/dist`.
+Los targets `*_syncth` siguen disponibles para la demo sin datos reales.
 
-El backend (`uv run filemaid serve`) expone únicamente la API (FastAPI) y sirve
-las páginas rasterizadas (`/paginas`); no sirve `frontend/dist`. La UI sintética
-se ejecuta por separado (Vite dev server en `dev_syncth` o ventana nativa desktop).
+La UI pregunta **Standalone** o **Servidor** en cada arranque. Configuración
+permite editar URL del servidor sync, endpoint VLM (base OpenAI-compatible `/v1`)
+y modelo. Los valores se guardan únicamente en PouchDB local; no se replican.
+En modo servidor, la confirmación realiza una sincronización real y los cambios
+se sincronizan periódicamente y tras los scans. Un fallo mantiene los datos locales
+y muestra el error; no sustituye el resultado de las reglas.
 
-### Limpiar el estado (`clean`)
-
-Borra estado en disco para empezar de cero. Respeta `FILEMAID_DATA` (por
-defecto `data/`). Por defecto borra el store; pide confirmación salvo `-y`.
+### Servidor de sincronización y VLM
 
 ```sh
-uv run filemaid clean              # store.db + WAL/SHM
-uv run filemaid clean -y           # sin confirmación
-uv run filemaid clean --all -y     # store + cache + pages + ledger
-uv run filemaid clean --cache --pages --ledger -y
+FILEMAID_DATA=data/servidor uv run filemaid server --host 127.0.0.1 --port 8001
 ```
 
-| Flag | Borra |
-| --- | --- |
-| (ninguno) | `store.db` (y `-wal`/`-shm`) |
-| `--cache` | cache de extracción (`data/cache`) |
-| `--pages` | páginas rasterizadas (`data/pages`) |
-| `--ledger` | ledger append-only (`data/ledger.jsonl`) |
-| `--all` | todo lo anterior |
-| `--yes`, `-y` | omite la confirmación |
+En otra máquina, configure `FILEMAID_SERVER_TOKEN` en el servidor y el mismo
+valor en `FILEMAID_SYNC_TOKEN` en el cliente (variables de entorno, nunca git).
+El bind no-loopback exige token. Use HTTPS mediante un proxy de confianza en redes
+no locales. `FILEMAID_SERVER_VLM_URL` selecciona el upstream VLM fijo (base `/v1`),
+y `FILEMAID_SERVER_VLM_KEY` su credencial si la requiere; sin URL se usa el sidecar local.
+El cliente puede dejar el endpoint VLM vacío para usar `<sync_url>/v1`.
+
+PouchDB es el único almacén runtime, en `FILEMAID_DATA/pouchdb`; no hay fallback
+ni persistencia relacional. Los documentos tienen esquema dinámico; decisiones y
+artefactos históricos son inmutables. Esquema, sincronización y límites:
+[docs/db-mig.md](docs/db-mig.md).
+
+### Limpiar workspaces (`clean`)
+
+`uv run filemaid clean` elimina únicamente copias temporales y páginas de trabajo,
+con confirmación salvo `-y`. No borra PouchDB, caché, configuración ni evidencias.
+Los JSONL y HTML escritos explícitamente por `run`, `emit` y `report` son exports.
 
 Regla de oro (docs/normas.md): ante duda razonable, escalar antes que pagar.
 El motor es puro: mismos inputs + misma config ⇒ misma salida, byte a byte.

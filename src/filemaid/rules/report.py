@@ -1,6 +1,6 @@
 """Informe visual de decisiones: HTML por factura + índice, local a rules/.
 
-Lee el store (decisions, rule_evaluations, field_values, features) y recompute
+Lee PouchDB (decisions, rule_evaluations, fields, features) y recompute
 los breadcrumbs del colapso con `escoger` (puro y determinista: mismos
 candidatos + misma config ⇒ mismo audit). El HTML es estático y autocontenido:
 se abre con file:// sin servidor. `detalle.jsonl` acompaña en legible por
@@ -10,6 +10,7 @@ máquina (una línea por factura).
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,8 @@ from jinja2 import Environment
 from filemaid.config import AppConfig
 from filemaid.rules.config import RuleConfig
 from filemaid.rules.escoger import escoger, field_selection
-from filemaid.store.db import Store
+from filemaid.store.pouch import PouchStore
+from filemaid.store.queries import archive_output
 from filemaid.types import ExtractionField
 
 _ESTATUS_CLASE = {
@@ -109,56 +111,85 @@ def _field_breadcrumbs(
 
 
 def collect_invoice(
-    store: Store,
-    invoice_id: str,
-    run_id: str,
-    file_id: str,
-    sha256: str,
+    store: PouchStore,
+    item: dict | str,
     seleccion: dict[str, Any],
 ) -> dict[str, Any]:
     """Una factura: decisión, reglas, breadcrumbs de campos y escalera."""
-    row = store.conn.execute(
-        """SELECT result, config_snapshot, timestamp,
-                  extraction_ms, parser_ms, evaluation_ms, total_ms, timings
-           FROM decisions WHERE invoice_id = ? AND run_id = ?""",
-        (invoice_id, run_id),
-    ).fetchone()
-    result = row["result"]
-    snapshot = json.loads(row["config_snapshot"])
-    row_keys = set(row.keys())
-    extraction_ms = (
-        int(row["extraction_ms"])
-        if "extraction_ms" in row_keys and row["extraction_ms"] is not None
-        else 0
-    )
-    parser_ms = (
-        int(row["parser_ms"]) if "parser_ms" in row_keys and row["parser_ms"] is not None else 0
-    )
-    evaluation_ms = (
-        int(row["evaluation_ms"])
-        if "evaluation_ms" in row_keys and row["evaluation_ms"] is not None
-        else 0
-    )
-    total_ms = int(row["total_ms"]) if "total_ms" in row_keys and row["total_ms"] is not None else 0
-    try:
-        timings = json.loads(row["timings"]) if "timings" in row_keys and row["timings"] else {}
-    except Exception:
-        timings = {}
+    if isinstance(item, str):
+        doc = store.get(f"decision:{item}")
+        if doc is None:
+            raise KeyError(f"No decision found for scan {item}")
+        d = store.hydrate(doc)
+    else:
+        d = store.hydrate(item)
+
+    scan_id = d.get("scan_id", "")
+    file_id = d.get("file_id", "")
+    file_key = d.get("file_key", "")
+    invoice_id = d.get("invoice_id", "")
+    run_id = d.get("run_id", "")
+    timestamp = d.get("timestamp", 0.0)
+
+    sha256 = d.get("sha256", "")
+    if not sha256 and file_key:
+        scan_doc = store.get(f"scan:{file_key}:{scan_id}")
+        if scan_doc:
+            sha256 = scan_doc.get("sha256", "")
+        if not sha256:
+            file_doc = store.get(f"file:{file_key}")
+            if file_doc:
+                sha256 = file_doc.get("sha256", "")
+
+    dec = d.get("decision", {})
+    result = dec.get("result", "")
+    if hasattr(result, "value"):
+        result = result.value
+    result = str(result)
+
+    snapshot = dec.get("config_snapshot", {})
+    if is_dataclass(snapshot):
+        snapshot = asdict(snapshot)
+
+    extraction_ms = int(dec.get("extraction_ms", 0) or 0)
+    parser_ms = int(dec.get("parser_ms", 0) or 0)
+    evaluation_ms = int(dec.get("evaluation_ms", 0) or 0)
+    total_ms = int(dec.get("total_ms", 0) or 0)
+    timings = dec.get("timings", {})
+    if isinstance(timings, str):
+        try:
+            timings = json.loads(timings)
+        except Exception:
+            timings = {}
+
     evals = []
-    for r in store.rule_evaluations_for(invoice_id, run_id):
-        consumed = json.loads(r["consumed"])
+    rule_evals = dec.get("rule_evaluations", [])
+    for r in rule_evals:
+        if is_dataclass(r):
+            r = asdict(r)
+        verdict = r.get("verdict", "")
+        if hasattr(verdict, "value"):
+            verdict = verdict.value
+        verdict = str(verdict)
+        consumed = r.get("consumed", {})
+        if isinstance(consumed, str):
+            try:
+                consumed = json.loads(consumed)
+            except Exception:
+                consumed = {}
         evals.append(
             {
-                "code": r["code"],
-                "verdict": r["verdict"],
-                "verdict_class": _VEREDICTO_CLASE.get(r["verdict"], "muted"),
-                "reason": r["reason"],
-                "reason_code": r["reason_code"],
-                "reason_label": _categoria(r["reason_code"]) if r["verdict"] == "UNKNOWN" else "",
+                "code": r.get("code", ""),
+                "verdict": verdict,
+                "verdict_class": _VEREDICTO_CLASE.get(verdict, "muted"),
+                "reason": r.get("reason", ""),
+                "reason_code": r.get("reason_code", ""),
+                "reason_label": _categoria(r.get("reason_code", "")) if verdict == "UNKNOWN" else "",
                 "consumed": consumed,
                 "consumed_pairs": [(k, _display(v)) for k, v in sorted(consumed.items())],
             }
         )
+
     fails = [e for e in evals if e["verdict"] == "FAIL"]
     unknowns = [e for e in evals if e["verdict"] == "UNKNOWN"]
     on_fail = {str(k): str(v) for k, v in (snapshot.get("rule_outcomes") or {}).items()}
@@ -181,18 +212,33 @@ def collect_invoice(
     for e in evals:
         e["is_driver"] = id(e) in driver_ids
 
-    fields = _field_breadcrumbs_all(store.fields_for(invoice_id), seleccion)
-    pages = _ladder(store.features_for(invoice_id))
+    fields_doc = store.get(f"fields:{scan_id}")
+    fields_dict: dict[str, list[dict[str, Any]]] = {}
+    if fields_doc:
+        fields_doc = store.hydrate(fields_doc)
+        for f in fields_doc.get("fields", []):
+            f_type = f.get("type", "")
+            cands = f.get("values", [])
+            fields_dict[f_type] = [
+                {"extractor": c.get("extractor", ""), "value": c.get("value"), "confidence": c.get("confidence", 0.0)}
+                for c in cands
+            ]
+    fields = _field_breadcrumbs_all(fields_dict, seleccion)
+
+    feature_docs = store.list(f"feature:{scan_id}:")
+    features = [store.hydrate(feat) for feat in feature_docs]
+    pages = _ladder(features)
 
     return {
         "invoice_id": invoice_id,
         "file_id": file_id,
         "sha256": sha256,
         "run_id": run_id,
+        "scan_id": scan_id,
         "result": result,
         "result_class": _RESULTADO_CLASE.get(result, "muted"),
-        "timestamp": row["timestamp"],
-        "timestamp_iso": _dt(row["timestamp"]),
+        "timestamp": timestamp,
+        "timestamp_iso": _dt(timestamp),
         "snapshot": snapshot,
         "evaluations": evals,
         "drivers": drivers,
@@ -221,28 +267,65 @@ def _field_breadcrumbs_all(
 def _ladder(features: list) -> list[dict[str, Any]]:
     pages: dict[Any, list[dict[str, Any]]] = {}
     for feat in features:
-        pages.setdefault(feat["page"], []).append(
+        f_data = feat.get("feature", {})
+        stage = feat.get("stage") or f_data.get("extraction_method", "").split(":")[0]
+        outcome = f_data.get("extraction_method", stage)
+        confidence = f_data.get("confidence")
+        latency_ms = f_data.get("latency_ms", 0)
+        extractor_version = f_data.get("extractor_version", "")
+        page = feat.get("page")
+        if page is None:
+            page = f_data.get("page")
+        pages.setdefault(page, []).append(
             {
-                "stage": feat["stage"],
-                "outcome": feat["outcome"],
-                "confidence": feat["confidence"],
-                "latency_ms": feat["latency_ms"],
-                "extractor_version": feat["extractor_version"],
-                "skipped": str(feat["outcome"]).startswith("skipped:"),
+                "stage": stage,
+                "outcome": outcome,
+                "confidence": confidence,
+                "latency_ms": latency_ms,
+                "extractor_version": extractor_version,
+                "skipped": str(outcome).startswith("skipped:"),
             }
         )
     ordered = sorted(pages, key=lambda p: (p is None, p if p is not None else -1))
     return [{"page": p if p is not None else None, "rungs": pages[p]} for p in ordered]
 
 
-def collect_run(store: Store, cfg: AppConfig, run_id: str) -> dict[str, Any]:
+def collect_run(store: PouchStore, cfg: AppConfig, run_id: str) -> dict[str, Any]:
     """Un run: resumen + una entrada por factura (index.html)."""
     rc = RuleConfig.load(cfg.rules_config_path)
-    run = store.run_row(run_id)
+    matching_decisions = []
+    for raw in store.list("decision:"):
+        d = store.hydrate(raw)
+        if d.get("run_id") == run_id:
+            matching_decisions.append(d)
+
+    matching_decisions.sort(key=lambda d: (d.get("file_id", ""), d.get("timestamp", 0)))
+    latest_by_file: dict[str, dict] = {}
+    for d in matching_decisions:
+        latest_by_file[d["file_key"]] = d
+    decisions = list(latest_by_file.values())
+    decisions.sort(key=lambda d: d.get("file_id", ""))
+
     invoices = [
-        collect_invoice(store, r["invoice_id"], run_id, r["file_id"], r["sha256"], rc.seleccion)
-        for r in store.decision_rows_for_run(run_id)
+        collect_invoice(store, d, rc.seleccion)
+        for d in decisions
     ]
+
+    run_config_version = ""
+    run_master_sha = ""
+    timestamps = []
+    for inv in invoices:
+        snap = inv.get("snapshot", {})
+        if not run_config_version and snap.get("config_version"):
+            run_config_version = snap["config_version"]
+        if not run_master_sha and snap.get("master_sha256"):
+            run_master_sha = snap["master_sha256"]
+        if inv.get("timestamp"):
+            timestamps.append(inv["timestamp"])
+
+    started = min(timestamps) if timestamps else None
+    finished = max(timestamps) if timestamps else None
+
     counts = {k: 0 for k in ("PAGAR", "NO_PAGAR", "ESCALAR")}
     stats: dict[str, dict[str, Any]] = {}
     for inv in invoices:
@@ -274,16 +357,16 @@ def collect_run(store: Store, cfg: AppConfig, run_id: str) -> dict[str, Any]:
     avg_eval = round(total_eval / n_inv, 1) if n_inv > 0 else 0.0
     return {
         "run_id": run_id,
-        "config_version": run["config_version"] if run else "",
-        "master_sha256": run["master_sha256"] if run else "",
-        "started": run["started"] if run else None,
-        "started_iso": _dt(run["started"] if run else None),
-        "finished_iso": _dt(run["finished"] if run else None),
+        "config_version": run_config_version,
+        "master_sha256": run_master_sha,
+        "started": started,
+        "started_iso": _dt(started),
+        "finished_iso": _dt(finished),
         "generated_iso": datetime.now().astimezone().isoformat(timespec="seconds"),
         "counts": counts,
         "total": len(invoices),
         "rule_stats": rule_stats,
-        "config_mismatch": bool(run and run["config_version"] != rc.version),
+        "config_mismatch": bool(run_config_version and run_config_version != rc.version),
         "current_config_version": rc.version,
         "invoices": invoices,
         "metrics": {
@@ -386,9 +469,9 @@ estables
 <td>{{ inv.counts.PASS }}</td><td>{{ inv.counts.FAIL }}</td><td>{{ inv.counts.UNKNOWN }}</td>
 <td class="mono"><strong>{{ inv.total_ms }} ms</strong></td>
 <td class="muted mono" style="font-size:12px">{{ inv.extraction_ms }} · {{ inv.parser_ms }} · {{ inv.evaluation_ms }} ms</td>
-<td><a href="facturas/{{ inv.invoice_id }}.html">detalle →</a></td></tr>
+<td><a href="facturas/{{ inv.scan_id }}.html">detalle →</a></td></tr>
 {% endfor %}</tbody></table>
-<footer>filemaid · informe estático generado desde el store (SQLite). Los breadcrumbs
+<footer>filemaid · informe estático generado desde PouchDB. Los breadcrumbs
 del colapso se recomputan con <code>escoger</code>: determinista y auditable.</footer>
 </div></body></html>
 """
@@ -474,8 +557,8 @@ _INVOICE_TPL = """<!doctype html><html lang="es"><head><meta charset="utf-8">
 """
 
 
-def write_report(store: Store, cfg: AppConfig, run_id: str, out_dir: Path) -> Path:
-    """Escribe index.html + facturas/<invoice_id>.html + detalle.jsonl. Devuelve el dir."""
+def write_report(store: PouchStore, cfg: AppConfig, run_id: str, out_dir: Path) -> Path:
+    """Escribe index.html + facturas/<scan_id>.html + detalle.jsonl."""
     env = Environment(autoescape=True)
     report = collect_run(store, cfg, run_id)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -497,6 +580,12 @@ def write_report(store: Store, cfg: AppConfig, run_id: str, out_dir: Path) -> Pa
                 report_json=json.dumps(inv, ensure_ascii=False, indent=2, sort_keys=True),
                 generated_iso=report["generated_iso"],
             )
-            (facturas_dir / f"{inv['invoice_id']}.html").write_text(page, encoding="utf-8")
+            (facturas_dir / f"{inv['scan_id']}.html").write_text(page, encoding="utf-8")
             f.write(json.dumps(inv, ensure_ascii=False, sort_keys=True) + "\n")
+            if inv.get("scan_id"):
+                archive_output(cfg.root, inv["scan_id"], facturas_dir / f"{inv['scan_id']}.html", "text/html")
+    for inv in report["invoices"]:
+        if inv.get("scan_id"):
+            archive_output(cfg.root, inv["scan_id"], out_dir / "index.html", "text/html")
+            archive_output(cfg.root, inv["scan_id"], out_dir / "detalle.jsonl", "application/x-ndjson")
     return out_dir

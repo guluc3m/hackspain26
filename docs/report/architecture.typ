@@ -91,6 +91,13 @@ Los datos históricos de las facturas, así como los resultados, y toda la
 información del proceso, se guardan en la base de datos, para luego poder
 explotarse.
 
+La persistencia runtime usa únicamente PouchDB JS local (LevelDB): documentos
+dinámicos para evidencia, caché, eventos y decisiones inmutables, con adjuntos
+fragmentados. La app solicita standalone o servidor al iniciar la UI; el batch
+permanece no interactivo. El servicio FastAPI aloja el intercambio entre bases
+PouchDB y el escalador VLM sin servidor CouchDB. Los endpoints se configuran en
+la UI y se guardan en documentos locales no replicados.
+
 
 == Retroalimentación
 Para los casos escalados, los resultados de la resolución también se guardan en

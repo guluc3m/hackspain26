@@ -69,7 +69,7 @@ async function aplicar() {
         reason: motivo.value || (before === after ? 'confirmación en revisión' : 'corrección en revisión')
       })
     }
-    await api.reprocesar(detail.value.invoice.file_id)
+    await api.reprocesar(detail.value.invoice.file_id, detail.value.invoice.id)
     motivo.value = ''
     emit('updated')
     await load(detail.value.invoice.id)

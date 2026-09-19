@@ -1,12 +1,10 @@
-// Contrato de datos de la UI. Todo lo mostrado proviene de la base de datos
-// (sqlite) que expone el backend; mientras la conexión real está vacía, los
-// datos son la referencia sintética de src/mock/data.ts (targets *_syncth).
+// Contrato compartido con FastAPI/PouchDB; *_syncth mantiene la demo local.
 
 import { mockApi } from './mock/data'
 
 export type Resultado = 'PAGAR' | 'NO_PAGAR' | 'ESCALAR'
 export type RuleVerdict = 'PASS' | 'FAIL' | 'UNKNOWN'
-export type LogType = 'invoice_seen' | 'decision' | 'override'
+export type LogType = 'invoice_seen' | 'decision' | 'override' | 'feature' | 'fields' | 'item_error'
 
 /** Factura: fila de la tabla invoices de la base de datos. */
 export interface FacturaRow {
@@ -46,7 +44,7 @@ export interface RuleEvaluationRow {
 }
 
 export interface OverrideRow {
-  id: number
+  id: number | string
   invoice_id: string
   field_type: string
   before: string // JSON en texto
@@ -93,7 +91,7 @@ export interface Salud {
  * (`resumen`) o al abrir la traza de la factura.
  */
 export interface LogItem {
-  seq: number
+  seq: number | string
   ts: number | null
   type: LogType
   invoice_id: string | null
@@ -115,38 +113,78 @@ export interface OverrideIn {
   rung: string
   reason: string
 }
+export interface RuntimeConfig {
+  mode: 'standalone' | 'server'
+  sync_url: string
+  vlm_url: string
+  vlm_model: string
+}
+
+export interface SyncStatus {
+  ok: boolean
+  state: 'idle' | 'syncing' | 'synced' | 'error' | 'standalone'
+  error?: string | null
+}
 
 /** Contrato de la capa de datos: referencia sintética o conexión real. */
 export interface Api {
   facturas(): Promise<FacturaRow[]>
   factura(id: string): Promise<InvoiceDetail>
   override(invoiceId: string, body: OverrideIn): Promise<{ ok: boolean }>
-  reprocesar(fileId: string): Promise<{ file_id: string; result: Resultado }>
+  reprocesar(fileId: string, fileKey?: string): Promise<{ file_id: string; result: Resultado }>
   reglas(): Promise<Reglas>
   salud(): Promise<Salud>
   logs(params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }): Promise<LogsResponse>
+  getConfig(): Promise<RuntimeConfig>
+  saveConfig(config: RuntimeConfig): Promise<RuntimeConfig>
+  sync(): Promise<{ ok: boolean; [key: string]: unknown }>
+  syncStatus(): Promise<SyncStatus>
 }
 
-// Conexión real: vacía a propósito. Se rellenará cuando el backend exponga
-// la base de datos; la referencia de datos es la sintética.
-function noConectado(): never {
-  throw new Error('conexión real vacía: usa los targets *_syncth (datos sintéticos)')
+async function request<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
+  const options: RequestInit = {}
+  if (body !== undefined) {
+    options.method = method
+    options.headers = { 'Content-Type': 'application/json' }
+    options.body = JSON.stringify(body)
+  } else if (method !== 'POST') {
+    options.method = method
+  }
+  const response = await fetch(path, options)
+  if (!response.ok) {
+    let errorText = await response.text()
+    try {
+      const parsed = JSON.parse(errorText)
+      if (parsed && typeof parsed === 'object' && 'detail' in parsed) {
+        errorText = String(parsed.detail)
+      }
+    } catch {
+      // use raw errorText
+    }
+    throw new Error(errorText || `Error HTTP ${response.status}`)
+  }
+  return response.json() as Promise<T>
 }
 
 const realApi: Api = {
-  facturas: noConectado,
-  factura: noConectado,
-  override: noConectado,
-  reprocesar: noConectado,
-  reglas: noConectado,
-  salud: noConectado,
-  logs: noConectado
+  facturas: () => request('/api/facturas', undefined, 'GET'),
+  factura: id => request(`/api/facturas/${encodeURIComponent(id)}`, undefined, 'GET'),
+  override: (id, body) => request(`/api/revision/${encodeURIComponent(id)}/override`, body, 'POST'),
+  reprocesar: (id, key) => request(`/api/reprocesar/${encodeURIComponent(id)}${key ? '?file_key=' + encodeURIComponent(key) : ''}`, {}, 'POST'),
+  reglas: () => request('/api/reglas', undefined, 'GET'),
+  salud: () => request('/api/salud', undefined, 'GET'),
+  logs: params => request('/api/logs?' + new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ), undefined, 'GET'),
+  getConfig: () => request('/api/config', undefined, 'GET'),
+  saveConfig: config => request('/api/config', config, 'PUT'),
+  sync: () => request('/api/sync', {}, 'POST'),
+  syncStatus: () => request('/api/sync/status', undefined, 'GET')
 }
 
 export const SINTETICO: boolean = import.meta.env.MODE === 'syncth'
 
 export const api: Api = SINTETICO ? mockApi : realApi
-
 // ---- helpers de presentación -------------------------------------------
 
 export function fileExt(fileId: string): string {
@@ -187,5 +225,5 @@ export async function confirmarLectura(invoiceId: string, reason = 'confirmació
       reason
     })
   }
-  await api.reprocesar(detail.invoice.file_id)
+  await api.reprocesar(detail.invoice.file_id, detail.invoice.id)
 }

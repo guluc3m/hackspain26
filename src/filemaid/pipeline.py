@@ -9,6 +9,7 @@ lote. Una caída a mitad de lote pierde como mucho el item en vuelo.
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from dataclasses import asdict
@@ -25,8 +26,8 @@ from .parse.parser import parse_fields
 from .rules.config import RuleConfig
 from .rules.engine import evaluate
 from .rules.master import load_master
-from .store.db import Store
-from .store.ledger import Ledger
+from .store.pouch import PouchStore
+from .store.trace import ScanTrace, current_trace
 
 _UUID_NAMESPACE = uuid.UUID("d5f04a3e-6f9a-4b3f-9d2f-5c1a2b3c4d5e")  # ns estable del proyecto
 _SUPPORTED_SUFFIXES = {".pdf"} | EXTRACT_IMAGE_SUFFIXES
@@ -40,44 +41,103 @@ def invoice_id_for(sha256: str) -> str:
 class Pipeline:
     def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
-        self.store = Store(cfg.store_path)
-        self.ledger = Ledger(cfg.ledger_path)
-        self.cache = FeatureCache(cfg.cache_dir)
+        self.store = PouchStore(cfg.root)
+        self.store.request(op="info")
+        self.cache = FeatureCache(self.store)
         self.rule_config = RuleConfig.load(cfg.rules_config_path)
         self.master = load_master(cfg.master_dir)
+        self._batch_scans: dict[int, dict] | None = None
+
+    def _sync_if_configured(self) -> None:
+        settings = self.cfg.runtime_settings()
+        if settings.get("mode") == "server":
+            sync_url = settings.get("sync_url", "")
+            if sync_url:
+                token = os.environ.get("FILEMAID_SYNC_TOKEN", "")
+                self.store.sync(sync_url, token)
 
     def run_lote(self, lote_dir: Path, outcomes_path: Path) -> list[Decision]:
         """Procesa todos los PDFs del lote (resumible desde cualquier punto)."""
         pdfs = sorted(p for p in lote_dir.iterdir() if p.suffix.lower() in _SUPPORTED_SUFFIXES)
         decisions: list[Decision] = []
+        self._batch_scans = {}
         for pdf in pdfs:
             try:
                 decisions.append(self.process_pdf(pdf))
-            except Exception as exc:  # un item no tumba el lote
-                self.ledger.append(
-                    "item_error",
-                    {"file_id": pdf.name, "error": f"{exc.__class__.__name__}: {exc}"},
-                )
+            except Exception:  # process_pdf records a durable error before raising
+                continue
         emit_outcomes(decisions, outcomes_path)
+        for decision in decisions:
+            scan_identity = self._batch_scans.get(id(decision))
+            if scan_identity:
+                self.store.artifact(
+                    scan_identity,
+                    "export",
+                    outcomes_path.name,
+                    outcomes_path,
+                    "application/x-ndjson",
+                )
+        self._batch_scans = None
+
+        self._sync_if_configured()
+
         return decisions
 
     def process_pdf(self, pdf_path: Path) -> Decision:
+        try:
+            sha = sha256_file(pdf_path)
+        except OSError as exc:
+            scan_id = str(uuid.uuid4())
+            self.store.put({
+                "_id": f"event:{scan_id}:{uuid.uuid4()}", "kind": "event",
+                "scan_id": scan_id, "file_id": pdf_path.name, "file_key": None,
+                "invoice_id": None, "timestamp": time.time(), "type": "item_error",
+                "payload": {"file_id": pdf_path.name, "error": f"{type(exc).__name__}: {exc}"},
+            })
+            raise
+        trace = ScanTrace(self.store, pdf_path, sha, invoice_id_for(sha))
+        with trace.active():
+            try:
+                source = trace.begin(
+                    self.rule_config.version,
+                    self.cfg.extraction_config().get("config_version", ""),
+                    self.master.sha256,
+                )
+                trace.event(
+                    "invoice_seen",
+                    {"invoice_id": trace.identity["invoice_id"], "file_id": pdf_path.name, "sha256": sha},
+                )
+                decision = self._process_pdf(source)
+                if self._batch_scans is not None:
+                    self._batch_scans[id(decision)] = trace.identity
+                else:
+                    self._sync_if_configured()
+                return decision
+            except Exception as exc:
+                trace.event(
+                    "item_error",
+                    {
+                        **trace.identity,
+                        "file_id": pdf_path.name,
+                        "error": f"{exc.__class__.__name__}: {exc}",
+                    },
+                )
+                raise
+
+    def _process_pdf(self, pdf_path: Path) -> Decision:
         t_start = time.perf_counter()
         sha = sha256_file(pdf_path)
         invoice_id = invoice_id_for(sha)
         config_version = self.rule_config.version
 
-        existing = self.store.invoice_by_sha(sha)
-        if existing is None:
-            self.store.upsert_invoice(invoice_id, pdf_path.name, sha)
-        self.ledger.append(
-            "invoice_seen", {"invoice_id": invoice_id, "file_id": pdf_path.name, "sha256": sha}
-        )
-
         # Extracción (escalera por página, con cache e idempotencia)
         t_extract_0 = time.perf_counter()
-        pages = extract_file(pdf_path, self.cache, self.cfg.extraction_config(), self.cfg.pages_dir)
+        trace = current_trace()
+        pages_dir = self.cfg.pages_dir / (trace.scan_id if trace else invoice_id)
+        pages = extract_file(pdf_path, self.cache, self.cfg.extraction_config(), pages_dir)
         extraction_ms = round((time.perf_counter() - t_extract_0) * 1000)
+        if trace:
+            trace.pages(pages, pages_dir)
 
         rung_latencies: dict[str, int] = {}
         for page in pages:
@@ -86,36 +146,13 @@ class Pipeline:
                 rung_latencies[f"{stage_name}_p{feat.page if feat.page is not None else 0}"] = (
                     feat.latency_ms
                 )
-                detail = {"type": feat.type}
-                if isinstance(feat.data, (dict, list)):
-                    detail["data"] = feat.data
-                self.store.add_feature(
-                    invoice_id,
-                    stage=stage_name,
-                    page=feat.page,
-                    extractor_version=feat.extractor_version,
-                    config_version=config_version,
-                    sha256=feat.sha256 or sha,
-                    latency_ms=feat.latency_ms,
-                    confidence=feat.confidence,
-                    outcome=feat.extraction_method,
-                    detail=detail,
-                )
 
         # Parser: todos los candidatos se conservan
         t_parse_0 = time.perf_counter()
         fields = parse_fields(pages)
         parser_ms = round((time.perf_counter() - t_parse_0) * 1000)
-
-        for f in fields:
-            self.store.add_field(
-                invoice_id,
-                f.type,
-                [
-                    {"extractor": c.extractor, "value": c.value, "confidence": c.confidence}
-                    for c in f.values
-                ],
-            )
+        if trace:
+            trace.fields(fields, parser_ms)
 
         # Decisión (motor puro) + evidencia
         t_eval_0 = time.perf_counter()
@@ -143,42 +180,23 @@ class Pipeline:
         decision.total_ms = total_ms
         decision.timings = stage_timings
 
-        self.store.save_config_snapshot(
-            decision.config_snapshot.config_version, asdict(decision.config_snapshot)
-        )
         run_id = config_version
-        self.store.start_run(run_id, config_version, self.master.sha256)
-        self.store.add_rule_evaluations(
-            invoice_id,
-            run_id,
-            [{**asdict(e), "verdict": e.verdict.value} for e in decision.rule_evaluations],
-        )
-        self.store.save_decision(
-            invoice_id,
-            run_id,
-            decision.result.value,
-            asdict(decision.config_snapshot),
-            extraction_ms=extraction_ms,
-            parser_ms=parser_ms,
-            evaluation_ms=evaluation_ms,
-            total_ms=total_ms,
-            timings=stage_timings,
-        )
-        self.store.finish_run(run_id)
-        self.ledger.append(
-            "decision",
-            {
-                "invoice_id": invoice_id,
-                "file_id": decision.file_id,
-                "result": decision.result.value,
-                "run_id": run_id,
-                "extraction_ms": extraction_ms,
-                "parser_ms": parser_ms,
-                "evaluation_ms": evaluation_ms,
-                "total_ms": total_ms,
-                "timings": stage_timings,
-            },
-        )
+        if trace:
+            trace.decision(decision, run_id)
+            trace.event(
+                "decision",
+                {
+                    "invoice_id": invoice_id,
+                    "file_id": decision.file_id,
+                    "result": decision.result.value,
+                    "run_id": run_id,
+                    "extraction_ms": extraction_ms,
+                    "parser_ms": parser_ms,
+                    "evaluation_ms": evaluation_ms,
+                    "total_ms": total_ms,
+                    "timings": stage_timings,
+                },
+            )
         return decision
 
     def reprocess(self, invoice_id: str, pdf_path: Path) -> Decision:
@@ -203,10 +221,15 @@ def emit_outcomes(decisions: list[Decision], path: Path) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def outcomes_from_store(store: Store, run_id: str) -> list[dict[str, Any]]:
-    rows = store.conn.execute(
-        """SELECT i.file_id, d.result FROM decisions d JOIN invoices i ON i.id = d.invoice_id
-           WHERE d.run_id = ? ORDER BY i.file_id""",
-        (run_id,),
-    ).fetchall()
-    return [{"file_id": r["file_id"], "result": r["result"]} for r in rows]
+def outcomes_from_store(store: PouchStore, run_id: str) -> list[dict[str, Any]]:
+    matching_decisions = []
+    for raw in store.list("decision:"):
+        d = store.hydrate(raw)
+        if d.get("run_id") == run_id:
+            matching_decisions.append(d)
+    matching_decisions.sort(key=lambda d: (d.get("file_id", ""), d.get("timestamp", 0)))
+    latest_by_file: dict[str, dict] = {}
+    for d in matching_decisions:
+        latest_by_file[d.get("file_id", "")] = d
+    sorted_items = sorted(latest_by_file.values(), key=lambda d: d.get("file_id", ""))
+    return [{"file_id": d.get("file_id", ""), "result": d.get("decision", {}).get("result", "")} for d in sorted_items]

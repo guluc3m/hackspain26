@@ -8,7 +8,7 @@ import pytest
 from filemaid.config import AppConfig
 from filemaid.rules.config import RuleConfig
 from filemaid.rules.master import MasterData, Pedido, Proveedor
-from filemaid.store.db import Store
+from filemaid.store.pouch import PouchStore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,8 +25,8 @@ def cfg(tmp_path: Path) -> AppConfig:
 
 
 @pytest.fixture
-def store(cfg: AppConfig) -> Store:
-    return Store(cfg.store_path)
+def store(cfg: AppConfig) -> PouchStore:
+    return PouchStore(cfg.root)
 
 
 @pytest.fixture
