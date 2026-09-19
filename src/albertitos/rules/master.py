@@ -15,7 +15,11 @@ from pathlib import Path
 
 import openpyxl
 
-from albertitos.parse.normalizers import normalize_iban, normalize_nif
+from albertitos.parse.normalizers import (
+    normalize_iban,
+    normalize_nif,
+    parse_amount,
+)
 
 # Hojas que SÍ se leen (título → lector). Cualquier otra = ignorada.
 HOJAS_MAESTRO = ("Proveedores", "Pedidos_2026")
@@ -52,6 +56,25 @@ class Maestro:
     duplicados_deducidos: tuple[str, ...]
     sha256: str
     avisos: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _parse_importe(value: object, pid: str) -> tuple[float, str | None]:
+    """Importe de un pedido a float, tolerante al lote 2 (T38-F7).
+
+    El ERP actualizado puede traer el importe como TEXTO ("1.234,56"):
+    float() directo lanzaría ValueError y derribaría el runner completo.
+    Fallback `parse_amount` (normalizers); si ni así, 0.0 + aviso — el
+    pedido queda cargado pero la señal llega (nunca silencio).
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value), None
+    texto = str(value or "").strip()
+    if not texto:
+        return 0.0, f"pedido_importe_vacio:{pid}"
+    d = parse_amount(texto)
+    if d is not None:
+        return float(d), None
+    return 0.0, f"pedido_importe_ilegible:{pid}"
 
 
 def load_master(
@@ -100,23 +123,35 @@ def load_master(
             "proveedores_deduplicados:" + ",".join(sorted(set(duplicados)))
         )
 
-    # --- Pedidos
+    # --- Pedidos: primera ocurrencia gana (igual que Proveedores) —
+    # un pedido duplicado del lote 2 NUNCA sobreescribe en silencio (T38-F7)
     pedidos: dict[str, Pedido] = {}
+    pedidos_duplicados: list[str] = []
     if "Pedidos_2026" in hojas_presentes:
         ws = wb["Pedidos_2026"]
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or not row[0]:
                 continue
             pid = str(row[0]).strip()
-            importe = row[3] if row[3] is not None else 0.0
+            if pid in pedidos:
+                pedidos_duplicados.append(pid)
+                continue
+            importe, aviso_importe = _parse_importe(row[3], pid)
+            if aviso_importe:
+                avisos.append(aviso_importe)
             pedidos[pid] = Pedido(
                 id=pid,
                 proveedor_id=str(row[1] or "").strip(),
                 nif=normalize_nif(str(row[2] or "")),
-                importe=float(importe),
+                importe=importe,
                 estado=str(row[4] or "").strip().upper(),
                 fecha=str(row[5] or "").strip(),
             )
+    if pedidos_duplicados:
+        avisos.append(
+            "pedidos_deduplicados:"
+            + ",".join(sorted(set(pedidos_duplicados)))
+        )
 
     # --- pendiente_revisar: pedidos marcados para ojo humano ⇒ ESCALAR
     revision: set[str] = set()

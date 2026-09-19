@@ -1,0 +1,1 @@
+{"seq": 1, "ts": "2026-09-19T08:04:03", "evento": "override-revision", "detalle": {"invoice_id": "inv-c", "file_id": "C.pdf", "campo": "total"}, "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000", "hash": "9c79c23a80e673be8bff8628e131b5bd898c928fc25e3854cc50ec00b160532e"}
