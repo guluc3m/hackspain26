@@ -76,3 +76,17 @@ Decisiones documentadas:
   maestro se lee, jamás se escribe).
 - Smoke real verificado: 1 factura fantasma (FA-2508) end-to-end con el
   maestro real ⇒ ESCALAR, rung 4 UP detectado, resumen con files/s medido.
+
+---
+
+## Adenda (T24, 2026-09-19): presupuesto de timeout = ARRANQUE REAL
+
+Medido en el drill en vivo (T24, `.sdd/metrics/drill-rung4-live.json`): con
+presupuesto desde ENTRADA EN COLA y rung 4 secuencial (1 en vuelo), la cola de
+recuperación tras reiniciar llama-server genera FALSOS RUNNER_TIMEOUT en
+cascada — los archivos esperan en cola > timeout sin haber empezado (rung 4
+~8 s/archivo ⇒ el archivo n pierde el presupuesto sin ejecutarse). Se corrige:
+el presupuesto arranca con el primer instante de ejecución real (lo fija el
+worker como primera acción) y la espera de arranque está acotada (un archivo
+que nunca arranca también ⇒ ESCALAR timeout y el lote sigue). El timeout
+sigue sin cachearse como definitivo. Test de colgado de T8 sigue verde.

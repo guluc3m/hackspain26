@@ -69,6 +69,9 @@ class RunnerConfig:
     run_id: str = "base"  # T13: run del histórico en decision_runs
     emit_scope: str = "todo"  # "todo" (lote 1) | "lote" (lote 2: solo sus file_id)
     maestro_patch: Path | None = None  # T13: parche de maestro EN MEMORIA
+    # T24 (drill): config de extracción inyectable (vlm_base_url del stub,
+    # umbrales que fuerzan tráfico al rung 4). None ⇒ la default.
+    extract_config: ExtractionConfig | None = None
 
 
 @dataclass
@@ -113,7 +116,7 @@ class Runner:
         )
         self.store = Store(cfg.store_root)
         self.state_path = cfg.store_root / "state" / "runner.json"
-        xcfg = ExtractionConfig()
+        xcfg = cfg.extract_config if cfg.extract_config is not None else ExtractionConfig()
         if not cfg.use_rung4:
             # Puerto que rechaza al instante: el health-check del rung 4
             # falla sin esperar (degradación determinista en tests).
@@ -188,11 +191,14 @@ class Runner:
         pool = ThreadPoolExecutor(max_workers=workers)
         futures: dict[str, Future] = {}
         try:
-            # Presupuesto de timeout desde la ENTRADA EN COLA (documentado en
-            # el ticket): un colgado no retrasa infinitamente a la cola.
-            t_submit = time.monotonic()
+            # Presupuesto de timeout desde el ARRANQUE REAL de cada archivo
+            # (lo fija _task al empezar a ejecutarse). Medido en el drill T24:
+            # con presupuesto desde ENTRADA EN COLA y rung 4 secuencial, la
+            # cola de recuperación genera falsos RUNNER_TIMEOUT en cascada
+            # (los archivos esperan en cola > timeout sin haber empezado). Si
+            # un archivo nunca arranca, el presupuesto de espera también ⇒
+            # ESCALAR timeout y el lote sigue.
             for path in files:
-                self._deadline[path.name] = t_submit + self.cfg.timeout_por_archivo_s
                 futures[path.name] = pool.submit(self._task, path)
             for path in files:
                 sha256 = _sha256_file(path)
@@ -205,8 +211,10 @@ class Runner:
                     self._tick_state(files, report, started)
                     continue
                 fut = futures[path.name]
-                remaining = self._deadline.get(path.name, 0.0) - time.monotonic()
                 try:
+                    remaining = _esperar_arranque(fut, self._deadline.get,
+                                                  path.name,
+                                                  self.cfg.timeout_por_archivo_s)
                     if remaining <= 0:
                         raise FuturesTimeout()
                     extracted = fut.result(timeout=remaining)
@@ -233,7 +241,10 @@ class Runner:
     # ------------------------------------------------------------ etapas
 
     def _task(self, path: Path):
-        """Trabajo pesado (extracción): puede colgar ⇒ timeout lo captura."""
+        """Trabajo pesado (extracción): puede colgar ⇒ timeout lo captura.
+
+        El presupuesto arranca con el primer instante de ejecución real."""
+        self._deadline[path.name] = time.monotonic() + self.cfg.timeout_por_archivo_s
         if self.sleep_hook is not None:
             self.sleep_hook(path.name)
         if self.fail_hook is not None:
@@ -388,6 +399,22 @@ class Runner:
 
 
 # ------------------------------------------------------------ helpers
+
+
+def _esperar_arranque(fut: Future, deadline_get, file_id: str,
+                      timeout_s: float) -> float:
+    """Espera (acotada) a que el archivo EMPIECE de verdad y devuelve el
+    presupuesto restante. Sin carreras: el worker fija el deadline como
+    primera acción; si nunca arranca (cola bloqueada por un colgado) ⇒
+    timeout ⇒ ESCALAR y el lote sigue (T24)."""
+    t0 = time.monotonic()
+    while True:
+        deadline = deadline_get(file_id)
+        if deadline is not None:
+            return deadline - time.monotonic()
+        if time.monotonic() - t0 >= timeout_s:
+            return 0.0
+        time.sleep(0.02)
 
 
 def _hoy_iso() -> str:
