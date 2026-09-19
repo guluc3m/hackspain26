@@ -57,6 +57,9 @@ models/
 /frontend/node_modules/
 /frontend/dist/
 
+# capturas de revisión visual de la UI (scripts/ui_shots.py)
+/scripts/_ui_shots/
+
 # sandbox del drill T24 (estado en disco; la evidencia consolidada va en metrics/drill-rung4-live.json)
 .sdd/drill-live/
 

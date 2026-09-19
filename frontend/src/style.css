@@ -1,0 +1,115 @@
+/* albertitos — plano, sin gradientes ni adornos. KISS. */
+:root {
+  --bg: #f5f5f4;
+  --panel: #ffffff;
+  --border: #d6d3d1;
+  --border-soft: #e7e5e4;
+  --text: #1c1917;
+  --muted: #78716c;
+  --accent: #1c1917;
+
+  --ok-fg: #15803d;   --ok-bg: #dcfce7;
+  --bad-fg: #b91c1c;  --bad-bg: #fee2e2;
+  --warn-fg: #a16207; --warn-bg: #fef3c7;
+  --idle-fg: #57534e; --idle-bg: #e7e5e4;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; }
+a { color: inherit; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+button:hover { background: #fafaf9; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #3f3c3a; }
+button.danger { border-color: var(--bad-fg); color: var(--bad-fg); }
+button.danger:hover { background: var(--bad-bg); }
+button.link {
+  border: none; background: none; padding: 0;
+  color: var(--text); text-decoration: underline; cursor: pointer;
+}
+
+input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge.PAGAR    { background: var(--ok-bg);   color: var(--ok-fg); }
+.badge.NO_PAGAR { background: var(--bad-bg);  color: var(--bad-fg); }
+.badge.ESCALAR  { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.pendiente{ background: var(--idle-bg); color: var(--idle-fg); }
+.badge.PASS     { background: var(--ok-bg);   color: var(--ok-fg); }
+.badge.FAIL     { background: var(--bad-bg);  color: var(--bad-fg); }
+.badge.UNKNOWN  { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.tipo     { background: var(--idle-bg); color: var(--idle-fg); }
+
+table { border-collapse: collapse; width: 100%; }
+th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+tbody tr:hover { background: #fafaf9; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 3px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.error { color: var(--bad-fg); }

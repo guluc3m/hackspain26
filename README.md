@@ -27,7 +27,8 @@ src/filemaid/
   store/            SQLite (WAL) + ledger JSONL append-only
   api/              FastAPI: comparte types, store y motor con el pipeline
 master/             datos maestros y thresholds de reglas (versionados)
-frontend/           Svelte + Vite (TS): Operaciones, Facturas, Revisión, Reglas, Impacto, Salud
+frontend/           Vue 3 + Vite (TS, pnpm): Dashboard (cola de revisión),
+                    Invoices (facturas + carpeta) y Logs (buscador del ledger)
 ```
 
 TypeSafe (`jev-latest`, escalón 5) evalúa el texto disponible de la página con
@@ -52,7 +53,17 @@ uv run filemaid serve              # API + UI de revisión
 uv run filemaid clean              # borra store.db (pide confirmación)
 uv run pytest                        # tests
 uv run ruff check src tests          # lint
+pnpm --dir frontend install          # dependencias de la UI
+pnpm --dir frontend dev              # UI en modo sintético (sin motores)
+VITE_API_MODE=real pnpm --dir frontend dev   # UI contra la API real
 ```
+
+### Modo sintético y UI
+
+La UI arranca por defecto en modo **sintético** (`src/mock/data.ts`): respuestas
+con la misma forma que el contrato de la API, sin invocar el motor de decisión
+ni la escalera de extracción. Con `VITE_API_MODE=real` habla con la API
+(`uv run filemaid serve` también sirve la UI construida desde `frontend/dist`).
 
 ### Limpiar el estado (`clean`)
 

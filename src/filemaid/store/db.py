@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   sha256 TEXT NOT NULL,
   first_seen REAL NOT NULL,
   last_seen REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pendiente'
+  status TEXT NOT NULL DEFAULT 'pendiente',
+  source_path TEXT NOT NULL DEFAULT ''  -- ruta donde vive el PDF (trazabilidad)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_sha ON invoices(sha256);
 
@@ -118,6 +119,10 @@ class Store:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
         self._migrate()
+        # migración para stores previos: source_path no existía
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(invoices)").fetchall()}
+        if "source_path" not in cols:
+            self.conn.execute("ALTER TABLE invoices ADD COLUMN source_path TEXT NOT NULL DEFAULT ''")
         self.conn.commit()
 
     def _migrate(self) -> None:
@@ -154,12 +159,15 @@ class Store:
         self.conn.close()
 
     # -- invoices ----------------------------------------------------------
-    def upsert_invoice(self, invoice_id: str, file_id: str, sha256: str) -> None:
+    def upsert_invoice(self, invoice_id: str, file_id: str, sha256: str, source_path: str = "") -> None:
         self.conn.execute(
-            """INSERT INTO invoices (id, file_id, sha256, first_seen, last_seen, status)
-               VALUES (?, ?, ?, unixepoch('now'), unixepoch('now'), 'pendiente')
-               ON CONFLICT(sha256) DO UPDATE SET last_seen = unixepoch('now')""",
-            (invoice_id, file_id, sha256),
+            """INSERT INTO invoices (id, file_id, sha256, first_seen, last_seen, status, source_path)
+               VALUES (?, ?, ?, unixepoch('now'), unixepoch('now'), 'pendiente', ?)
+               ON CONFLICT(sha256) DO UPDATE SET
+                 last_seen = unixepoch('now'),
+                 source_path = CASE WHEN excluded.source_path = ''
+                                    THEN source_path ELSE excluded.source_path END""",
+            (invoice_id, file_id, sha256, source_path),
         )
         self.conn.commit()
 

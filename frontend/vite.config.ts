@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
-import { svelte } from '@sveltejs/vite-plugin-svelte'
+import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [vue()],
   server: {
     proxy: {
       '/api': 'http://127.0.0.1:8000',
