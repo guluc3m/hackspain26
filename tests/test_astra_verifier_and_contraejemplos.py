@@ -43,14 +43,14 @@ from filemaid.types import ExtractionField, Candidate, Result, RuleVerdict
 REQUIRED_FIELDS = {"nif", "iban", "total", "base", "iva_rate", "iva_amount", "fecha", "pedido"}
 
 EXPECTED_DECISIONS = {
-    # 25 PAGAR
+    # 26 PAGAR
     "2026-08-05_P005.pdf": Result.PAGAR,
     "2026-08-09_P001.pdf": Result.PAGAR,
     "2026-08-26_P010.pdf": Result.PAGAR,
     "2026-08-27_P007.pdf": Result.PAGAR,
     "2026-27450_suministros.pdf": Result.PAGAR,
+    "2026-42111_construcciones.pdf": Result.PAGAR,
     "2026-72452_suministros.pdf": Result.PAGAR,
-    "FA-5103_electricidad.pdf": Result.PAGAR,
     "FA-6217_transportes.pdf": Result.PAGAR,
     "FA-7357_papelería.pdf": Result.PAGAR,
     "e01_P001.pdf": Result.PAGAR,
@@ -81,8 +81,7 @@ EXPECTED_DECISIONS = {
     "e14_P004.pdf": Result.NO_PAGAR,
     "e15_P012.pdf": Result.NO_PAGAR,
     "factura_6932.pdf": Result.NO_PAGAR,
-    # 4 ESCALAR
-    "2026-42111_construcciones.pdf": Result.ESCALAR,
+    # 3 ESCALAR
     "FA-3955_electricidad.pdf": Result.ESCALAR,
     "FA-7532_informática.pdf": Result.ESCALAR,
     "e06_P013.pdf": Result.ESCALAR,
@@ -169,9 +168,9 @@ class TestAstraVerificationAll40Invoices:
             r = data["decision"].result
             counts[r] = counts.get(r, 0) + 1
 
-        assert counts.get(Result.PAGAR) == 25
+        assert counts.get(Result.PAGAR) == 26
         assert counts.get(Result.NO_PAGAR) == 11
-        assert counts.get(Result.ESCALAR) == 4
+        assert counts.get(Result.ESCALAR) == 3
 
     def test_double_payment_invoice_specifically_blocked(self, evaluated_facturas):
         # 2026-08-22_P010.pdf contains PO-2026-0071 which is marked PAGADA in ERP lote 2
@@ -187,7 +186,6 @@ class TestAstraVerificationAll40Invoices:
 
     def test_escalated_invoices_are_iban_mismatches(self, evaluated_facturas):
         escalated_files = [
-            "2026-42111_construcciones.pdf",
             "FA-3955_electricidad.pdf",
             "FA-7532_informática.pdf",
             "e06_P013.pdf",
