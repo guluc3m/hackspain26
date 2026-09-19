@@ -253,7 +253,20 @@ def test_store_real_truncado_50_filas():
             for x in rev.read_text(encoding="utf-8").splitlines()
         }
     de_cola = [x for x in todas if json.loads(x).get("invoice_id") in iids_rev]
-    lineas = list(dict.fromkeys(todas[:20] + escaladas + de_cola))[:50]
+    lineas = list(dict.fromkeys(todas[:20] + escaladas + de_cola))
+    # garantiza que los 3 primeros ítems de revisión (con imagen) tienen su
+    # decisión en el ledger truncado — si el corte anterior los dejó fuera,
+    # añade sus filas explícitamente
+    rev_items = [
+        json.loads(x) for x in (rev.read_text().splitlines() if rev.is_file() else [])
+    ]
+    iids_necesarios = {str(i.get("invoice_id", "")) for i in rev_items[:3]}
+    presentes = {json.loads(x).get("invoice_id") for x in lineas}
+    for iid in sorted(iids_necesarios - presentes):
+        fila = next((x for x in todas if json.loads(x).get("invoice_id") == iid), None)
+        if fila:
+            lineas.append(fila)
+    lineas = lineas[:50]
     (base / "ledger" / "ledger.jsonl").write_text(
         "\n".join(lineas) + "\n", encoding="utf-8"
     )
