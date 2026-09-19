@@ -404,3 +404,38 @@ def _verify_build_view_compatible(rec: dict) -> None:
         for c in cands:
             assert {"extractor", "value", "confidence"} <= set(c)
             float(c["confidence"])  # build_view hace float() — debe ser numérico
+
+
+class TestReviewQueueDedupeCache:
+    def test_enqueue_lee_la_cola_una_vez_por_instancia(self, tmp_path):
+        """T33-M3: enqueue es O(1) amortizado — la cola se lee una sola vez."""
+        import time as _time
+
+        from albertitos.extract.review import ReviewQueue
+        from albertitos.types import ExtractionFeature
+
+        rq = ReviewQueue(tmp_path / "rq")
+        llamadas = {"n": 0}
+        original = ReviewQueue._read
+
+        def _contada(path):
+            llamadas["n"] += 1
+            return original(path)
+
+        ReviewQueue._read = staticmethod(_contada)
+        try:
+            for i in range(3):
+                feats = [ExtractionFeature(
+                    type="ocr_text", extraction_method="tesseract",
+                    timestamp=_time.time(), data={"text": f"FA-{i}"}, page=1,
+                )]
+                rq.enqueue(
+                    invoice_id=f"inv-{i}", file_id=f"f{i}.pdf", page=1,
+                    page_sha256=f"sha-{i}", motivo="m", features=feats,
+                    cloud_ok=True, cloud_model="deepseek-v4.1-flash",
+                    config_version="extract-v2", png_bytes=None,
+                )
+            assert llamadas["n"] == 1, "la cola debe leerse UNA vez, no por enqueue"
+            assert len(rq.read_pending()) == 3
+        finally:
+            del ReviewQueue._read  # restaura el staticmethod original

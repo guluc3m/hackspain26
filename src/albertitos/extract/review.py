@@ -85,6 +85,7 @@ class ReviewQueue:
 
     def __init__(self, root: Path | str):
         self.root = Path(root)
+        self._seen: set[str] | None = None  # lazy: shas ya encolados (T33-M3)
 
     @property
     def review_path(self) -> Path:
@@ -93,6 +94,19 @@ class ReviewQueue:
     @property
     def overrides_path(self) -> Path:
         return self.root / OVERRIDES_FILE
+
+    def _seen_page_shas(self) -> set[str]:
+        """Page shas ya encolados, leídos UNA VEZ por instancia (T33-M3).
+
+        `enqueue` es O(1) amortizado en vez de releer el fichero completo en
+        cada llamada (la cola crece con el lote); el estado en disco sigue
+        siendo la fuente de verdad al (re)construir la instancia.
+        """
+        if self._seen is None:
+            self._seen = {
+                rec.get("page_sha256") for rec in self._read(self.review_path)
+            }
+        return self._seen
 
     def enqueue(
         self,
@@ -116,10 +130,9 @@ class ReviewQueue:
         """
         now = time.time()
         # idempotencia: re-procesar una página cacheada NO re-encola ni duplica
-        if any(
-            rec.get("page_sha256") == page_sha256 for rec in self._read(self.review_path)
-        ):
+        if page_sha256 in self._seen_page_shas():
             return {}
+        self._seen.add(page_sha256)
         fields = _readings_from_features(features)
         record = {
             "kind": "fields",
