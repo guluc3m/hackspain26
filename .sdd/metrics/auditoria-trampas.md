@@ -1,6 +1,6 @@
 # Auditoría de trampas contra el outcomes real del lote 1 (T17)
 
-Outcomes: `.sdd/metrics/outcomes-lote1.jsonl` (500 facturas) — 347 PAGAR / 108 NO_PAGAR / 45 ESCALAR.
+Outcomes: `.sdd/metrics/outcomes-lote1-post-fix.jsonl` (500 facturas) — 433 PAGAR / 22 NO_PAGAR / 45 ESCALAR.
 Regla del ticket: NO se cambian resultados a mano; los ROJOS quedan
 identificados con causa para que el supervisor decida reprocesar.
 
@@ -14,7 +14,7 @@ identificados con causa para que el supervisor decida reprocesar.
 | Pedidos con NIF vacío (0538–0557) | SIN MUESTRAS (0 facturas los citan en lote 1) | ESCALAR si aparecen | — |
 | Outlier 84700 + pendiente_revisar | outlier 84700 (2026-07-01_P009.pdf, pedido PO-2026-0497): ESCALAR — VERDE; PO-2026-0007 (FA-8488_transportes.pdf): ESCALAR con PEDIDO_EN_REVISION — VERDE; PO-2026-0141 (2026-79712_limpiezas.pdf): ESCALAR con PEDIDO_EN_REVISION — VERDE | ESCALAR | — |
 | 26 scan_*.pdf | VERDE (26 scans: {'ESCALAR': 26}; confianzas sospechosas (>0.8): 0; 5 peores: scan_001.pdf (0.0), scan_002.pdf (0.0), scan_003.pdf (0.0), scan_004.pdf (0.0), scan_005.pdf (0.0)) | ESCALAR con lectura dudosa | — |
-| 108 NO_PAGAR por código | ROJO: el código dominante es ORDER_AMOUNT_MATCHES (101 de 108 NO_PAGAR citan FAIL). Análisis: de los 101 NO_PAGAR con ORDER_AMOUNT_MATCHES no-PASS, 87 tienen UN CANDIDATO de total que SÍ matchea el maestro — el motor colapsa values[] con el primer candidato (la línea «Subtotal») y compara contra el importe con IVA del maestro ⇒ falso FAIL. 14 son genuinos (ningún candidato matchea). Los otros 7 NO_PAGAR se deciden por otros códigos (TOTALS_MUST_MATCH/IVA — misma causa raíz probable). Causa: selección de candidato en el colapso (bug de matching, no de extracción ni de política). | matching con datos correctos | — |
+| 108 NO_PAGAR por código | VERDE: sin código dominante (>60) — ORDER_AMOUNT_MATCHES=14, IBAN_MATCHES_MASTER=7, IVA_CONSISTENT=6, TOTALS_MUST_MATCH=3, NO_DOUBLE_PAYMENT=2, ORDER_BELONGS_TO_SUPPLIER=1 | matching con datos correctos | — |
 
 ## Hallazgo principal — colapso de candidatos en el motor (ROJO)
 
@@ -23,10 +23,10 @@ facturas con línea «Subtotal» + «TOTAL A PAGAR», ambos aparecen como
 candidatos (p.ej. 2026-01-26_P007.pdf: [1409.4, 1705.37]). El motor colapsa
 values[] con el PRIMER candidato (el Subtotal) y lo compara contra el
 importe CON IVA del maestro ⇒ ORDER_AMOUNT_MATCHES:FAIL +
-TOTALS_MUST_MATCH:FAIL espurios. Medido: **87 de los 108
+TOTALS_MUST_MATCH:FAIL espurios. Medido: **0 de los 22
 NO_PAGAR son falsos** (un candidato de total sí matchea el maestro con
-tolerancia 0,01 entre los 101 con ORDER_AMOUNT_MATCHES
-no-PASS); **14 son genuinos** (ningún candidato matchea —
+tolerancia 0,01 entre los 0 con ORDER_AMOUNT_MATCHES
+no-PASS); **0 son genuinos** (ningún candidato matchea —
 importe realmente distinto del pedido).
 
 Causa raíz: selección del escalar en el colapso de `ExtractionField.values[]`
@@ -47,4 +47,4 @@ primero sin registrar el porqué.
 ## Notas
 
 - Pedidos PO-2026-0538…0557 (NIF vacío en maestro): NINGUNA factura del lote 1 los cita — sin muestras; riesgo para el lote 2 (NIF faltante ⇒ NIF_IN_MASTER debe UNKNOWN ⇒ ESCALAR).
-- Rung 4 sobre scans: 6 invocaciones, todas below-threshold; ninguna lectura VLM local alcanzó confianza alta — coherente con la política (las 26 scans ⇒ ESCALAR).
+- Rung 4 sobre scans: 20 invocaciones, todas below-threshold; ninguna lectura VLM local alcanzó confianza alta — coherente con la política (las 26 scans ⇒ ESCALAR).

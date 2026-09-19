@@ -1,0 +1,541 @@
+{
+  "cambios": [
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-01-26_P007.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-01-30_P010.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-02-05_P011.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-02-07_P002.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-02-07_P007.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-02-19_P005.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-02-23_P010.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-03-05_P004.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-03-08_P004.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-03-16_P011.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-03-17_P006.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-06_P002.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-12_P005.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-15_P005.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-27_P010.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-30_P004.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-04-30_P011.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-05-04_P001.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-05-18_P011.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-05-21_P006.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-05-24_P009.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-05-30_P002.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-06_P007.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-08_P002.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-10_P005.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-12_P003.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-13_P007.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-06-22_P011.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-07-17_P010.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-07-23_P001.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "2026-17547_suministros.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "F26-2163_ofimática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "F26-9252_ofimática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "F26-9300_ofimática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "F26-9887_ofimática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-1926_transportes.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-3788_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-3939_transportes.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-4294_papelería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-4349_electricidad.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-4385_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-5712_transportes.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-6187_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-6350_electricidad.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-6734_mensajería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-6886_papelería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-7263_papelería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-7712_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-7792_electricidad.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-7983_papelería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-8627_papelería.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-8987_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-9322_informática.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "FA-9455_seguridad.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_0088.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_0102.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_0722.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_1298.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_1796.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_2166.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_2450.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_2647.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_2886.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_2952.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_3888.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_4427.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_4619.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_5269.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_5391.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_6197.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_6209.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_6313.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_65982.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_6612.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_6734.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7023.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7034.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7120.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7341.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7394.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_7835.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_8130.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_8515.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_8764.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_8848.pdf",
+      "regresion": false
+    },
+    {
+      "antes": "NO_PAGAR",
+      "despues": "PAGAR",
+      "file_id": "factura_9031.pdf",
+      "regresion": false
+    }
+  ],
+  "fecha_ref": "2026-09-19",
+  "kind": "impacto-fix-colapso",
+  "motor_antes": "runner-1.0.0",
+  "motor_despues": "runner-1.1.0",
+  "n_archivos": 500,
+  "reprocesados": 108,
+  "resumen": {
+    "desviacion_esperada": {
+      "causa": "factura_8801.pdf: el 87º falso POR IMPORTE es el duplicado FA-8801 — su ORDER_AMOUNT pasa a PASS con ADR-06, pero se mantiene NO_PAGAR por NO_DOUBLE_PAYMENT (correcto, §6)",
+      "delta": 1,
+      "files": [
+        "factura_8801.pdf"
+      ]
+    },
+    "esperados_no_pagar_a_pagar": 87,
+    "genuinos_y_otros_se_mantienen": 22,
+    "no_pagar_a_pagar": 86,
+    "otros_cambios": 0,
+    "regresiones": 0
+  },
+  "validacion": "OK"
+}

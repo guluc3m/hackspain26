@@ -42,7 +42,7 @@ from albertitos.rules.master import Maestro
 from albertitos.store import Store, invoice_uuid
 from albertitos.types import Decision, EvidenceRow, ExtractionFeature, RuleVerdict
 
-ENGINE_VERSION = "runner-1.0.0"
+ENGINE_VERSION = "runner-1.1.0"  # 1.1.0: ADR-06, selección de candidato con provenance (T18)
 STAGE_RUN = "run"
 CODE_TIMEOUT = "RUNNER_TIMEOUT"
 

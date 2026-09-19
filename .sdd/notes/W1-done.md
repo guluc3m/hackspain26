@@ -158,3 +158,28 @@
 - outcomes.jsonl se commitea en la solución (regla dura del ticket); el repo
   de entrega lo prepara el supervisor. Cola de revisión (37 MB con imágenes)
   queda como estado .sdd NO commiteado — regenerable desde cache/store.
+
+## Actualización 6: T18 · Fix del colapso de candidatos (ADR-06) + reprocesado
+- Motor (src/albertitos/rules/engine.py): las 4 reglas que comparan contra el
+  maestro (ORDER_AMOUNT_MATCHES, TOTALS_MUST_MATCH, IVA_CONSISTENT,
+  IBAN_MATCHES_MASTER) ahora evalúan TODOS los candidatos del campo:
+  1 match ⇒ PASS citando ese candidato (provenance extractor+value+
+  feature_ref en consumed); varios ⇒ PASS con nota de ambigüedad benigna;
+  ninguno ⇒ FAIL. Ningún PASS previo puede pasar a FAIL. Motor runner-1.1.0.
+- ADR-06 "Selección de candidato con provenance" añadido a
+  docs/report/albertitos_plan.typ (contexto 87/108 falsos, alternativas,
+  decisión, consecuencias, evidencia T17+reprocesado).
+- Reprocesado (mecanismo T13: only_list + force sobre los 108 NO_PAGAR,
+  fecha_referencia idéntica 2026-09-19): 0 timeouts, 0 fallos, validador OK.
+- Diff MEDIDO (.sdd/metrics/impacto-fix-colapso.json): 86 NO_PAGAR→PAGAR
+  (esperados 87; delta = factura_8801.pdf, el duplicado FA-8801: su importe
+  pasa a PASS con ADR-06 pero DEBE seguir NO_PAGAR por NO_DOUBLE_PAYMENT —
+  correcto §6); 22 se mantienen NO_PAGAR (14 genuinos + 7 con IBAN/otros
+  FAILs reales + el duplicado); 0 regresiones en el resto de los 500;
+  distribución final 433 PAGAR / 22 NO_PAGAR / 45 ESCALAR. lote1.json
+  regenerado (bloques corrida_original + reproceso_t18).
+- Auditoría post-fix regenerada (.sdd/metrics/auditoria-trampas.md, snapshot
+  outcomes-lote1-post-fix.jsonl): sin código dominante >60 — el ROJO del T17
+  queda resuelto; los pins de test congelan el estado corregido (tripwire).
+- 191 tests verde, ruff limpio. outcomes.jsonl en /home/deploy/hackspain26
+  regenerado y validado 500/500.

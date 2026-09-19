@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-SNAPSHOT = Path(".sdd/metrics/outcomes-lote1.jsonl")
+# snapshot del outcomes POST-fix (motor runner-1.1.0, ADR-06, T18).
+# El estado PRE-fix queda en outcomes-lote1.jsonl como evidencia histórica.
+SNAPSHOT = Path(".sdd/metrics/outcomes-lote1-post-fix.jsonl")
 
 
 def load_outcomes() -> dict[str, dict]:
@@ -108,7 +110,8 @@ class TestTrampasVerde:
 
 class TestDistribucionNoPagar:
     def test_codigos_que_deciden_no_pagar(self):
-        """Distribución por código FAIL — el dominante es ORDER_AMOUNT_MATCHES."""
+        """Post-fix (T18): 22 NO_PAGAR genuinos y con FAILs reales — ningún
+        código domina (>60) porque los 87 falsos por colapso desaparecieron."""
         import collections
 
         res = load_outcomes()
@@ -119,32 +122,51 @@ class TestDistribucionNoPagar:
             for c in r["rule_ids"]:
                 if c.endswith("FAIL"):
                     decisores[c.split(":")[0]] += 1
-        assert decisores, "108 NO_PAGAR deben citar al menos un FAIL"
-        assert decisores.most_common(1)[0][0] == "ORDER_AMOUNT_MATCHES"
-        assert decisores.most_common(1)[0][1] > 60  # el dominante dispara el análisis de causa
+        assert decisores, "los NO_PAGAR deben citar al menos un FAIL"
+        assert sum(1 for r in res.values() if r["result"] == "NO_PAGAR") == 22
+        # firma del fix: ningún código dominante >60 (el colapso ya no genera falsos)
+        assert decisores.most_common(1)[0][1] <= 60
 
 
-class TestRojoPinned:
-    """El hallazgo ROJO queda PINNADO: cambiar el outcomes obliga a re-auditar.
-
-    ESTE TEST NO aprueba el estado: lo congela como detector. Al corregir el
-    colapso de candidatos y reprocesar, el outcomes cambiará y ESTE test debe
-    fallar ⇒ re-auditar con tools/audit_trampas.py antes de cerrar.
+class TestRojoCorregido:
+    """T18: el ROJO del T17 (colapso de candidatos) quedó CORREGIDO y el
+    lote reprocesado (motor runner-1.1.0, ADR-06). Los pins congelan ahora el
+    estado CORREGIDO: si el outcomes vuelve a cambiar, hay que re-auditar
+    (tripwire, no aprobación).
     """
 
-    def test_colapso_candidatos_87_falsos_no_pagar(self):
+    def test_falso_no_pagar_ahora_paga(self):
         res = load_outcomes()
-        # ejemplo verificado: el texto de la factura tiene «TOTAL A PAGAR: 1705.37»
-        # (= maestro) pero el NO_PAGAR cita ORDER_AMOUNT_MATCHES:FAIL con el
-        # candidato Subtotal (1409.4).
         r = res["2026-01-26_P007.pdf"]
-        assert r["result"] == "NO_PAGAR", (
-            "si este archivo ya no es NO_PAGAR, el outcomes cambió: re-auditar T17"
+        assert r["result"] == "PAGAR", (
+            "2026-01-26_P007.pdf era falso NO_PAGAR por colapso de candidatos; "
+            "si ya no es PAGAR, el outcomes cambió: re-auditar T17/T18"
         )
-        assert any(c == "ORDER_AMOUNT_MATCHES:FAIL" for c in r["rule_ids"])
-        # el hallazgo queda documentado en el entregable de auditoría
+        assert not any(
+            c.startswith("ORDER_AMOUNT_MATCHES") and c.endswith("FAIL")
+            for c in r["rule_ids"]
+        )
+        # el hallazgo y su corrección quedan documentados
         audit = Path(".sdd/metrics/auditoria-trampas.md")
-        assert audit.is_file(), "falta .sdd/metrics/auditoria-trampas.md (entregable T17)"
-        texto = audit.read_text(encoding="utf-8")
-        assert "colapso" in texto and "ROJO" in texto
-        assert "87" in texto and "14" in texto  # 87 falsos / 14 genuinos, medidos
+        assert audit.is_file(), "falta .sdd/metrics/auditoria-trampas.md"
+        diff = Path(".sdd/metrics/impacto-fix-colapso.json")
+        assert diff.is_file(), "falta .sdd/metrics/impacto-fix-colapso.json (T18)"
+
+    def test_genuinos_se_mantienen_no_pagar(self):
+        res = load_outcomes()
+        genuinos = (
+            "2026-0811-B_catering.pdf",
+            "2026-14500-C_informática.pdf",
+            "F26-5240_ofimática.pdf",
+        )
+        for f in genuinos:
+            assert res[f]["result"] == "NO_PAGAR", f"{f} es genuino: no debe pagarse"
+            assert any(c.startswith("ORDER_AMOUNT_MATCHES") and c.endswith("FAIL")
+                       for c in res[f]["rule_ids"])
+
+    def test_duplicado_fa8801_sigue_sin_pagar(self):
+        """El 87º falso POR IMPORTE es el duplicado: su importe pasa a PASS con
+        ADR-06, pero debe seguir NO_PAGAR por NO_DOUBLE_PAYMENT (§6)."""
+        res = load_outcomes()
+        assert res["factura_8801.pdf"]["result"] == "NO_PAGAR"
+        assert any(c == "NO_DOUBLE_PAYMENT:FAIL" for c in res["factura_8801.pdf"]["rule_ids"])
