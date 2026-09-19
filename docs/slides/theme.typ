@@ -43,103 +43,165 @@
     + if year { text(font: display-font, size: size * 0.9, fill: brown, [\u{2009}26]) },
 )
 
-/// Team mark, ink on sand.
-#let team-mark(size: 0.5em) = box(
-  fill: ink,
-  inset: (x: 0.45em, y: 0.12em),
-  text(font: display-font, size: size, fill: paper, tracking: 0.08em, upper(team)),
-)
-
 /// Coloured square used as a bullet / accent.
 #let tick(color: gold) = box(width: 0.42em, height: 0.42em, fill: color, baseline: 8%)
 
 /// Big metric: value in Bungee, label underneath.
-#let kpi(value, label, color: ink, size: 1.55em) = block(breakable: false, {
+#let kpi(value, label, color: ink, size: 1.5em) = block(breakable: false, {
   text(font: display-font, size: size, fill: color, value)
   linebreak()
-  text(size: 0.5em, weight: 700, fill: brown, tracking: 0.04em, upper(label))
+  text(size: 0.48em, weight: 700, fill: brown, tracking: 0.04em, upper(label))
 })
 
-/// Bordered panel with a Bungee title.
+/// Bordered panel with a Bungee title and tight body.
 #let card(title, body, accent: gold, fill: paper) = block(
   width: 100%,
   breakable: false,
+  above: 0pt,
+  below: 0pt,
   stroke: 1.1pt + ink,
   fill: fill,
   {
+    set align(left + top)
     block(
       width: 100%,
       fill: ink,
-      inset: (x: 0.6em, y: 0.34em),
+      inset: (x: 0.55em, y: 0.3em),
+      above: 0pt,
+      below: 0pt,
       grid(
         columns: (1fr, auto),
         align: (left + horizon, right + horizon),
-        text(font: display-font, size: 0.62em, fill: paper, title),
-        box(width: 0.34em, height: 0.34em, fill: accent),
+        text(font: display-font, size: 0.6em, fill: paper, title),
+        box(width: 0.32em, height: 0.32em, fill: accent),
       ),
     )
-    block(inset: (x: 0.7em, y: 0.55em), width: 100%, text(size: 0.78em, body))
+    block(
+      inset: (x: 0.65em, y: 0.42em),
+      width: 100%,
+      above: 0pt,
+      below: 0pt,
+      text(size: 0.76em, body),
+    )
   },
 )
 
-/// Numbered step of a flow, compact.
+/// Monospaced panel used for evidence rows and config.
+#let codepanel(body, size: 0.56em) = block(
+  width: 100%,
+  breakable: false,
+  fill: sand,
+  stroke: 0.8pt + ink,
+  inset: (x: 0.7em, y: 0.5em),
+  {
+    set smartquote(enabled: false)
+    text(font: mono-font, size: size, fill: ink, body)
+  },
+)
+
+/// Numbered step of the extraction ladder.
 #let step(num, title, detail, fill: sand) = box(
   width: 100%,
   fill: fill,
   stroke: 0.9pt + ink,
-  inset: (x: 0.5em, y: 0.32em),
-  grid(
-    columns: (0.95em, 1fr),
-    gutter: 0.4em,
+  inset: (x: 0.5em, y: 0.3em),
+  height: 2.5em,
+  align(left + horizon, grid(
+    columns: (1.1em, 1fr),
+    gutter: 0.45em,
     align: (center + horizon, left + horizon),
-    circle(radius: 0.42em, fill: ink, text(font: display-font, size: 0.5em, fill: paper, str(num))),
-    [ #text(font: display-font, size: 0.58em, fill: ink, title) #h(0.5em) #text(size: 0.62em, fill: brown, detail) ],
-  ),
+    circle(radius: 0.42em, fill: ink, text(font: display-font, size: 0.48em, fill: paper, str(num))),
+    [
+      #text(font: display-font, size: 0.55em, fill: ink, title)
+      #h(0.4em)
+      #text(size: 0.58em, fill: brown, detail)
+    ],
+  )),
 )
 
-#let arrow-down = align(center, text(font: display-font, size: 0.6em, fill: brown)[▾])
-
-#let arrow-right = box(outset: (x: 0.05em), text(font: display-font, size: 0.7em, fill: orange)[→])
-
-/// Bullet list with coloured squares instead of dots.
-#let points(..items) = list(
-  marker: tick(color: orange),
-  indent: 1.15em,
-  spacing: 0.62em,
-  ..items,
+/// Flow box with a fixed height so all boxes in a row align.
+#let fbox(title, sub: none, fill: sand, tfill: ink) = box(
+  fill: fill,
+  stroke: 0.9pt + ink,
+  width: 100%,
+  height: 2.5em,
+  inset: (x: 0.45em, y: 0.25em),
+  align(center + horizon, {
+    text(font: display-font, size: 0.5em, fill: tfill, title)
+    if sub != none {
+      linebreak()
+      text(size: 0.44em, fill: if tfill == ink { brown } else { sand }, sub)
+    }
+  }),
 )
+
+#let arrow-right = box(outset: (x: 0.02em), text(font: display-font, size: 0.62em, fill: orange)[→])
+
+/// Extraction-ladder rung, adapted from `docs/report/architecture.typ` (`step-card`):
+/// number, technique, short description, and the speed/cost of the rung.
+#let rung(num, tech, desc, cost, speed, fill: sand) = box(
+  width: 100%,
+  fill: fill,
+  stroke: 1pt + ink,
+  inset: (x: 0.5em, y: 0.26em),
+  height: 1.7em,
+  align(left + horizon, grid(
+    columns: (1.5em, 1fr, auto),
+    gutter: 0.5em,
+    align: (center + horizon, left + horizon, right + horizon),
+    circle(
+      radius: 0.5em,
+      fill: ink,
+      text(font: display-font, size: 0.52em, fill: paper, str(num)),
+    ),
+    [
+      #text(font: body-font, size: 0.6em, weight: 800, fill: ink, tech) \
+      #text(size: 0.5em, fill: brown, desc)
+    ],
+    [
+      #text(font: display-font, size: 0.44em, fill: teal, speed) \
+      #text(font: display-font, size: 0.44em, fill: orange, cost)
+    ],
+  )),
+)
+
+/// "Falls through to the next rung" marker for the ladder.
+#let rung-arrow = align(center, box(height: 0.32em, text(font: display-font, size: 0.46em, fill: brown)[▼]))
 
 /* SLIDE CHROME */
 
 #let header(self) = {
   let section = utils.display-current-heading(level: 1)
   grid(
-    columns: (auto, 1fr, auto),
-    gutter: 0.5em,
-    align: (left + bottom, horizon, right + bottom),
-    if section != none and section != [] {
-      box(
-        fill: gold,
-        inset: (x: 0.45em, y: 0.12em),
-        text(font: display-font, size: 0.52em, fill: ink, tracking: 0.05em, upper(section)),
-      )
-    } else { [] },
-    [],
-    wordmark(size: 0.55em),
+    rows: (auto, auto),
+    row-gutter: 0.26em,
+    grid(
+      columns: (auto, 1fr, auto),
+      gutter: 0.5em,
+      align: (left + bottom, horizon, right + bottom),
+      if section != none and section != [] {
+        box(
+          fill: gold,
+          inset: (x: 0.45em, y: 0.12em),
+          text(font: display-font, size: 0.52em, fill: ink, tracking: 0.05em, upper(section)),
+        )
+      } else { [] },
+      [],
+      wordmark(size: 0.55em),
+    ),
+    line(length: 100%, stroke: 1.2pt + ink),
   )
-  v(0.22em)
-  line(length: 100%, stroke: 1.2pt + ink)
 }
 
 #let footer(self) = {
-  v(0.05em)
-  line(length: 100%, stroke: 0.9pt + hairline)
-  v(0.3em)
-  context {
+  grid(
+    rows: (auto, auto),
+    row-gutter: 0.3em,
+    line(length: 100%, stroke: 0.9pt + hairline),
     grid(
       columns: (1fr, auto),
       gutter: 0.5em,
-      align: (left + bottom, right + bottom),
+      align: (left + horizon, right + horizon),
       text(
         size: 0.46em,
         weight: 700,
@@ -150,7 +212,7 @@
       box(
         fill: gold,
         stroke: 0.9pt + ink,
-        inset: (x: 0.5em, y: 0.16em),
+        inset: (x: 0.5em, y: 0.14em),
         text(
           font: display-font,
           size: 0.5em,
@@ -158,11 +220,11 @@
           context counter(page).display("1 / 1", both: true),
         ),
       ),
-    )
-  }
+    ),
+  )
 }
 
-/// Default slide: HackSpain chrome on paper.
+/// Default slide: HackSpain chrome on paper, content vertically balanced.
 #let hs-slide(
   config: (:),
   repeat: auto,
@@ -189,12 +251,12 @@
     align(center + horizon, block(width: 100%, height: 100%, {
       place(center, image-transparency(
         read("img/gul-logo.svg", encoding: none),
-        alpha: 8%,
+        alpha: 11%,
         format: "svg",
-        height: 88%,
+        height: 76%,
       ))
       box(width: 100%, height: 100%, stroke: 2.4pt + ink, inset: 0.4em, {
-        box(width: 100%, height: 100%, stroke: 0.9pt + ink, inset: 1.1em, {
+        box(width: 100%, height: 100%, stroke: 0.9pt + ink, inset: 1em, {
           grid(
             columns: (auto, 1fr, auto),
             align: (left + top, center + top, right + top),
@@ -202,16 +264,16 @@
             [],
             chip([ETSIT UPM · MADRID], fill: sand),
           )
-          v(1.9fr)
+          v(1.7fr)
           body
-          v(2.1fr)
+          v(1.9fr)
         })
       })
     })),
   )
 })
 
-/// Section divider: ink panel, gold number.
+/// Section divider: ink panel, gold label and rule.
 #let hs-section-slide(body) = touying-slide-wrapper(self => {
   touying-slide(
     self: self,
@@ -220,16 +282,16 @@
       config-common(freeze-slide-counter: true),
     ),
     align(center + horizon, block(width: 100%, {
-      text(font: display-font, size: 0.75em, fill: gold, tracking: 0.12em, upper(utils.display-current-heading(level: 1)))
-      v(0.4em)
-      line(length: 26%, stroke: 3.5pt + gold)
-      v(0.4em)
+      text(font: display-font, size: 1.05em, fill: gold, tracking: 0.1em, upper(utils.display-current-heading(level: 1)))
+      v(0.45em)
+      line(length: 24%, stroke: 4pt + gold)
+      v(0.45em)
       text(size: 0.95em, fill: paper, body)
     })),
   )
 })
 
-/// Quote / big statement on ink (typst-intro style focus slide).
+/// Quote / big statement on ink.
 #let hs-focus-slide(body, footer-text: none) = touying-slide-wrapper(self => {
   touying-slide(
     self: self,
@@ -238,7 +300,7 @@
       config-common(freeze-slide-counter: true),
     ),
     align(center + horizon, block(width: 88%, {
-      set text(fill: paper, size: 1.35em)
+      set text(fill: paper, size: 1.3em)
       body
       if footer-text != none {
         v(0.7em)
@@ -254,8 +316,8 @@
   aspect-ratio: "16-9",
   primary: gold,
   subslide-preamble: block(
-    below: 0.9em,
-    text(font: display-font, size: 0.95em, fill: brown, utils.display-current-heading(level: 2)),
+    below: 0.6em,
+    text(font: display-font, size: 0.92em, fill: brown, utils.display-current-heading(level: 2)),
   ),
   ..args,
   body,
@@ -264,23 +326,27 @@
     config-page(
       paper: "presentation-" + aspect-ratio,
       fill: paper,
-      margin: (x: 1.7em, top: 1.5em, bottom: 1.6em),
-      footer-descent: 0em,
+      margin: (x: 1.6em, top: 2.3em, bottom: 2.45em),
+      header-ascent: 0.5em,
+      footer-descent: 0.55em,
     ),
     config-common(
       slide-fn: hs-slide,
       new-section-slide-fn: hs-section-slide,
       reset-page-counter-to-slide-counter: false,
+      zero-margin-header: false,
+      zero-margin-footer: false,
     ),
     config-methods(
       init: (self: none, body) => {
-        set text(font: body-font, size: 18pt, fill: ink, lang: "es")
+        set text(font: body-font, size: 20pt, fill: ink, lang: "es")
         set par(leading: 0.62em)
+        set align(horizon)
         show heading.where(level: 1): set text(font: display-font, size: 1.35em, fill: ink)
         show heading.where(level: 2): set text(font: display-font, size: 1.0em, fill: brown)
         show heading: set block(above: 0.3em, below: 0.45em)
-        show list: set list(indent: 1.15em, spacing: 0.62em, marker: tick(color: orange))
-        show enum: set enum(indent: 1.15em, spacing: 0.62em)
+        show list: set list(indent: 1.0em, spacing: 0.6em, marker: tick(color: orange))
+        show enum: set enum(indent: 1.0em, spacing: 0.6em)
         show link: set text(fill: teal)
         show quote: set block(stroke: (left: 3pt + gold), inset: (left: 0.8em, y: 0.3em))
         show quote: set text(style: "italic", fill: brown)
@@ -289,13 +355,13 @@
           breakable: false,
           fill: sand,
           stroke: 0.8pt + ink,
-          inset: 0.7em,
-          text(font: mono-font, size: 0.62em, fill: ink, it),
+          inset: (x: 0.7em, y: 0.55em),
+          text(font: mono-font, size: 0.56em, fill: ink, it.text),
         )
         show raw.where(block: false): it => box(
           fill: sand,
-          outset: (x: 0.18em, y: 0.12em),
-          text(font: mono-font, size: 0.8em, fill: ink, it),
+          outset: (x: 0.14em, y: 0.1em),
+          text(font: mono-font, size: 0.8em, fill: ink, it.text),
         )
         body
       },
