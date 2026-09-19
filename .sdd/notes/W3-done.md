@@ -135,3 +135,16 @@
 - DEFENSA.md sincronizado con lote1.json post-fix T18 (433/22/45 final);
   test dinámico: el guion debe citar la medición actual (si lote1.json
   evoluciona, el test avisa para actualizar el guion).
+
+## Sesión 9 — T26 cerrado (commit 3efc265) — BONUS
+
+- Resumen ejecutivo para Alberto (`albertitos.resumen`, HTML+PDF desde el
+  store real): «Hoy se pagan 433 facturas por 2.331.130,43 EUR» (suma EXACTA
+  vía file_id→pedido→maestro Pedidos_2026), motivos de NO_PAGAR en llano,
+  escaladas por importe, avisos (2 duplicados, 3 fantasmas). Sin datos ⇒
+  PENDIENTE, jamás ceros falsos. Hojas trampa del maestro ignoradas+avisadas.
+- Ejecutar: `uv run python -m albertitos.resumen --store-root .sdd/lote1
+  --maestro <caja>/FINAL_v7_DEFINITIVO_ahorasi.xlsx`.
+- El eslabón importe: el ledger real no guarda importes; el join honesto es
+  vía pedido (store.db) × maestro. Las PAGAR sin pedido/entrada se listan
+  como aviso y no se suman.
