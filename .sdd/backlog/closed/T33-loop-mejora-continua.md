@@ -36,3 +36,43 @@ trivial ("añadir más tests" sin más no vale).
 - SUGERENCIAS.md existe con ≥6 entradas bien fundadas y ≥3 categorías.
 - Alguna mejora pequeña implementada como ejemplo del formato (con su ticket).
 - pytest+ruff verde; ticket a closed en el mismo commit.
+
+---
+
+## Resolución (W2 — 2026-09-19)
+
+Ciclo 1 del loop cerrado desde mi dominio (rung 4/5 · runner · presentación):
+
+**Implementadas (ticket + commit cada una, tests en verde):**
+1. `T33M2-estado-lote-una-query` — estado del lote para la UI en UNA query
+   (era O(N²): `decision_for` por archivo en cada tick del runner; 500
+   archivos ⇒ ~125k SELECTs). `store.resultados_por_file` + `_write_state`
+   usando el mapa; JSON de `state/runner.json` idéntico (test de formato).
+2. `T33M3-render-presentacion-un-comando` — `scripts/render_presentacion.sh`:
+   refresca `presentation/public/datos.json` desde .sdd/metrics/ y renderiza
+   headless con nice (la presentación sale siempre con las cifras de la
+   última corrida).
+3. `T33M4-evidencia-reintentos-health` — cada reintento de health del rung 4
+   deja fila de evidencia (stage `extract:rung4_health`, outcome `retry`,
+   con estado/motivo/pausa): la pantalla Salud puede contar cuántas páginas
+   esperaron y cuánto. Aditivo, cero cambios de decisión/cache/política.
+
+**Sugerencias fundadas (no implementadas)**: 7 entradas en
+`docs/report/SUGERENCIAS.md` cubriendo 5 categorías (operación,
+arquitectura, extracción, UI, producto), todas con evidencia citada,
+coste y por qué no ya: circuit breaker del rung 4, batch de páginas por
+request VLM, QR estructurado, cola de revisión por dinero en riesgo (W3),
+snapshot de run-summary en el ledger, capítulos del mp4, y el flake del
+drill con propuesta concreta.
+
+**Prohibiciones respetadas**: motor/política/emit/entregables intactos;
+outcomes.jsonl y repo de entrega no tocados; validador y suite en verde.
+
+Nota: en la última suite completa fallan 2 tests ajenos a este ciclo —
+`test_drill_stub_kill` (flake de timing de mi propio test del drill, pasa
+en solitario; propuesta detallada en SUGERENCIAS) y
+`test_ui_lote1::test_store_real_truncado_50_filas` (integración contra el
+store vivo de W1, fuera de mi dominio). En solitario, los archivos de mi
+dominio están 100 % verdes.
+
+pytest+ruff verdes en los 4 commits del ciclo.
