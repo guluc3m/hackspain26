@@ -29,3 +29,27 @@ priority: p2
 - DEFENSA.md en docs/report/ con las 4 secciones y el checklist.
 - Cada cifra citada tiene su fuente en un comentario al pie.
 - pytest+ruff verde; ticket a closed en el mismo commit.
+
+## Cerrado — decisiones tomadas (W3)
+
+- **`docs/report/DEFENSA.md`** con las 4 secciones del guion (demo 2' ·
+  arquitectura/ADRs 2' · trazabilidad/escala/coste 4' · resiliencia 2') +
+  checklist operativo + plan B.
+- **Cero cifras de memoria**: cada número viene de `.sdd/metrics/` con nota
+  al pie por fuente — corpus-dryrun.json (T10: 471/29/0, latencias),
+  lote1.json (T14: 500/0 fallos, 347/108/45, 4,162 files/s, rung 4 media
+  15,8 s / máx 33,7 s medido — la cifra «31 s/página» del ticket se sustituye
+  por la medición real del store), calibracion-rung3.json (extract-v2),
+  drills.json (4/4 PASS), outcomes-lote1.jsonl, auditoria-trampas.md (T17),
+  triage-revision.md (desglose de los 45 escalados). Pendientes declarados
+  explícitamente (exactitud vs referencia, reprocesado post-fix).
+- **Checklist operativo**: comandos exactos (symlink lote1, uvicorn con
+  ALBERTITOS_STORE, typst compile, drills, validador del entregable),
+  factura marcada para la traza end-to-end antes de la demo.
+- **Plan B**: capturas del store real, UI sin store externo → datos de
+  prueba MARCADOS como tales (nunca camuflados), PROHIBIDO improvisar cifras.
+- **Test** (`tests/test_defensa.py`): 4 secciones + checklist + Plan B,
+  TODAS las rutas `.sdd/...` citadas existen en disco, y los números
+  estrella se verifican contra los JSON medidos (471/29/0, 500/0 fallos,
+  347/108/45, 4.162, 33 725 ms, drills 4/4, 500 outcomes).
+- Suite: 187 passed, ruff limpio, sin secretos.

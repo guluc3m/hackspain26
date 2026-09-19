@@ -108,3 +108,16 @@
 - Flaky ajeno detectado: tests/test_run.py::test_archivo_con_timeout... (T8,
   W2) falla ~1 de cada N corridas de suite por timing (verde en solitario
   3/3); avisado en el ticket cerrado para W2.
+
+## Sesión 7 — T20 cerrado (commit 12f4b2a)
+
+- `docs/report/DEFENSA.md`: guion 10 min (demo 2' → arquitectura 2' →
+  trazabilidad/escala/coste 4' → resiliencia 2') con SOLO cifras medidas y
+  fuente citada al pie (12 ficheros de .sdd/metrics/); checklist operativo
+  (symlink lote1 + ALBERTITOS_STORE + uvicorn + typst + drills + validador)
+  y plan B si algo falla en vivo.
+- Corrección de datos: el ticket citaba «31 s/página» para rung 4; la
+  medición real de lote1.json es media 15,8 s / máx 33,7 s (n=9) — el guion
+  usa la medición real.
+- Test: DEFENSA.md validada (secciones, checklist, fuentes existentes,
+  números contra JSON). 187 passed, ruff limpio.
