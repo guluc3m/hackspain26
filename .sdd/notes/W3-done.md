@@ -199,3 +199,28 @@
   imágenes de Revisión tolera la cola vaciada por W1 (post-reprocesado);
   DEFENSA.md fuente [3] actualizada a la realidad del store.
 - Al cierre: 272 passed, ruff limpio, sin secretos.
+
+## Sesión 13 — T34 integrado y T37 (cierre de entrega) — commit b813790
+
+- T34 integrado en main (junto a T35 app escritorio y T36 presentación de
+  W2). Arreglos de integración que tocó el merge: test de telemetría a los
+  encabezados llano nuevos; test de imágenes de Revisión tolera la cola
+  vaciada por W1 (post-reprocesado, degradación honesta); DEFENSA.md fuente
+  [3] actualizada; presentacion.py (T32/W2) cae al store del lote 1 real si
+  no hay store local (fallback de 1 línea, aditivo).
+- T37 (p0) — cierre de entrega:
+  · escalabilidad_datos.typ regenerado con los orígenes nuevos (T18
+    impacto-fix: 108 reprocesados, 86 NO_PAGAR→PAGAR, 0 regresiones, OK;
+    T23 perfil: peor p95 7,7 ms, 108-110 files/s, 0 ROJOS; distribución
+    final 433/22/45). PDF recompilado: 14 páginas, verificado con pypdf.
+  · Repo de entrega re-staged con los outcomes DEFINITIVOS post-fix:
+    validador 500/500 OK, exactamente outcomes.jsonl + albertitos_plan.pdf
+    (lote 2 llega a las 16:00 UTC ⇒ re-staging con el mismo comando).
+  · .sdd/metrics/entrega.json (ACTA, commitada): sha256+bytes de cada
+    entregable, reglas v3.0-2026-09-19 / runner-1.1.0, distribución
+    original (347/108/45) y final (433/22/45), impacto T18 y checklist de
+    defensa (simulacro 15/15 PASS, refrescado).
+  · Higiene de secretos sobre lo que se copia: limpia.
+- Tests nuevos (test_entrega.py, 3): estructura del acta, sha256 cuadran
+  contra el repo real, repo válido y sin secretos.
+- Al cierre: 288 passed, ruff limpio, sin secretos.
