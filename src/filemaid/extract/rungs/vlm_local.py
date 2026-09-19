@@ -53,7 +53,11 @@ def extract(ctx: PageContext) -> ExtractionFeature:
             else f"{vlm_base_url}/v1/chat/completions"
         )
         headers: dict[str, str] = {}
-        custom_key = os.environ.get("FILEMAID_VLM_KEY", "").strip()
+        # Ephemeral secret from the runtime config (never the sync credential);
+        # the env var remains only as an external fallback.
+        custom_key = (
+            ctx.config.get("vlm_api_key") or os.environ.get("FILEMAID_VLM_KEY", "")
+        ).strip()
         if custom_key:
             headers["Authorization"] = f"Bearer {custom_key}"
         remote_model = vlm_model

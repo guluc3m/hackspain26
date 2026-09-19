@@ -7,7 +7,7 @@ import InvoiceTable from '../components/InvoiceTable.vue'
 
 const facturas = ref<FacturaRow[]>([])
 const error = ref('')
-const filtro = ref<'todos' | Resultado | 'pendiente'>('todos')
+const filtro = ref<'todos' | Resultado | 'pendiente' | 'disputadas'>('todos')
 const busqueda = ref('')
 const drawerId = ref<string | null>(null)
 
@@ -26,12 +26,15 @@ const opciones: { id: typeof filtro.value; label: string }[] = [
   { id: 'PAGAR', label: 'PAGAR' },
   { id: 'NO_PAGAR', label: 'NO_PAGAR' },
   { id: 'ESCALAR', label: 'ESCALAR' },
+  { id: 'disputadas', label: 'Disputadas' },
   { id: 'pendiente', label: 'pendiente' }
 ]
 
 const visibles = computed(() =>
   facturas.value.filter((f) => {
-    if (filtro.value === 'pendiente') {
+    if (filtro.value === 'disputadas') {
+      if (!f.disputed) return false
+    } else if (filtro.value === 'pendiente') {
       if (f.result !== null) return false
     } else if (filtro.value !== 'todos' && f.result !== filtro.value) {
       return false

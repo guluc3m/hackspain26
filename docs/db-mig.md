@@ -121,3 +121,53 @@ Desde el repositorio: `uv run -- npm ci --prefix src/filemaid/store/pouchdb`, de
 Para ejecutar las pruebas contra Apache CouchDB real: configure `FILEMAID_TEST_COUCHDB_URL` con la URL raíz de un servidor de pruebas aislado, `FILEMAID_TEST_COUCHDB_USER` y `FILEMAID_TEST_COUCHDB_PASSWORD`, y ejecute `uv run pytest tests/test_couchdb_replication.py`. Cada prueba crea y elimina una base de nombre aleatorio. Sin esas variables, las pruebas de integración remota se omiten explícitamente; no se reemplaza CouchDB por un simulador ni se inicia uno en el cliente.
 
 Referencias: [PouchDB API](https://pouchdb.com/api.html), [conflictos y replicación CouchDB](https://pouchdb.com/guides/conflicts.html). El cliente no requiere instalación local de CouchDB.
+
+## Revisión humana y replicación selectiva (D-003)
+
+El `result` (`PAGAR`/`NO_PAGAR`/`ESCALAR`) lo emite solo el motor puro; la
+revisión humana es un estado aparte (`pending`/`resolved`/`not_required`). Una
+factura **disputada** (último scan sin decisión, `ESCALAR` sin resolución que la
+cubra, marcador de revisión sin commit, o conflicto nativo) se **retiene**: ni
+ella ni sus documentos, adjuntos, caché, sobres de job/lote ni export se
+replican. `NO_PAGAR` (negativo definitivo) y `PAGAR` nunca se retienen.
+
+Documentos de revisión (inmutables, `_id` determinista):
+
+| `kind` | `_id` | Contenido |
+| --- | --- | --- |
+| `review` | `review:<file_key>:<scan_id>` | marcador de transacción: `transaction` (token = scan planificado), `who`, `reason`, `accepted`, `corrected`, `reviewed_decision_id`. |
+| `resolution` | `resolution:<file_key>:<scan_id>` | commit: `resolved_decision_id`, `override_ids`, misma intención. |
+| `event` (override) | `event:override:<token>:<field_type>` | corrección/confirmación con `before`/`after`/`who`/`rung`/`reason`. |
+
+La resolución es transaccional: marcador antes del recálculo, commit después. Un
+fallo intermedio deja la factura retenida (fail-closed) y el reintento reanuda la
+misma transacción (reutiliza el scan planificado y los overrides ya escritos). El
+reintento con otra intención sobre la misma decisión falla en cerrado. Antes del
+commit se comprueba que la última decisión sigue siendo la recalculada.
+
+El pipeline aplica la última corrección por campo como candidato `override`
+(confianza 1.0, primero en el ranking efectivo, también en rankings por campo
+como `fecha`); los candidatos originales se conservan y el motor sigue decidiendo
+(tests de formato, umbral de puntuación y `min_confidence` de la regla siguen
+aplicándose). La frontera `NO_PAGAR`/`ESCALAR` no cambia.
+
+### Puerta de replicación
+
+La selección se calcula **dentro de la misma operación bloqueada** que la
+replicación (puente Node), desde los documentos actuales, para que una factura
+que gane un scan/`ESCALAR` entre la lectura y la replicación no se filtre. El
+cierre de referencias cubre `payload_ref`, `chunks`, sobres `job`/`batch` (por
+`job_id`/`batch_id` y `expected`), artefactos de caché (`scan_id cache-<key>`) y
+decisiones descargadas (resultado en el nivel superior). Los blobs huérfanos y
+las cachés sin propietario demostrable se retienen; un blob compartido con un
+artefacto publicado sí se replica. La puerta (`gate`, hash de la selección) viaja
+en `query_params`, de modo que la replicación nativa cambia de id y reemite desde
+cero los documentos que un checkpoint anterior había saltado (liberación tras
+resolver). Los documentos `_local/*` y `_design/*` nunca se replican. La
+dirección de pull aplica el mismo filtro local: se asume que el remoto solo
+contiene documentos publicados.
+
+`tests/test_dispute_sync.py` cubre retención/liberación, scan nuevo sin decisión,
+sobres de job, blobs huérfanos, caché sin propietario, decisiones descargadas,
+idempotencia/conflicto/reanudación de la resolución y, contra CouchDB real, que
+los documentos retenidos por un checkpoint anterior se replican tras resolver.

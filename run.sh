@@ -1,41 +1,34 @@
 #!/usr/bin/env bash
 # Arranca la aplicación: ./run.sh [app|vlm|desktop]
+#
+# Delega en el lanzador (`python start.py`), que es la única fuente de verdad
+# del entorno: sincroniza uv sin borrar extras ajenos, instala las deps Node de
+# PouchDB y construye la UI solo si falta o está desactualizada.
+#
+# Cerrar la app termina el proceso: no se relanza nada.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-need() {
-  command -v "$1" >/dev/null 2>&1 || {
-    printf 'error: falta %s en PATH\n' "$1" >&2
-    exit 1
-  }
-}
-
-need uv
-need node
-
-if [ ! -d src/filemaid/store/pouchdb/node_modules ]; then
-  printf 'error: PouchDB no está instalado; ejecuta ./bootstrap.sh primero\n' >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'error: falta python3 en PATH (start.py solo usa la stdlib)\n' >&2
   exit 1
 fi
 
 command="${1:-app}"
 case "$command" in
   app)
-    if [ ! -f frontend/dist/index.html ]; then
-      printf 'aviso: frontend/dist no existe; solo se servirá la API (ejecuta ./bootstrap.sh para construir la UI)\n' >&2
-    fi
     port="${FILEMAID_PORT:-8000}"
     printf 'filemaid en http://127.0.0.1:%s\n' "$port"
-    exec uv run filemaid serve
+    exec python3 start.py client --headless --port "$port"
     ;;
   vlm)
     host="${FILEMAID_VLM_HOST:-127.0.0.1}"
     port="${FILEMAID_VLM_PORT:-8001}"
     printf 'servidor VLM en http://%s:%s\n' "$host" "$port"
-    exec uv run filemaid server --host "$host" --port "$port"
+    exec python3 start.py server --host "$host" --port "$port"
     ;;
   desktop)
-    exec uv run filemaid-desktop
+    exec python3 start.py client
     ;;
   *)
     printf 'uso: %s [app|vlm|desktop]\n' "$0" >&2

@@ -134,3 +134,50 @@ Expected peak RSS: ~2.0–2.5 GB (well within 12 GB).
 - Validate the Mungert q8 mmproj against the official f16 mmproj on a handful of
   real documents during first deploy (expect identical transcripts; fall back to
   the official bf16+f16 pair, or a local `llama-quantize` Q8 pass, if not).
+---
+
+## D-003 — Revisión humana, resultado y replicación selectiva
+
+Date: 2026-09-19
+
+### Context
+
+El sistema decide `PAGAR` / `NO_PAGAR` / `ESCALAR`. `ESCALAR` es duda razonable
+y entra en la cola de revisión humana. La replicación nativa PouchDB ↔ CouchDB
+transportaba toda la evidencia, incluidas facturas escaladas sin revisar, antes
+de que un humano las mirara.
+
+### Decision
+
+1. **Resultado y revisión son estados distintos.** El `result` lo emite solo el
+   motor puro; nunca lo fija un humano. La `review` es `pending | resolved |
+   not_required`.
+2. **Disputada = retenida.** Una factura se retiene (no se replica) mientras su
+   último scan no tenga decisión (recién vista o reprocesado en curso), mientras
+   su última decisión sea `ESCALAR` sin resolución que la cubra, mientras haya un
+   marcador de revisión sin commit, o mientras tenga un conflicto de revisión
+   nativo. `NO_PAGAR` (negativo definitivo) y `PAGAR` nunca se retienen.
+3. **Resolver no es pagar.** El humano confirma lecturas (`accepted`) y/o las
+   corrige (`corrected`) con procedencia; el motor recalcula de forma
+   determinista. La resolución puede dejar `ESCALAR`: la revisión queda resuelta
+   y la factura se libera, pero la frontera de pago no cambia.
+4. **Transacción de resolución.** Marcador inmutable antes del recálculo, commit
+   inmutable después; el token de transacción es el scan planificado. Un fallo
+   entre ambos deja la factura retenida (fail-closed) y el reintento reanuda la
+   misma transacción. Los overrides usan id determinista por transacción y campo.
+5. **Replicación selectiva en el puente.** La selección se calcula dentro de la
+   misma operación bloqueada que la replicación, desde los documentos actuales,
+   con cierre de referencias (`payload_ref`, `chunks`, job/batch, caché). Los
+   blobs huérfanos y las cachés sin propietario demostrable se retienen. La
+   puerta (`gate`) cambia cuando cambia la selección, de modo que la replicación
+   nativa reemite los documentos que un checkpoint anterior había saltado.
+
+### Consequences
+
+- El histórico ya replicado no se puede «des-replicar»: solo se retienen los
+  documentos nuevos o reprocesados.
+- La dirección de pull aplica el mismo filtro local; se asume que el remoto solo
+  contiene documentos publicados (el remoto gobierna su propio gating).
+- La caché de escalones no se replica salvo que se demuestre que la página
+  pertenece solo a facturas elegibles.
+- Cambiar la frontera `NO_PAGAR`/`ESCALAR` sigue siendo una ADR aparte.

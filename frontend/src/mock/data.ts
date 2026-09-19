@@ -12,13 +12,20 @@
 import type {
   Candidate,
   FacturaRow,
+  IngestResponse,
   InvoiceDetail,
+  JobStatus,
+  JobSummary,
   LogItem,
   LogType,
   LogsResponse,
-  OverrideIn,
   Reglas,
+  Resolution,
+  ResolveInput,
+  ResolveResponse,
   Resultado,
+  ReviewItem,
+  ReviewState,
   RuleEvaluationRow,
   RuntimeConfig,
   RuntimeConfigInput,
@@ -88,7 +95,7 @@ interface Override {
   timestamp: number
 }
 
-/** Entrada del log: referencia mínima. Sin reglas ni payloads. */
+/** Entrada del log: referencia mínima + payload estructurado. */
 interface Evento {
   seq: number
   ts: number
@@ -96,6 +103,7 @@ interface Evento {
   invoice_id: string
   decision_id?: string
   override_id?: number
+  payload?: Record<string, unknown>
 }
 
 const REGLAS: Reglas = {
@@ -322,8 +330,14 @@ const decisiones: Decision[] = []
 const evaluaciones: Evaluacion[] = []
 const overrides: Override[] = []
 const eventos: Evento[] = []
+const revisiones = new Map<string, { state: ReviewState; resolution_id: string | null; resolution: Resolution | null }>()
 
-function log(type: LogType, invoiceId: string, refs: { decision_id?: string; override_id?: number } = {}, ts: number = AHORA()): void {
+function log(
+  type: LogType,
+  invoiceId: string,
+  refs: { decision_id?: string; override_id?: number; payload?: Record<string, unknown> } = {},
+  ts: number = AHORA()
+): void {
   eventos.push({ seq: eventos.length + 1, ts, type, invoice_id: invoiceId, ...refs })
 }
 
@@ -414,9 +428,20 @@ function ultimaDecision(invoiceId: string): Decision | null {
   return ds.length === 0 ? null : ds[ds.length - 1]
 }
 
+/** Estado de revisión: solo las decisiones ESCALAR requieren revisión humana. */
+function reviewDe(invoiceId: string): { state: ReviewState; resolution_id: string | null; resolution: Resolution | null } {
+  const ult = ultimaDecision(invoiceId)
+  if (!ult || ult.result !== 'ESCALAR') {
+    return { state: 'not_required', resolution_id: null, resolution: null }
+  }
+  return revisiones.get(invoiceId) ?? { state: 'pending', resolution_id: null, resolution: null }
+}
+
 function aFila(f: Factura): FacturaRow {
   const ult = ultimaDecision(f.id)
   const cs = [...camposTabla.entries()].filter(([k]) => k.startsWith(`${f.id}|`))
+  const rev = reviewDe(f.id)
+  const disputed = ult?.result === 'ESCALAR' && rev.state === 'pending'
   return {
     id: f.id,
     file_id: f.file_id,
@@ -430,7 +455,11 @@ function aFila(f: Factura): FacturaRow {
     confidence:
       cs.length === 0
         ? null
-        : Math.min(...cs.map(([, candidates]) => Math.max(...candidates.map((c) => c.confidence))))
+        : Math.min(...cs.map(([, candidates]) => Math.max(...candidates.map((c) => c.confidence)))),
+    disputed,
+    withheld_from_sync: disputed,
+    review_state: rev.state,
+    resolution_id: rev.resolution_id
   }
 }
 
@@ -438,6 +467,8 @@ function detalleDe(id: string): InvoiceDetail {
   const f = facturas.get(id)
   if (!f) throw new Error(`factura ${id} no encontrada`)
   const ult = ultimaDecision(id)
+  const rev = reviewDe(id)
+  const disputed = ult?.result === 'ESCALAR' && rev.state === 'pending'
   const fields: Record<string, Candidate[]> = {}
   for (const [k, cs] of camposTabla.entries()) {
     if (k.startsWith(`${id}|`)) fields[k.split('|')[1]] = cs
@@ -457,7 +488,12 @@ function detalleDe(id: string): InvoiceDetail {
             timestamp: e.timestamp
           }))
       : [],
-    overrides: overrides.filter((o) => o.invoice_id === id).map((o) => ({ ...o }))
+    overrides: overrides.filter((o) => o.invoice_id === id).map((o) => ({ ...o })),
+    disputed,
+    withheld_from_sync: disputed,
+    review_state: rev.state,
+    resolution_id: rev.resolution_id,
+    resolution: rev.resolution
   }
 }
 
@@ -491,44 +527,115 @@ function reprocesar(fileId: string): { file_id: string; result: Resultado } {
   return { file_id: fileId, result }
 }
 
-function override(invoiceId: string, body: OverrideIn): { ok: boolean } {
+/** Resolución humana: overrides con procedencia y recálculo determinista. */
+function resolver(invoiceId: string, body: ResolveInput): ResolveResponse {
   const f = facturas.get(invoiceId)
   if (!f) throw new Error(`factura ${invoiceId} no encontrada`)
-  const id = overrides.length + 1
-  overrides.push({
-    id,
-    invoice_id: f.id,
-    field_type: body.field_type,
-    before: JSON.stringify(body.before),
-    after: JSON.stringify(body.after),
+  const ult = ultimaDecision(invoiceId)
+  if (!ult) throw new Error('la factura no tiene decisión que resolver')
+  if (body.expected_decision_id && body.expected_decision_id !== ult.decision_id) {
+    throw new Error('la decisión cambió desde que se cargó: recargue antes de resolver')
+  }
+
+  const registrar = (fieldType: string, before: unknown, after: unknown) => {
+    const id = overrides.length + 1
+    overrides.push({
+      id,
+      invoice_id: invoiceId,
+      field_type: fieldType,
+      before: JSON.stringify(before),
+      after: JSON.stringify(after),
+      who: body.who,
+      rung: 'review-ui',
+      reason: body.reason,
+      timestamp: AHORA()
+    })
+    log('override', invoiceId, { override_id: id })
+  }
+
+  for (const fieldType of body.accepted) {
+    const cs = camposTabla.get(`${invoiceId}|${fieldType}`) ?? []
+    if (cs.length === 0) continue
+    const lider = cs.reduce((b, c, i) => (c.confidence > cs[b].confidence ? i : b), 0)
+    registrar(fieldType, cs[lider].value, cs[lider].value)
+  }
+  for (const [fieldType, value] of Object.entries(body.corrected)) {
+    const cs = camposTabla.get(`${invoiceId}|${fieldType}`) ?? []
+    const lider = cs.length ? cs.reduce((b, c, i) => (c.confidence > cs[b].confidence ? i : b), 0) : -1
+    registrar(fieldType, lider >= 0 ? cs[lider].value : null, value)
+  }
+
+  // El motor recalcula de forma determinista; el resultado puede seguir ESCALAR.
+  const dec = registrarDecision(invoiceId, f.file_id, ult.result, 0, undefined)
+  const resolution: Resolution = {
     who: body.who,
-    rung: body.rung,
     reason: body.reason,
+    accepted: body.accepted,
+    corrected: Object.fromEntries(Object.entries(body.corrected).map(([k, v]) => [k, String(v)])),
     timestamp: AHORA()
-  })
-  log('override', f.id, { override_id: id })
-  return { ok: true }
+  }
+  const resolution_id = `res-${hex(8, seedDe(f.file_id) + revisiones.size * 7919 + 17)}`
+  revisiones.set(invoiceId, { state: 'resolved', resolution_id, resolution })
+  f.status = dec.result
+  log('decision', invoiceId, { decision_id: dec.decision_id })
+  return {
+    ok: true,
+    resolution_id,
+    decision_id: dec.decision_id,
+    result: dec.result,
+    review_state: 'resolved',
+    disputed: false
+  }
 }
 
-/** Resumen legible, resuelto contra las tablas (la entrada solo trae IDs). */
-function resumenDe(e: Evento): string {
-  const f = facturas.get(e.invoice_id)
-  const fileId = f?.file_id ?? e.invoice_id
+/** Cola de revisión: solo las decisiones ESCALAR pendientes. */
+function revisionList(): { items: ReviewItem[] } {
+  const items: ReviewItem[] = []
+  for (const f of facturas.values()) {
+    const ult = ultimaDecision(f.id)
+    if (!ult || ult.result !== 'ESCALAR') continue
+    const rev = reviewDe(f.id)
+    if (rev.state !== 'pending') continue
+    items.push({
+      file_key: f.id,
+      file_id: f.file_id,
+      result: ult.result,
+      decision_id: ult.decision_id,
+      scan_id: f.id,
+      review_state: rev.state,
+      reason: 'decisión escalada: requiere revisión humana',
+      since: ult.timestamp
+    })
+  }
+  return { items }
+}
+
+/** Resumen semántico + payload estructurado, resueltos contra las tablas. */
+function summaryDe(e: Evento): { summary: string; payload: Record<string, unknown> } {
   switch (e.type) {
     case 'invoice_seen':
-      return `${fileId} registrada`
+      return {
+        summary: 'factura registrada',
+        payload: { file_id: facturas.get(e.invoice_id)?.file_id ?? e.invoice_id }
+      }
     case 'decision': {
       const d = decisiones.find((x) => x.decision_id === e.decision_id)
-      return `decisión ${e.decision_id} · ${fileId} → ${d?.result ?? '?'}`
+      return {
+        summary: `decisión → ${d?.result ?? '?'}`,
+        payload: { decision_id: e.decision_id, result: d?.result ?? null }
+      }
     }
     case 'override': {
       const o = overrides.find((x) => x.id === e.override_id)
-      return o
-        ? `override #${o.id} · ${o.field_type}: ${o.before} → ${o.after} · ${o.who}`
-        : `override · ${fileId}`
+      return {
+        summary: o ? `${o.field_type}: ${o.before} → ${o.after} · ${o.who}` : 'override',
+        payload: o
+          ? { field_type: o.field_type, before: o.before, after: o.after, who: o.who, reason: o.reason }
+          : {}
+      }
     }
     default:
-      return `${fileId} · ${e.type}`
+      return { summary: e.type, payload: {} }
   }
 }
 
@@ -554,15 +661,127 @@ function logs(params: { q?: string; event_type?: string; invoice?: string; limit
   }
   const limit = Math.max(1, Math.min(params.limit ?? 200, 1000))
   const offset = Math.max(0, params.offset ?? 0)
-  const items = [...filtrados].reverse().slice(offset, offset + limit).map<LogItem>((e) => ({
-    seq: e.seq,
-    ts: e.ts,
-    type: e.type,
-    invoice_id: e.invoice_id,
-    decision_id: e.decision_id ?? null,
-    resumen: resumenDe(e)
-  }))
+  const items = [...filtrados].reverse().slice(offset, offset + limit).map<LogItem>((e) => {
+    const { summary, payload } = summaryDe(e)
+    return {
+      seq: e.seq,
+      ts: e.ts,
+      type: e.type,
+      invoice_id: e.invoice_id,
+      file_id: facturas.get(e.invoice_id)?.file_id ?? e.invoice_id,
+      decision_id: e.decision_id ?? null,
+      summary,
+      payload
+    }
+  })
   return { total: filtrados.length, types, items }
+}
+
+// ---- ingesta sintética (jobs) --------------------------------------------
+
+interface MockJob {
+  job_id: string
+  origin: string
+  state: JobStatus['state']
+  created_at: number
+  finished_at: number | null
+  items: JobStatus['items']
+}
+
+const mockJobs = new Map<string, MockJob>()
+
+function jobSummary(j: MockJob): JobSummary {
+  const done = j.items.filter((i) => i.status === 'done').length
+  const error = j.items.filter((i) => i.status === 'error').length
+  const pending = j.items.filter((i) => i.status === 'pending').length
+  return {
+    job_id: j.job_id,
+    origin: j.origin,
+    state: j.state,
+    total: j.items.length,
+    done,
+    error,
+    pending,
+    created_at: j.created_at,
+    finished_at: j.finished_at
+  }
+}
+
+function jobStatus(j: MockJob): JobStatus {
+  const s = jobSummary(j)
+  return {
+    job_id: s.job_id,
+    origin: s.origin,
+    state: s.state,
+    created_at: s.created_at,
+    finished_at: s.finished_at,
+    error: null,
+    counts: { total: s.total, done: s.done, error: s.error, pending: s.pending },
+    items: j.items.map((i) => ({ ...i }))
+  }
+}
+
+/** Ingesta sintética: valida igual que el backend y resuelve en segundo plano. */
+async function ingest(files: { relPath: string; file: File }[]): Promise<IngestResponse> {
+  const accepted: IngestResponse['accepted'] = []
+  const rejected: IngestResponse['rejected'] = []
+  const vistos = new Set<string>()
+  for (const f of files) {
+    const rel = f.relPath
+    if (vistos.has(rel)) {
+      rejected.push({ rel_path: rel, reason: 'ruta relativa duplicada en la petición' })
+      continue
+    }
+    vistos.add(rel)
+    const ext = rel.slice(rel.lastIndexOf('.')).toLowerCase()
+    if (!['.pdf', '.png', '.jpg', '.jpeg'].includes(ext)) {
+      rejected.push({ rel_path: rel, reason: 'extensión no soportada' })
+      continue
+    }
+    if (f.file.size > 64 * 1024 * 1024) {
+      rejected.push({ rel_path: rel, reason: 'fichero mayor de 64 MiB' })
+      continue
+    }
+    accepted.push({
+      file_id: rel.split('/').pop() ?? rel,
+      file_key: hex(32, seedDe(rel)),
+      sha256: hex(64, seedDe(rel + ':' + f.file.size)),
+      rel_path: rel
+    })
+  }
+  if (accepted.length === 0) {
+    throw new Error(rejected[0]?.reason ?? 'ningún fichero aceptado')
+  }
+  const job_id = `job-${hex(8, seedDe(accepted.map((a) => a.rel_path).join('|')))}`
+  const now = AHORA()
+  const items: JobStatus['items'] = accepted.map((a) => ({
+    file_id: a.file_id,
+    file_key: a.file_key,
+    sha256: a.sha256,
+    status: 'pending',
+    result: null,
+    decision_id: null,
+    scan_id: null,
+    error: null,
+    updated_at: now
+  }))
+  mockJobs.set(job_id, { job_id, origin: 'upload', state: 'running', created_at: now, finished_at: null, items })
+  void (async () => {
+    for (const item of items) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 400))
+      item.status = 'done'
+      item.result = item.file_id.toLowerCase().endsWith('.pdf') ? 'PAGAR' : 'ESCALAR'
+      item.decision_id = `d-${hex(8, seedDe(item.file_id))}`
+      item.scan_id = hex(8, seedDe(item.file_id + 'scan'))
+      item.updated_at = AHORA()
+    }
+    const j = mockJobs.get(job_id)
+    if (j) {
+      j.state = 'complete'
+      j.finished_at = AHORA()
+    }
+  })()
+  return { job_id, accepted, rejected }
 }
 
 let mockConfig: RuntimeConfig = {
@@ -571,6 +790,7 @@ let mockConfig: RuntimeConfig = {
   vlm_url: '',
   vlm_model: '',
   local_vlm_fallback: false,
+  server_api_key: '',
   configured: true
 }
 let mockSyncStatus: SyncStatus = {
@@ -600,8 +820,16 @@ let mockVlmStatus: VlmStatus = {
 export const mockApi = {
   facturas: async () => [...facturas.values()].map(aFila),
   factura: async (id: string) => detalleDe(id),
-  override: async (invoiceId: string, body: OverrideIn) => override(invoiceId, body),
   reprocesar: async (fileId: string) => reprocesar(fileId),
+  revision: async () => revisionList(),
+  resolve: async (invoiceId: string, body: ResolveInput) => resolver(invoiceId, body),
+  ingest: async (files: { relPath: string; file: File }[]) => ingest(files),
+  jobs: async () => ({ jobs: [...mockJobs.values()].map(jobSummary) }),
+  job: async (jobId: string) => {
+    const j = mockJobs.get(jobId)
+    if (!j) throw new Error(`job ${jobId} no encontrado`)
+    return jobStatus(j)
+  },
   reglas: async () => REGLAS,
   salud: async () => SALUD,
   logs: async (params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }) =>
@@ -615,6 +843,7 @@ export const mockApi = {
       vlm_url: standalone ? '' : cfg.vlm_url,
       vlm_model: standalone ? '' : cfg.vlm_model,
       local_vlm_fallback: standalone ? false : cfg.local_vlm_fallback,
+      server_api_key: standalone ? '' : cfg.server_api_key,
       configured: true
     }
     mockSyncStatus = {

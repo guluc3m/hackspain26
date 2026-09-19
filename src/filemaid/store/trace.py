@@ -19,9 +19,18 @@ _active: contextvars.ContextVar[ScanTrace | None] = contextvars.ContextVar(
 
 
 class ScanTrace:
-    def __init__(self, store: PouchStore, source: Path, sha: str, invoice_id: str) -> None:
+    def __init__(
+        self,
+        store: PouchStore,
+        source: Path,
+        sha: str,
+        invoice_id: str,
+        scan_id: str | None = None,
+        resume: bool = False,
+    ) -> None:
         self.store = store
-        self.scan_id = str(uuid.uuid4())
+        self.scan_id = scan_id or str(uuid.uuid4())
+        self.resume = resume
         self.identity = {
             "scan_id": self.scan_id,
             "file_key": file_key(source.name, sha),
@@ -70,15 +79,21 @@ class ScanTrace:
         shutil.copyfile(self.source, copy)
         if sha256_file(copy) != self.sha:
             raise RuntimeError("Source changed during ingest")
-        self.artifact(
-            "input",
-            self.source.name,
-            copy,
-            mimetypes.guess_type(copy.name)[0] or "application/octet-stream",
-        )
+        existing = self.store.list(f"artifact:{self.scan_id}:")
+        if not (self.resume and any(a.get("stage") == "input" for a in existing)):
+            self.artifact(
+                "input",
+                self.source.name,
+                copy,
+                mimetypes.guess_type(copy.name)[0] or "application/octet-stream",
+            )
         return copy
 
     def record(self, kind: str, doc_id: str, payload: dict) -> str:
+        # A resumed scan (review transaction retry) reuses the documents already
+        # written by the interrupted attempt instead of colliding on them.
+        if self.resume and self.store.get(doc_id) is not None:
+            return doc_id
         if len(canonical(payload)) > INLINE_LIMIT:
             ref = self.artifact(kind, f"{kind}.json", canonical(payload), "application/json")
             routing = {
@@ -182,16 +197,15 @@ class ScanTrace:
         )
         self.event("fields", {"document_id": ref, "parser_ms": parser_ms})
 
-    def decision(self, decision, run_id: str) -> None:
-        self.record(
-            "decision",
-            f"decision:{self.scan_id}",
-            {
-                "decision": asdict(decision),
-                "run_id": run_id,
-                "fields_id": f"fields:{self.scan_id}",
-            },
-        )
+    def decision(self, decision, run_id: str, overrides_applied: list | None = None) -> None:
+        payload = {
+            "decision": asdict(decision),
+            "run_id": run_id,
+            "fields_id": f"fields:{self.scan_id}",
+        }
+        if overrides_applied:
+            payload["overrides_applied"] = overrides_applied
+        self.record("decision", f"decision:{self.scan_id}", payload)
 
 
 def current_trace() -> ScanTrace | None:

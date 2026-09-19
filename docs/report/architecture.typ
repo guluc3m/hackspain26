@@ -100,6 +100,23 @@ CouchDB en el cliente). El servicio FastAPI aloja de forma independiente el
 escalador VLM. Los endpoints se configuran en la UI y se guardan en documentos
 locales no replicados.
 
+=== Revisión humana y replicación selectiva
+
+El resultado (`PAGAR`/`NO_PAGAR`/`ESCALAR`) lo emite solo el motor puro; la
+revisión humana es un estado distinto (`pending`/`resolved`/`not_required`). Una
+factura *disputada* —último scan sin decisión, `ESCALAR` sin resolución que la
+cubra, marcador de revisión sin commit, o conflicto nativo— se retiene: ni ella
+ni sus documentos, adjuntos, caché, sobres de job/lote ni export se replican.
+`NO_PAGAR` (negativo definitivo) y `PAGAR` nunca se retienen. El humano confirma
+o corrige lecturas con procedencia y el motor recalcula de forma determinista; la
+resolución puede dejar `ESCALAR` (la revisión queda resuelta y la factura se
+libera) pero la frontera de pago no cambia (ADR D-003).
+
+La selección se calcula dentro de la misma operación bloqueada que la replicación
+nativa, con cierre de referencias y fail-closed para blobs huérfanos y cachés sin
+propietario demostrable. La puerta cambia cuando cambia la selección, de modo que
+los documentos saltados por un checkpoint anterior se reemiten al resolver.
+
 
 === Modos de ejecución y arranque del VLM
 

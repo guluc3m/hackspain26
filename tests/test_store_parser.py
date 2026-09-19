@@ -8,7 +8,7 @@ from filemaid.extract.ladder import PageExtraction
 from filemaid.parse.parser import parse_fields
 from filemaid.pipeline import Pipeline
 from filemaid.store.pouch import PouchStore
-from filemaid.store.queries import invoice_detail, save_override
+from filemaid.store.queries import invoice_detail, write_override
 from filemaid.store.trace import ScanTrace
 from filemaid.types import (
     ConfigSnapshot,
@@ -72,9 +72,10 @@ def test_override_con_procedencia(store: PouchStore):
         trace.decision(d, "cfg-1")
 
     file_key = trace.identity["file_key"]
-    save_override(
+    write_override(
         store,
         file_key,
+        trace.scan_id,
         {
             "field_type": "iban",
             "before": "ES0000000000000000000000",

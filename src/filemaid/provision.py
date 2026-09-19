@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .processes import terminate_tree
+
 # D-002: Mungert full-Q8 (text q8_0 + vision mmproj q8_0). The official
 # PaddlePaddle repo ships bf16/f16, not Q8; Q8 is the safe quality floor.
 MODEL_REPO = "Mungert/PaddleOCR-VL-1.6-GGUF"
@@ -112,8 +114,13 @@ def setup_script() -> Path:
     return root / "scripts" / ("setup_llama.ps1" if os.name == "nt" else "setup_llama.sh")
 
 
-def run_setup(log_path: Path | None = None) -> None:
-    """Run the platform setup helper (downloads binary + weights). Raises on failure."""
+def run_setup(log_path: Path | None = None, *, track: Any = None) -> None:
+    """Run the platform setup helper (downloads binary + weights). Raises on failure.
+
+    `track` recibe el proceso hijo mientras vive (y `None` al terminar), para que
+    quien aprovisiona pueda cortarlo al cerrar la app en vez de dejar una
+    descarga huérfana.
+    """
     script = setup_script()
     if not script.is_file():
         raise RuntimeError(f"setup helper not found: {script}")
@@ -128,15 +135,25 @@ def run_setup(log_path: Path | None = None) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         handle = log_path.open("ab")
         out = handle
+    # Sesión propia en POSIX: el ayudante lanza descargas hijas y solo así se
+    # puede terminar el árbol completo al cerrar.
+    kwargs: dict[str, Any] = {"start_new_session": True} if os.name == "posix" else {}
     try:
-        proc = subprocess.run(
-            cmd, env=env, stdout=out, stderr=subprocess.STDOUT, timeout=_SETUP_TIMEOUT, check=False
-        )
+        proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, **kwargs)
+        if track is not None:
+            track(proc)
+        try:
+            code = proc.wait(timeout=_SETUP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            terminate_tree(proc)
+            raise RuntimeError(f"setup helper timed out after {_SETUP_TIMEOUT:.0f}s") from None
     finally:
+        if track is not None:
+            track(None)
         if handle is not None:
             handle.close()
-    if proc.returncode != 0:
-        raise RuntimeError(f"setup helper failed with exit code {proc.returncode}")
+    if code != 0:
+        raise RuntimeError(f"setup helper failed with exit code {code}")
 
 
 class VlmProvisioner:
@@ -150,6 +167,8 @@ class VlmProvisioner:
         self._detail = ""
         self._error = ""
         self._thread: threading.Thread | None = None
+        self._setup_proc: subprocess.Popen[bytes] | None = None
+        self._closed = threading.Event()
 
     # -- public -----------------------------------------------------------
 
@@ -180,6 +199,8 @@ class VlmProvisioner:
         """Idempotently install (if needed) + start + health-check the sidecar."""
         thread: threading.Thread | None = None
         with self._lock:
+            if self._closed.is_set():
+                return self.status()
             if self._thread is not None and self._thread.is_alive():
                 thread = self._thread
             elif files_ready() and self._sidecar_up() and self._manifest_verified():
@@ -196,6 +217,23 @@ class VlmProvisioner:
             thread.join()
         return self.status()
 
+    def stop(self, timeout: float = 5.0) -> bool:
+        """Corta el aprovisionamiento propio: descarga incluida, sin reanudar.
+
+        Idempotente y acotado. El hilo es daemon, así que un cierre lento nunca
+        bloquea la salida del proceso; el valor devuelto solo informa de si
+        terminó dentro del plazo.
+        """
+        self._closed.set()
+        with self._lock:
+            proc, self._setup_proc = self._setup_proc, None
+            thread = self._thread
+        if proc is not None:
+            terminate_tree(proc, timeout)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
+        return not (thread is not None and thread.is_alive())
+
     # -- internals --------------------------------------------------------
 
     def _set(self, state: str, detail: str = "", error: str = "") -> None:
@@ -207,7 +245,9 @@ class VlmProvisioner:
             log_path = (self.log_dir / "vlm-provision.log") if self.log_dir else None
             if not files_ready() or binary_path() is None:
                 self._set("downloading", "downloading PaddleOCR-VL Q8 weights + llama.cpp")
-                run_setup(log_path)
+                run_setup(log_path, track=self._track_setup)
+            if self._closed.is_set():
+                return
             if not files_ready():
                 self._set("error", "", f"weights incomplete: {', '.join(missing_files())}")
                 return
@@ -219,7 +259,9 @@ class VlmProvisioner:
             mismatched = verify_weights()
             if mismatched:
                 self._set("downloading", f"re-downloading corrupt weights: {', '.join(mismatched)}")
-                run_setup(log_path)
+                run_setup(log_path, track=self._track_setup)
+                if self._closed.is_set():
+                    return
                 mismatched = verify_weights()
                 if mismatched:
                     self._set("error", "", f"sha256 mismatch: {', '.join(mismatched)}")
@@ -229,6 +271,8 @@ class VlmProvisioner:
 
             mgr = get_manager(self.cfg)
             if not mgr.ensure_started():
+                if self._closed.is_set():
+                    return
                 self._set("error", "", "llama-server did not become healthy")
                 return
             if not self._serves_expected_model(mgr.base_url):
@@ -239,7 +283,14 @@ class VlmProvisioner:
             self._write_manifest()
             self._set("ready", "sidecar healthy")
         except Exception as exc:
+            # Un cierre en curso no es un fallo del aprovisionamiento.
+            if self._closed.is_set():
+                return
             self._set("error", "", f"{type(exc).__name__}: {exc}")
+
+    def _track_setup(self, proc: subprocess.Popen[bytes] | None) -> None:
+        with self._lock:
+            self._setup_proc = proc
 
     def _sidecar_up(self) -> bool:
         try:

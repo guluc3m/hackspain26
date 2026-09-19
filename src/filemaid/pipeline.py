@@ -14,12 +14,22 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-from filemaid.types import ConfigSnapshot, Decision, Result, RuleEvaluation, RuleVerdict
+from filemaid.types import (
+    OVERRIDE_EXTRACTOR,
+    Candidate,
+    ConfigSnapshot,
+    Decision,
+    ExtractionField,
+    Result,
+    RuleEvaluation,
+    RuleVerdict,
+)
 
 from .config import AppConfig
 from .extract.cache import FeatureCache, sha256_file
@@ -63,6 +73,55 @@ def sync_if_configured(cfg: AppConfig) -> bool:
         return False
 
 
+def apply_overrides(
+    fields: list[ExtractionField], overrides: list[dict]
+) -> tuple[list[ExtractionField], list[dict]]:
+    """Inject the latest committed override per field as an ``override`` candidate.
+
+    Only the newest override per ``field_type`` is applied (older ones stay in
+    the append-only history), so repeated corrections never pile up equal-score
+    candidates. Every original candidate is preserved; the injected candidate
+    has confidence 1.0 and ``override`` ranks first, so it wins a score tie
+    deterministically while still flowing through ``escoger`` (format tests,
+    score threshold, rule ``min_confidence``) and the rule's ``chosen_candidates``.
+    """
+    latest: dict[str, dict] = {}
+    for doc in sorted(overrides, key=lambda d: (d.get("timestamp", 0), d["_id"])):
+        payload = doc.get("payload") or {}
+        field_type = payload.get("field_type")
+        if field_type:
+            latest[field_type] = doc
+    if not latest:
+        return fields, []
+
+    by_type = {f.type: f for f in fields}
+    applied: list[dict] = []
+    for field_type, doc in sorted(latest.items()):
+        payload = doc["payload"]
+        value = payload.get("after")
+        field = by_type.get(field_type)
+        if field is None:
+            field = ExtractionField(type=field_type)
+            fields.append(field)
+            by_type[field_type] = field
+        field.values.insert(
+            0, Candidate(extractor=OVERRIDE_EXTRACTOR, value=value, confidence=1.0)
+        )
+        applied.append(
+            {
+                "field_type": field_type,
+                "value": value,
+                "before": payload.get("before"),
+                "who": payload.get("who", ""),
+                "rung": payload.get("rung", ""),
+                "reason": payload.get("reason", ""),
+                "override_id": doc["_id"],
+                "timestamp": doc.get("timestamp"),
+            }
+        )
+    return fields, applied
+
+
 class Pipeline:
     def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
@@ -74,6 +133,11 @@ class Pipeline:
         self._in_batch = False
         self._last_scan_id: str | None = None
         self.last_batch_id: str | None = None
+
+    @property
+    def last_scan_id(self) -> str | None:
+        """Scan id produced by the most recent ``process_pdf`` call."""
+        return self._last_scan_id
 
     def _sync_if_configured(self) -> None:
         """Best-effort remote sync; a remote outage never fails a saved invoice."""
@@ -282,16 +346,18 @@ class Pipeline:
             identity, "export", outcomes_path.name, outcomes_path, "application/x-ndjson"
         )
 
-    def process_pdf(self, pdf_path: Path) -> Decision:
+    def process_pdf(
+        self, pdf_path: Path, scan_id: str | None = None, resume: bool = False
+    ) -> Decision:
         try:
             sha = sha256_file(pdf_path)
         except OSError as exc:
-            scan_id = str(uuid.uuid4())
+            error_scan_id = str(uuid.uuid4())
             self.store.put(
                 {
-                    "_id": f"event:{scan_id}:{uuid.uuid4()}",
+                    "_id": f"event:{error_scan_id}:{uuid.uuid4()}",
                     "kind": "event",
-                    "scan_id": scan_id,
+                    "scan_id": error_scan_id,
                     "file_id": pdf_path.name,
                     "file_key": None,
                     "invoice_id": None,
@@ -301,7 +367,9 @@ class Pipeline:
                 }
             )
             raise
-        trace = ScanTrace(self.store, pdf_path, sha, invoice_id_for(sha))
+        trace = ScanTrace(
+            self.store, pdf_path, sha, invoice_id_for(sha), scan_id=scan_id, resume=resume
+        )
         self._last_scan_id = trace.scan_id
         with trace.active():
             try:
@@ -360,6 +428,10 @@ class Pipeline:
         t_parse_0 = time.perf_counter()
         fields = parse_fields(pages)
         parser_ms = round((time.perf_counter() - t_parse_0) * 1000)
+        # Correcciones humanas: la última por campo entra como candidato
+        # `override`; los candidatos originales se conservan en la evidencia.
+        key = trace.identity["file_key"] if trace else file_key(pdf_path.name, sha)
+        fields, applied_overrides = apply_overrides(fields, self._overrides_for(key))
         if trace:
             trace.fields(fields, parser_ms)
 
@@ -391,7 +463,7 @@ class Pipeline:
 
         run_id = config_version
         if trace:
-            trace.decision(decision, run_id)
+            trace.decision(decision, run_id, applied_overrides)
             trace.event(
                 "decision",
                 {
@@ -412,6 +484,17 @@ class Pipeline:
         """Reprocesado tras un override: la decisión se recalcula de forma determinista."""
         return self.process_pdf(pdf_path)
 
+    def _overrides_for(self, key: str) -> list[dict]:
+        """Human overrides for a file key, oldest first (append-only history)."""
+        file = self.store.get(f"file:{key}")
+        if file is None:
+            return []
+        return [
+            self.store.hydrate(d)
+            for d in self.store.for_file(file["file_id"], "event")
+            if d.get("file_key") == key and d.get("type") == "override"
+        ]
+
     def _extractor_versions(self, pages: list) -> dict[str, str]:
         versions: dict[str, str] = {}
         for page in pages:
@@ -419,6 +502,55 @@ class Pipeline:
                 if feat.extractor_version:
                     versions.setdefault(feat.extraction_method, feat.extractor_version)
         return versions
+
+
+def reprocess_from_store(
+    store: PouchStore,
+    cfg: AppConfig,
+    file_id: str,
+    file_key: str = "",
+    scan_id: str | None = None,
+    resume: bool = False,
+) -> tuple[Decision, str]:
+    """Restore the original from PouchDB attachments and reprocess deterministically.
+
+    Shared by the review service and the API so both apply the same overrides.
+    Returns the new decision and the scan id that produced it.
+    """
+    if not file_id or Path(file_id).name != file_id or file_id in {".", ".."}:
+        raise ValueError("nombre de fichero inválido")
+    scans = store.for_file(file_id, "scan")
+    if file_key:
+        scans = [s for s in scans if s["file_key"] == file_key]
+    elif len({s["file_key"] for s in scans}) > 1:
+        raise ValueError("basename ambiguo: indique file_key")
+    if not scans:
+        raise KeyError(file_id)
+    scans.sort(key=lambda s: (s["timestamp"], s["_id"]), reverse=True)
+    artifacts = store.for_file(file_id, "artifact")
+    original = next(
+        (
+            a
+            for s in scans
+            for a in artifacts
+            if a["scan_id"] == s["scan_id"] and a["stage"] == "input"
+        ),
+        None,
+    )
+    if original is None:
+        raise KeyError("artefacto de entrada no encontrado")
+    work = cfg.root / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=work) as temp:
+        pdf = Path(temp) / file_id
+        with pdf.open("wb") as output:
+            for chunk in store.read_artifact(original["_id"]):
+                output.write(chunk)
+        pipeline = Pipeline(cfg)
+        decision = pipeline.process_pdf(pdf, scan_id=scan_id, resume=resume)
+        if pipeline.last_scan_id is None:
+            raise RuntimeError("invariante: process_pdf no fijó scan_id")
+        return decision, pipeline.last_scan_id
 
 
 def write_outcomes(rows: list[dict[str, Any]], path: Path) -> None:

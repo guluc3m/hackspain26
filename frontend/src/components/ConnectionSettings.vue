@@ -24,6 +24,7 @@ const syncUrl = ref('')
 const vlmUrl = ref('')
 const vlmModel = ref('')
 const localVlmFallback = ref(false)
+const serverApiKey = ref('')
 
 const loading = ref(true)
 const saving = ref(false)
@@ -83,6 +84,7 @@ function aplicar(cfg: RuntimeConfig) {
   vlmUrl.value = cfg.vlm_url || ''
   vlmModel.value = cfg.vlm_model || ''
   localVlmFallback.value = cfg.local_vlm_fallback === true
+  serverApiKey.value = cfg.server_api_key || ''
 }
 
 async function cargarVlm() {
@@ -110,6 +112,10 @@ async function guardar() {
       error.value = 'El modo servidor requiere el endpoint VLM remoto (base OpenAI compatible terminada en /v1).'
       return
     }
+    if (!serverApiKey.value.trim()) {
+      error.value = 'El modo servidor requiere la clave de API del servidor.'
+      return
+    }
   }
 
   saving.value = true
@@ -120,14 +126,16 @@ async function guardar() {
         sync_url: syncUrl.value.trim(),
         vlm_url: vlmUrl.value.trim(),
         vlm_model: vlmModel.value.trim(),
-        local_vlm_fallback: localVlmFallback.value
+        local_vlm_fallback: localVlmFallback.value,
+        server_api_key: serverApiKey.value.trim()
       }
     : {
         mode: 'standalone',
         sync_url: '',
         vlm_url: '',
         vlm_model: '',
-        local_vlm_fallback: false
+        local_vlm_fallback: false,
+        server_api_key: ''
       }
 
   try {
@@ -256,6 +264,11 @@ async function provisionar() {
       <!-- Servidor: CouchDB + VLM remoto + fallback local opcional -->
       <fieldset v-else class="endpoints-fieldset">
         <legend class="section-legend">Parámetros de conexión</legend>
+        <p class="offline-note muted">
+          El servidor combinado expone la base de datos y el VLM bajo el mismo host
+          (p. ej. <span class="mono">/db/facturas</span> y <span class="mono">/v1</span>);
+          indique cada URL explícitamente.
+        </p>
 
         <div class="field-group">
           <label for="input-sync-url">
@@ -313,6 +326,23 @@ async function provisionar() {
           </span>
         </div>
 
+        <div class="field-group">
+          <label for="input-server-api-key">API key</label>
+          <input
+            id="input-server-api-key"
+            v-model="serverApiKey"
+            type="password"
+            placeholder="clave de API del servidor"
+            :disabled="saving || syncing"
+            aria-describedby="server-api-key-help"
+            autocomplete="off"
+          />
+          <span id="server-api-key-help" class="help-text muted">
+            Clave de API del servidor (base de datos y VLM). Se guarda localmente y
+            nunca se muestra en la interfaz ni en los registros.
+          </span>
+        </div>
+
         <label class="fallback-toggle">
           <input
             v-model="localVlmFallback"
@@ -366,7 +396,7 @@ async function provisionar() {
           :disabled="provisioning"
           @click="provisionar"
         >
-          {{ provisioning ? 'Iniciando…' : 'Reintentar preparación del VLM' }}
+          {{ provisioning ? 'Iniciando…' : 'Start VLM' }}
         </button>
       </div>
 
@@ -444,7 +474,7 @@ async function provisionar() {
 }
 .close-btn:hover {
   color: var(--text);
-  background: var(--border-soft);
+  background: var(--sand);
 }
 
 .section-legend {
@@ -474,20 +504,21 @@ fieldset {
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--border-soft);
+  border-radius: 0;
   cursor: pointer;
   background: var(--panel);
   transition: border-color 0.15s, background 0.15s;
 }
 
 .mode-label:hover {
-  background: #fafaf9;
+  background: var(--sand);
 }
 
 .mode-label.selected {
-  border-color: var(--accent);
-  background: #fdfdfd;
+  border-left-color: var(--gold);
+  background: var(--panel);
 }
 
 .mode-label input[type="radio"] {
@@ -568,8 +599,9 @@ fieldset {
 }
 
 .vlm-status {
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--border-soft);
+  border-radius: 0;
   padding: 10px 14px;
   margin-bottom: 16px;
   font-size: 13px;
@@ -583,17 +615,17 @@ fieldset {
 }
 
 .vlm-status.vlm-ready {
-  border-color: var(--ok-fg);
+  border-left-color: var(--ok-fg);
   background: var(--ok-bg);
 }
 
 .vlm-status.vlm-busy {
-  border-color: var(--warn-fg);
+  border-left-color: var(--warn-fg);
   background: var(--warn-bg);
 }
 
 .vlm-status.vlm-error {
-  border-color: var(--bad-fg);
+  border-left-color: var(--bad-fg);
   background: var(--bad-bg);
 }
 
@@ -609,7 +641,7 @@ fieldset {
 
 .message-box {
   padding: 10px 14px;
-  border-radius: 4px;
+  border-radius: 0;
   font-size: 13px;
   margin-bottom: 16px;
 }

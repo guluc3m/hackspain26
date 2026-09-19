@@ -195,6 +195,7 @@ def test_sync_failure_after_decision_keeps_local_result(cfg, tmp_path, monkeypat
             "mode": "server",
             "sync_url": "http://127.0.0.1:65534/facturas",
             "vlm_url": "https://vision.example/v1",
+            "server_api_key": "k",
         }
     )
 

@@ -24,6 +24,7 @@ from typing import Any
 
 from filemaid.parse.normalizers import normalize_iban, normalize_nif, parse_amount
 from filemaid.types import (
+    OVERRIDE_EXTRACTOR,
     UNKNOWN_SIN_CAMPO,
     UNKNOWN_SIN_CANDIDATO_VALIDO,
     Candidate,
@@ -143,11 +144,20 @@ def field_selection(seleccion: dict[str, Any] | None, field_type: str) -> FieldS
                 for k, v in (per_field.get("extractor_weights") or {}).items()
             },
         },
-        extractor_ranking=tuple(
-            str(x)
-            for x in (per_field.get("extractor_ranking") or cfg.get("extractor_ranking") or ())
+        extractor_ranking=_ranking_with_override(
+            per_field.get("extractor_ranking") or cfg.get("extractor_ranking") or ()
         ),
     )
+
+
+def _ranking_with_override(ranking) -> tuple[str, ...]:
+    """The human override always outranks machine extractors on a score tie.
+
+    Per-field rankings (e.g. ``fecha``) replace the global one, so the guarantee
+    is applied to the *effective* ranking, never only to the global config.
+    """
+    names = [str(x) for x in ranking if str(x) != OVERRIDE_EXTRACTOR]
+    return (OVERRIDE_EXTRACTOR, *names)
 
 
 def _as_float(value: Any, default: float) -> float:

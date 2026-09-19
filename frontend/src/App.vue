@@ -3,7 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, SINTETICO, type RuntimeConfig, type SyncStatus, type VlmStatus } from './api'
 import { irA, tab, tabs } from './nav'
 import DashboardView from './views/DashboardView.vue'
+import IngestView from './views/IngestView.vue'
 import InvoicesView from './views/InvoicesView.vue'
+import ReviewView from './views/ReviewView.vue'
 import LogsView from './views/LogsView.vue'
 import ConnectionSettings from './components/ConnectionSettings.vue'
 
@@ -19,6 +21,7 @@ const currentConfig = ref<RuntimeConfig>({
   vlm_url: '',
   vlm_model: '',
   local_vlm_fallback: false,
+  server_api_key: '',
   configured: false
 })
 
@@ -68,12 +71,16 @@ onMounted(() => {
   cargarConfigInicial()
   pollTimer = setInterval(() => {
     fetchSyncStatus()
-    fetchVlmStatus()
+    fetchVlmStatus().then(() => {
+      const s = vlmStatus.value
+      if (s && (s.state === 'downloading' || s.state === 'starting')) vigilarArranqueVlm()
+    })
   }, 10_000)
 })
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (vlmFastTimer) clearInterval(vlmFastTimer)
 })
 
 function onConfirmed(saved: RuntimeConfig) {
@@ -105,6 +112,46 @@ const vlmBannerText = computed(() => {
   if (s.state === 'error') return `El VLM local no está listo: ${s.error || s.detail || 'error'}`
   return 'El VLM local aún no está preparado.'
 })
+
+// El botón solo aparece cuando el VLM local es obligatorio (autónomo o
+// respaldo), no está listo y no hay preparación en curso (idle/error).
+// Nunca en modo remoto sin VLM local.
+const vlmCanStart = computed(() => {
+  const s = vlmStatus.value
+  if (!s) return false
+  return s.local_required && !s.ready && (s.state === 'idle' || s.state === 'error')
+})
+
+const vlmStarting = ref(false)
+let vlmFastTimer: ReturnType<typeof setInterval> | undefined
+
+/** Sondeo rápido mientras el modelo se descarga/arranca; se detiene al terminar. */
+function vigilarArranqueVlm() {
+  if (vlmFastTimer) return
+  vlmFastTimer = setInterval(async () => {
+    await fetchVlmStatus()
+    const s = vlmStatus.value
+    if (!s || (s.state !== 'downloading' && s.state !== 'starting')) {
+      if (vlmFastTimer) clearInterval(vlmFastTimer)
+      vlmFastTimer = undefined
+    }
+  }, 3_000)
+}
+
+async function startVlm() {
+  if (vlmStarting.value) return
+  vlmStarting.value = true
+  try {
+    vlmStatus.value = await api.vlmProvision()
+    vlmUnavailable.value = false
+    vigilarArranqueVlm()
+  } catch {
+    // El estado real se refleja en el siguiente sondeo; nunca se inventa "listo".
+    await fetchVlmStatus()
+  } finally {
+    vlmStarting.value = false
+  }
+}
 
 const statusBadgeText = computed(() => {
   if (SINTETICO) return 'sintético'
@@ -222,10 +269,21 @@ const statusBadgeClass = computed(() => {
     <!-- Vistas operativas normales cuando el modo está confirmado -->
     <template v-else>
       <div v-if="vlmNotReady" class="vlm-banner" role="status" aria-live="polite">
-        {{ vlmBannerText }}
+        <span class="vlm-banner-text">{{ vlmBannerText }}</span>
+        <button
+          v-if="vlmCanStart"
+          type="button"
+          class="primary vlm-start"
+          :disabled="vlmStarting"
+          @click="startVlm"
+        >
+          Start VLM
+        </button>
       </div>
       <DashboardView v-if="tab === 'dashboard'" />
+      <IngestView v-else-if="tab === 'ingest'" />
       <InvoicesView v-else-if="tab === 'invoices'" />
+      <ReviewView v-else-if="tab === 'review'" />
       <LogsView v-else />
     </template>
   </main>
@@ -255,20 +313,31 @@ const statusBadgeClass = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--paper);
+  border-bottom: 3px solid var(--gold);
   padding: 0 20px;
+  gap: 16px;
 }
-nav { display: flex; gap: 4px; }
+nav { display: flex; gap: 2px; }
 .startup-nav-title {
   display: flex;
   align-items: center;
-  padding: 14px 0;
+  padding: 12px 0;
 }
 .app-title {
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.02em;
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+}
+.app-title::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  background: var(--gold);
 }
 
 .topbar-right {
@@ -278,127 +347,141 @@ nav { display: flex; gap: 4px; }
 }
 
 .tab {
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   border: none;
   border-radius: 0;
   background: none;
-  padding: 16px 12px 14px;
-  font-size: 15px;
-  color: var(--muted);
-  border-bottom: 2px solid transparent;
+  padding: 16px 13px 13px;
+  color: rgba(244, 236, 216, 0.68);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -3px;
 }
-.tab:hover { background: none; color: var(--text); }
+.tab:hover { background: rgba(244, 236, 216, 0.08); color: var(--paper); }
 .tab.active {
-  color: var(--text);
-  font-weight: 600;
-  border-bottom-color: var(--accent);
+  color: var(--gold);
+  border-bottom-color: var(--gold);
 }
 
 .config-btn {
-  font-size: 13px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 4px;
+  font-size: 12px;
+  padding: 5px 11px;
+  border: 1px solid rgba(244, 236, 216, 0.5);
+  background: transparent;
+  color: var(--paper);
+  border-radius: 0;
 }
-.config-btn:hover {
-  background: #fafaf9;
-}
+.config-btn:hover { background: rgba(244, 236, 216, 0.12); }
 
 .logo-box {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  background: #1c3144;
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   flex: none;
 }
-.logo-box img { width: 30px; height: 30px; object-fit: contain; }
+.logo-box img { width: 28px; height: 28px; object-fit: contain; }
 
 .modo {
-  font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 10px;
-  background: var(--panel);
-  color: var(--muted);
+  font-family: var(--display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(244, 236, 216, 0.5);
+  border-radius: 0;
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--paper);
+  white-space: nowrap;
 }
-.modo.badge-synthetic {
-  color: var(--muted);
-}
-.modo.badge-unconfigured {
-  color: var(--warn-fg);
-  border-color: var(--warn-fg);
-  background: var(--warn-bg);
-}
-.modo.badge-server {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.modo.badge-standalone {
-  color: var(--muted);
-  border-color: var(--border);
-}
-.modo.badge-ok {
-  color: var(--ok-fg);
-  border-color: var(--ok-fg);
-  background: var(--ok-bg);
-}
-.modo.badge-error {
-  color: var(--bad-fg);
-  border-color: var(--bad-fg);
-  background: var(--bad-bg);
-}
+.modo.badge-synthetic { color: var(--slate); border-color: var(--slate); }
+.modo.badge-unconfigured { color: var(--gold); border-color: var(--gold); }
+.modo.badge-server { color: var(--slate); border-color: var(--slate); }
+.modo.badge-standalone { color: rgba(244, 236, 216, 0.8); }
+.modo.badge-ok { color: #9fd6c9; border-color: #9fd6c9; }
+.modo.badge-error { color: #f0a79f; border-color: #f0a79f; }
 
 main {
-  max-width: 1100px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 22px 20px 48px;
 }
 
 .startup-container {
-  padding-top: 30px;
+  padding-top: 26px;
 }
 
 .config-error {
-  max-width: 680px;
+  max-width: 720px;
   margin: 0 auto 16px;
   padding: 10px 14px;
-  border-radius: 4px;
+  border: 1px solid var(--red);
+  border-left: 5px solid var(--red);
   font-size: 13px;
   background: var(--bad-bg);
   color: var(--bad-fg);
-  border: 1px solid var(--bad-fg);
 }
 
 .vlm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
   margin-bottom: 16px;
   padding: 10px 14px;
-  border-radius: 4px;
-  font-size: 13px;
-  background: var(--warn-bg);
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--orange);
+  background: var(--panel);
   color: var(--warn-fg);
-  border: 1px solid var(--warn-fg);
+  font-size: 13px;
 }
+.vlm-banner-text { flex: 1 1 320px; }
+.vlm-start { flex: none; }
 
 /* Modal backdrop & content */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(42, 23, 15, 0.55);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 28px 20px;
   z-index: 1000;
   overflow-y: auto;
 }
 
 .modal-content {
   width: 100%;
-  max-width: 680px;
+  max-width: 720px;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 0 12px;
+  }
+  nav {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .topbar-right {
+    order: 1;
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 8px 0;
+  }
+  .tab { padding: 12px 10px 10px; }
+  main { padding: 16px 12px 40px; }
 }
 </style>

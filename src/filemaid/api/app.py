@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import shutil
 import tempfile
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from filemaid import review
 from filemaid.config import AppConfig
+from filemaid.ingest import UploadTooLarge, get_ingestion, stream_uploads
 from filemaid.pipeline import Pipeline
 from filemaid.provision import get_provisioner
 from filemaid.rules.config import RuleConfig
@@ -24,13 +28,16 @@ from filemaid.store import queries
 from filemaid.store.pouch import PouchStore
 
 
-class OverrideIn(BaseModel):
-    field_type: str
-    before: object
-    after: object
+class ResolveIn(BaseModel):
+    """Cuerpo estricto de POST /api/revision/{file_key}/resolve."""
+
+    model_config = ConfigDict(extra="forbid")
+
     who: str
-    rung: str = "review-ui"
     reason: str = ""
+    accepted: list[str] = Field(default_factory=list)
+    corrected: dict[str, object] = Field(default_factory=dict)
+    expected_decision_id: str
 
 
 class ConnectionIn(BaseModel):
@@ -38,6 +45,7 @@ class ConnectionIn(BaseModel):
     sync_url: str = Field(default="", max_length=2048)
     vlm_url: str = Field(default="", max_length=2048)
     vlm_model: str = Field(default="", max_length=256)
+    server_api_key: str = Field(default="", max_length=4096)
     local_vlm_fallback: bool = False
 
 
@@ -63,6 +71,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
     cfg = cfg or AppConfig.load()
     pouch = PouchStore(cfg.root)
     settings = RuntimeSettings(cfg)
+    ingestion = get_ingestion(cfg)
     sync_lock = threading.RLock()
     wake = threading.Event()
     inflight = threading.Event()
@@ -163,6 +172,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             current["mode"] == "standalone" or current["local_vlm_fallback"]
         ):
             get_provisioner(cfg).ensure()
+        await asyncio.to_thread(ingestion.resume)
         task = asyncio.create_task(sync_loop())
         try:
             yield
@@ -171,6 +181,9 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+            # Cooperative stop: the worker finishes the in-flight item and exits;
+            # anything unfinished is re-enqueued on the next start.
+            await asyncio.to_thread(ingestion.stop, 3.0)
 
     app = FastAPI(title="filemaid", version="0.1.0", lifespan=lifespan)
 
@@ -237,14 +250,68 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             raise HTTPException(404, "factura no encontrada")
         return detail
 
-    @app.post("/api/revision/{file_key}/override")
-    def override(file_key: str, body: OverrideIn) -> dict:
-        if pouch.get(f"file:{file_key}") is None:
+    @app.get("/api/revision")
+    def revision() -> dict:
+        return {"items": review.list_disputed(pouch)}
+
+    @app.get("/api/revision/{file_key}")
+    def revision_detail(file_key: str) -> dict:
+        detail = review.review_detail(pouch, file_key)
+        if detail is None:
             raise HTTPException(404, "factura no encontrada")
-        queries.save_override(pouch, file_key, body.model_dump())
+        return detail
+
+    @app.post("/api/revision/{file_key}/resolve")
+    def revision_resolve(file_key: str, body: ResolveIn) -> dict:
+        try:
+            result = review.resolve_review(pouch, cfg, file_key, body.model_dump())
+        except KeyError as exc:
+            raise HTTPException(404, "factura no encontrada") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
         if settings.get()["mode"] == "server":
             wake.set()
-        return {"ok": True}
+        return result
+
+    @app.post("/api/ingest", status_code=202)
+    async def ingest(request: Request) -> dict:
+        """Subida multipart de PDFs/imágenes; acusa recibo tras persistir en PouchDB."""
+        incoming = cfg.root / "work" / "incoming" / uuid.uuid4().hex
+        incoming.mkdir(parents=True, exist_ok=True)
+        try:
+            try:
+                streamed = await stream_uploads(
+                    request.stream(), request.headers.get("content-type", ""), incoming
+                )
+            except UploadTooLarge as exc:
+                raise HTTPException(413, str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            entries = [(item["rel_path"], item["path"]) for item in streamed["staged"]]
+            if not entries:
+                detail = "; ".join(item["reason"] for item in streamed["rejected"])
+                raise HTTPException(400, f"ningún fichero válido: {detail or 'sin ficheros'}")
+            try:
+                result = await asyncio.to_thread(ingestion.submit, entries, "upload", move=True)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            result["rejected"] = streamed["rejected"] + result["rejected"]
+            return result
+        finally:
+            shutil.rmtree(incoming, ignore_errors=True)
+
+    @app.get("/api/jobs")
+    def jobs() -> dict:
+        return ingestion.list_jobs()
+
+    @app.get("/api/jobs/{job_id}")
+    def job(job_id: str) -> dict:
+        state = ingestion.status(job_id)
+        if state is None:
+            raise HTTPException(404, "trabajo no encontrado")
+        return state
 
     @app.get("/api/reglas")
     def reglas() -> dict:

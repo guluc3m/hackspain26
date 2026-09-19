@@ -51,6 +51,9 @@ class AppConfig:
         # Standalone always uses the local sidecar and never contacts a remote
         # VLM, even if a stale endpoint was saved or exported in the env.
         vlm_url = "" if standalone else settings["vlm_url"]
+        # Ephemeral secret consumed only by the remote VLM rung. It is never part
+        # of the config_version hash, the decision snapshot, evidence or logs.
+        vlm_api_key = "" if standalone else settings["server_api_key"]
         config = {
             "config_version": self.extraction_config_path.stem
             + ":"
@@ -73,4 +76,5 @@ class AppConfig:
         config["remote_rungs_enabled"] = not standalone
         config["vlm_base_url"] = vlm_url
         config["vlm_model"] = settings["vlm_model"]
+        config["vlm_api_key"] = vlm_api_key
         return config

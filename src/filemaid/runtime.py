@@ -21,6 +21,7 @@ _DEFAULT = {
     "sync_url": "",
     "vlm_url": "",
     "vlm_model": "",
+    "server_api_key": "",
     "local_vlm_fallback": False,
 }
 
@@ -59,6 +60,7 @@ class RuntimeSettings:
             "sync_url": saved.get("sync_url", ""),
             "vlm_url": saved.get("vlm_url", ""),
             "vlm_model": saved.get("vlm_model", ""),
+            "server_api_key": saved.get("server_api_key", ""),
             "local_vlm_fallback": bool(saved.get("local_vlm_fallback", False)),
             "configured": True,
         }
@@ -66,11 +68,12 @@ class RuntimeSettings:
 
     @staticmethod
     def _coerce(values: dict) -> dict:
-        """Standalone never keeps remote endpoints or a remote model name."""
+        """Standalone never keeps remote endpoints, model or server key."""
         if values["mode"] == "standalone":
             values["sync_url"] = ""
             values["vlm_url"] = ""
             values["vlm_model"] = ""
+            values["server_api_key"] = ""
             values["local_vlm_fallback"] = False
         return values
 
@@ -85,6 +88,7 @@ class RuntimeSettings:
                 "sync_url": "",
                 "vlm_url": "",
                 "vlm_model": "",
+                "server_api_key": "",
                 "local_vlm_fallback": False,
             }
         sync_url = str(values.get("sync_url", "")).strip()
@@ -94,11 +98,15 @@ class RuntimeSettings:
         vlm_url = endpoint(values.get("vlm_url", ""), "Endpoint VLM")
         if not vlm_url:
             raise ValueError("El modo servidor requiere la URL del VLM remoto")
+        server_api_key = str(values.get("server_api_key", "")).strip()
+        if not server_api_key:
+            raise ValueError("El modo servidor requiere la clave de API del servidor")
         return {
             "mode": "server",
             "sync_url": sync_url,
             "vlm_url": vlm_url,
             "vlm_model": vlm_model,
+            "server_api_key": server_api_key,
             "local_vlm_fallback": bool(values.get("local_vlm_fallback", False)),
         }
 
@@ -112,7 +120,10 @@ class RuntimeSettings:
         settings = settings or self.get()
         if settings["mode"] != "server":
             raise ValueError("La sincronización requiere modo servidor")
-        return self.store.sync(settings["sync_url"], os.environ.get("FILEMAID_SYNC_TOKEN", ""))
+        # The stored server key is the token for the native bridge; the env var
+        # remains only as an external fallback when no key is stored.
+        token = settings.get("server_api_key") or os.environ.get("FILEMAID_SYNC_TOKEN", "")
+        return self.store.sync(settings["sync_url"], token)
 
     # -- remote sync state (device-local, resumable) ----------------------
 

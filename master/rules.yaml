@@ -38,13 +38,16 @@ seleccion:
   # puntuación = confianza × peso del extractor; el field debe superarla para continuar.
   default_score_threshold: 0.3
   default_extractor_weights:
+    override: 1.0
     pypdf: 1.0
     zxing: 1.0
     tesseract: 0.9
     vlm: 0.85
     cloud_vlm: 0.8
-  # Desempate en empates de puntuación con valores distintos.
-  extractor_ranking: [pypdf, zxing, tesseract, vlm, cloud_vlm]
+  # Desempate en empates de puntuación con valores distintos. `override` (la
+  # corrección humana) va primero: gana el empate a puntuación 1.0. La garantía
+  # se aplica también al ranking efectivo por field (ver escoger.field_selection).
+  extractor_ranking: [override, pypdf, zxing, tesseract, vlm, cloud_vlm]
   fields:
     nif:
       format_tests: [NIF_FORMAT]
@@ -54,7 +57,7 @@ seleccion:
       format_tests: [PEDIDO_FORMAT]
     fecha:
       format_tests: [DATE_FORMAT]
-      extractor_ranking: [pypdf, tesseract, vlm, cloud_vlm]
+      extractor_ranking: [override, pypdf, tesseract, vlm, cloud_vlm]
     total:
       format_tests: [AMOUNT_POSITIVE]
     base:

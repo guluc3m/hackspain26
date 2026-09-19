@@ -18,10 +18,7 @@ src/filemaid/
   config.py         rutas de estado (data/, nunca /tmp) y config de extracción
   pipeline.py       worker: lote idempotente y resumable (clave: sha+stage+version+config)
   run.py            CLI: run | emit | serve | reprocess | clean
-  engines/          los dos motores de la arquitectura (llamadas sin definir)
-    extraction.py   bloque de extracción: features -> campos (extract/ + parse/)
-    decision.py     bloque de decisión: campos -> resultado (rules/)
-  desktop/          ventana nativa (pywebview): puente JS -> motores
+  desktop/          ventana nativa (pywebview): selector de carpeta y vigilante
   extract/          escalera de 7 escalones por página, cache y plausibilidad
     rungs/          1 texto (pypdf) · 2 raster+QR (pypdfium2+zxing) · 3 tesseract
                     4 VLM local (llama-server, temp 0) · 5 TypeSafe (solo juicios)

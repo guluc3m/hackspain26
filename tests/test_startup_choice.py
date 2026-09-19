@@ -12,6 +12,7 @@ _SERVER = {
     "mode": "server",
     "sync_url": "http://127.0.0.1:65533/facturas",
     "vlm_url": "https://vision.example/v1",
+    "server_api_key": "k",
 }
 
 

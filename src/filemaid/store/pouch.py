@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import errno
 import hashlib
 import json
@@ -54,6 +55,26 @@ def canonical(value: Any) -> bytes:
 
 def file_key(file_id: str, sha256: str) -> str:
     return hashlib.sha256(canonical([file_id, sha256])).hexdigest()
+
+
+@contextlib.contextmanager
+def interprocess_lock(path: Path):
+    """Cross-process lock on a dedicated file (never the store lock itself).
+
+    Used to serialise a multi-step operation (e.g. a review resolution) without
+    holding the store lock across the whole pipeline, which would deadlock.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        _lock_file(handle)
+        try:
+            yield
+        finally:
+            _unlock_file(handle)
 
 
 def couchdb_url(value: str) -> str:
@@ -188,6 +209,24 @@ class PouchStore:
 
     def local_put(self, name: str, payload: dict) -> None:
         self.request(op="local_put", id=name, payload=payload)
+
+    def selection(self) -> dict:
+        """Withheld selection computed by the bridge from current documents."""
+        return self.request(op="selection")
+
+    def put_conditional(self, doc: dict, file_key: str, expected_decision_id: str) -> str:
+        """Immutable put guarded by the file's current latest decision (atomic).
+
+        The guard and the write happen inside one locked bridge operation, so a
+        scan ingested concurrently cannot be resolved by accident.
+        """
+        self.request(
+            op="put_conditional",
+            doc=doc,
+            file_key=file_key,
+            expected_decision_id=expected_decision_id,
+        )
+        return doc["_id"]
 
     def sync(self, remote_url: str, token: str = "") -> dict:
         url = couchdb_url(remote_url)

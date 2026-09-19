@@ -2,12 +2,15 @@
 """Lanzador de filemaid: prepara el entorno y arranca cliente o servidor.
 
 Uso:
-    python start.py [client|server] [opciones]
+    python start.py [client|server|install] [opciones]
 
 `client` (por defecto) prepara el entorno uv (Python 3.13), las dependencias
 Node de PouchDB y el build de producción de la UI, y abre la app de escritorio
 (ventana nativa o `--headless`). `server` solo se admite en Linux y delega en
 `filemaid server`, que aprovisiona el VLM local en el propio proceso servidor.
+`install` hace solo la preparación del entorno, sin arrancar nada.
+
+Cerrar la app termina el lanzador: no se relanza nada.
 
 Este lanzador no guarda estado propio: el modo (standalone/servidor) se
 persiste con la API existente (`RuntimeSettings` sobre PouchDB). Solo usa
@@ -98,6 +101,28 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path = REPO_
         ) from exc
 
 
+def _run_app(cmd: list[str], *, env: dict[str, str] | None = None) -> int:
+    """Arranca la app y devuelve su código de salida.
+
+    Cerrar la ventana termina la app y, con ella, este lanzador: no se relanza
+    nada. Ctrl+C llega también al hijo (comparten grupo de procesos), así que
+    solo hay que esperar su cierre ordenado antes de salir.
+    """
+    _log("$ " + " ".join(str(part) for part in cmd))
+    try:
+        proc = subprocess.Popen(cmd, cwd=str(REPO_ROOT), env=env)
+    except FileNotFoundError as exc:
+        raise SystemExit(f"[filemaid] no se pudo ejecutar {cmd[0]}: {exc}") from exc
+    try:
+        return proc.wait()
+    except KeyboardInterrupt:
+        try:
+            return proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            return proc.wait()
+
+
 def _uv() -> str:
     return _resolve("uv")
 
@@ -123,6 +148,18 @@ def _uv_sync(extra_desktop: bool) -> None:
     _run(cmd)
 
 
+def _uv_cmd(args: list[str], *, extra_desktop: bool = False, sync: bool = True) -> list[str]:
+    """Comando `uv run` que preserva paquetes ajenos (`--inexact`)."""
+    cmd = [_uv(), "run"]
+    if sync:
+        cmd += ["--inexact"]
+        if extra_desktop:
+            cmd += ["--extra", "desktop"]
+    else:
+        cmd += ["--no-sync"]
+    return cmd + args
+
+
 def _uv_run(
     args: list[str],
     *,
@@ -131,15 +168,7 @@ def _uv_run(
     env: dict[str, str] | None = None,
 ) -> None:
     """Ejecuta dentro del entorno uv preservando paquetes ajenos."""
-    cmd = [_uv(), "run"]
-    if sync:
-        cmd += ["--inexact"]
-        if extra_desktop:
-            cmd += ["--extra", "desktop"]
-    else:
-        cmd += ["--no-sync"]
-    cmd += args
-    _run(cmd, env=env)
+    _run(_uv_cmd(args, extra_desktop=extra_desktop, sync=sync), env=env)
 
 
 def _pouchdb_installed() -> bool:
@@ -232,10 +261,18 @@ def _client(args: argparse.Namespace) -> int:
         _persist_standalone()
     if native:
         _warn_qt_platform()
-    cmd = ["filemaid-desktop"]
+    cmd = _uv_cmd(["filemaid-desktop"], extra_desktop=native)
     if args.headless:
         cmd += ["--headless", "--port", str(args.port)]
-    _uv_run(cmd, extra_desktop=native, env=env)
+    return _run_app(cmd, env=env)
+
+
+def _install(args: argparse.Namespace) -> int:
+    """Prepara el entorno sin arrancar nada: uv, PouchDB y build de la UI."""
+    _uv_sync(extra_desktop=args.desktop)
+    _ensure_pouchdb()
+    _ensure_ui()
+    _log("entorno listo")
     return 0
 
 
@@ -249,8 +286,8 @@ def _server(args: argparse.Namespace) -> int:
         )
     _uv_sync(extra_desktop=False)
     _ensure_pouchdb()
-    _uv_run(["filemaid", "server", "--host", args.host, "--port", str(args.port)])
-    return 0
+    cmd = _uv_cmd(["filemaid", "server", "--host", args.host, "--port", str(args.port)])
+    return _run_app(cmd)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -287,6 +324,13 @@ def main(argv: list[str] | None = None) -> int:
     p_server.add_argument("--host", default="127.0.0.1", help="host del servidor")
     p_server.add_argument("--port", type=int, default=8001, help="puerto del servidor")
 
+    p_install = sub.add_parser("install", help="prepara el entorno sin arrancar nada")
+    p_install.add_argument(
+        "--desktop",
+        action="store_true",
+        help="incluye la ventana nativa (extra desktop de pywebview)",
+    )
+
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] in {"-h", "--help"}:
         parser.print_help()
@@ -297,6 +341,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "server":
         return _server(args)
+    if args.mode == "install":
+        return _install(args)
     return _client(args)
 
 

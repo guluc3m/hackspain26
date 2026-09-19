@@ -1,7 +1,8 @@
-"""Motores de la arquitectura y puente pywebview: superficie sin definir.
+"""Ventana nativa pywebview: backend de ventana, arranque y puente de vigilancia.
 
-Los contratos existen (signatures); las llamadas lanzan NotImplementedError.
-La ventana nativa no se abre en tests (degrada a navegador, extra desktop).
+La ventana nativa no se abre en tests (degrada a navegador, extra desktop). El
+puente de vigilancia se prueba a fondo en `test_desktop_watcher.py`; aquí solo
+se comprueba la superficie que expone `Api`.
 """
 
 from __future__ import annotations
@@ -11,33 +12,32 @@ import sys
 
 import pytest
 
-from filemaid.desktop.app import Api, _gui_backend, _StderrArranque, ui_destino
-from filemaid.engines import DecisionEngine, ExtractionEngine
-from filemaid.types import ExtractionField
+from filemaid.desktop.app import Api, _gui_backend, _Runtime, _StderrArranque, ui_destino
 
 
-def test_extraction_engine_superficie_sin_definir():
-    with pytest.raises(NotImplementedError):
-        ExtractionEngine().extraer("factura.pdf")
+def test_api_ping_vivo(cfg):
+    assert Api(cfg).ping() == "pong"
 
 
-def test_decision_engine_superficie_sin_definir():
-    with pytest.raises(NotImplementedError):
-        DecisionEngine().decidir([ExtractionField(type="total")], "inv-1", "f.pdf")
-
-
-def test_api_ping_vivo():
-    assert Api().ping() == "pong"
-
-
-def test_api_extraer_propaga_llamada_sin_definir():
-    with pytest.raises(NotImplementedError):
-        Api().extraer("factura.pdf")
-
-
-def test_api_decidir_propaga_llamada_sin_definir():
-    with pytest.raises(NotImplementedError):
-        Api().decidir("inv-1")
+def test_api_expone_el_puente_de_vigilancia(cfg):
+    api = Api(cfg)
+    estado = api.vigilancia_estado()
+    assert set(estado) == {
+        "enabled",
+        "folder",
+        "running",
+        "error",
+        "processed",
+        "pending",
+        "notifications",
+    }
+    assert estado["enabled"] is False
+    assert estado["folder"] == ""
+    assert callable(api.elegir_carpeta)
+    assert callable(api.vigilancia_configurar)
+    assert callable(api.vigilancia_escanear)
+    assert callable(api.arrancar_vigilancia)
+    api.detener_vigilancia()
 
 
 def test_gui_backend_qt_en_linux_y_windows_y_auto_en_otras(monkeypatch):
@@ -92,7 +92,7 @@ def test_ui_destino_url_de_dev_tiene_prioridad(monkeypatch, tmp_path):
     dist_inexistente = tmp_path / "no-existe" / "index.html"
     monkeypatch.setattr("filemaid.desktop.app._dist_index", lambda: dist_inexistente)
     with pytest.raises(SystemExit):
-        ui_destino()  # sin dist y sin URL: instrucción clara
+        ui_destino(_Runtime())  # sin dist y sin URL: instrucción clara
 
     monkeypatch.setenv("FILEMAID_UI_URL", "http://127.0.0.1:5173")
-    assert ui_destino() == "http://127.0.0.1:5173"
+    assert ui_destino(_Runtime()) == "http://127.0.0.1:5173"
