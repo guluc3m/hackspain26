@@ -26,8 +26,17 @@ def text_is_plausible(text: str, thresholds: dict | None = None) -> bool:
     if alnum < cfg["min_alnum_ratio"]:
         return False
     words = [w for w in text.split() if sum(ch.isalpha() for ch in w) >= 2]
-    return len(words) >= cfg["min_words"]
-
+    if len(words) >= cfg["min_words"]:
+        return True
+    # Detect vertical / 1-char wrapped text lines
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    single_char_lines = sum(1 for line in lines if len(line) == 1 and line.isalnum())
+    if len(lines) >= cfg["min_words"] and single_char_lines / len(lines) >= 0.5:
+        reassembled = "".join(lines)
+        words = [w for w in reassembled.split() if sum(ch.isalpha() for ch in w) >= 2]
+        if len(words) >= cfg["min_words"] or sum(ch.isalnum() for ch in reassembled) >= cfg["min_words"] * 3:
+            return True
+    return False
 
 def min_words(thresholds: dict | None = None) -> int:
     """Umbral expuesto por si un test quiere saber cuántas palabras exige."""

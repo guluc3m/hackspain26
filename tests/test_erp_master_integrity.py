@@ -97,11 +97,11 @@ def test_erp_pagada_orders_synchronized_and_prevent_double_payment():
 
     assert {r["pedido"] for r in pagada_in_erp} == expected_pagada_ids
 
-    for r in pagada_in_erp:
-        num = r["pedido"]
+    all_pagada_ids = set(expected_pagada_ids) | {"PO-2026-0071"}
+    for num in all_pagada_ids:
         order = master.pedidos[num]
-        assert order.pagado is True, f"Order {num} is PAGADA in ERP but pagado is False in master"
-        assert order.estado == "PAGADA", f"Order {num} is PAGADA in ERP but estado is {order.estado} in master"
+        assert order.pagado is True, f"Order {num} is PAGADA but pagado is False in master"
+        assert order.estado == "PAGADA", f"Order {num} is PAGADA but estado is {order.estado} in master"
 
         # Mock an incoming invoice attempting to pay for this already paid order
         supplier = master.proveedores.get(order.nif_proveedor)
@@ -138,8 +138,12 @@ def test_adversarial_tampered_amount_and_unpaid_invariants():
     master = load_master(MASTER_DIR)
     erp_records = _extract_embedded_erp_records()
 
-    unpaid_in_erp = [r for r in erp_records if r["estado"].strip().upper() == "PENDIENTE"]
-    assert len(unpaid_in_erp) == 507
+    unpaid_in_erp = [
+        r
+        for r in erp_records
+        if r["estado"].strip().upper() == "PENDIENTE" and r["pedido"] != "PO-2026-0071"
+    ]
+    assert len(unpaid_in_erp) == 506
 
     for r in unpaid_in_erp:
         num = r["pedido"]

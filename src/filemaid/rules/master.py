@@ -11,6 +11,7 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from filemaid.parse.normalizers import normalize_iban, normalize_nif, parse_amount
 
 @dataclass(slots=True)
 class Proveedor:
@@ -54,20 +55,24 @@ def load_master(dir_path: Path) -> MasterData:
     if prov_path.exists():
         with prov_path.open(encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
+                raw_iban = row["iban"].strip()
                 p = Proveedor(
-                    nif=row["nif"].strip().upper(),
+                    nif=normalize_nif(row["nif"]),
                     nombre=row["nombre"].strip(),
-                    iban=row["iban"].strip().upper().replace(" ", ""),
+                    iban=normalize_iban(raw_iban),
                 )
                 master.proveedores[p.nif] = p
     ped_path = dir_path / "pedidos.csv"
     if ped_path.exists():
         with ped_path.open(encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
+                raw_imp = row["importe"].strip()
+                parsed_imp = parse_amount(raw_imp)
+                importe = parsed_imp if parsed_imp is not None else float(raw_imp.replace(",", "."))
                 q = Pedido(
                     numero=row["numero"].strip().upper(),
-                    nif_proveedor=row["nif_proveedor"].strip().upper(),
-                    importe=float(row["importe"].replace(",", ".")),
+                    nif_proveedor=normalize_nif(row["nif_proveedor"]),
+                    importe=importe,
                     estado=row["estado"].strip().upper(),
                     pagado=row.get("pagado", "no").strip().lower()
                     in {"si", "sí", "yes", "true", "1"},
