@@ -19,6 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from albertitos.types import Decision, EvidenceRow
 
@@ -61,6 +62,40 @@ class Store:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=FULL")
         self._init_schema()
+        self._mongo, self._mongo_estado = self._conectar_mongo()
+        self._escribir_backend_marker()
+
+    def _conectar_mongo(self) -> tuple[Any, Any]:
+        """Mongo OPCIONAL para la parte dinámica (MONGO_URI): si no está,
+        la app sigue con SQLite. NUNCA lanza ni bloquea el arranque.
+        Más de 2 s de espera jamás: timeout acotado en connect_mongo."""
+        try:
+            from albertitos.store_mongo import connect_mongo
+        except Exception:  # noqa: BLE001 — sin capa mongo, SQLite puro
+            return None, None
+        backend, estado = connect_mongo()
+        return backend, estado
+
+    def _escribir_backend_marker(self) -> None:
+        """store-backend.json: qué backend sirve la parte dinámica (/salud)."""
+        if self._mongo_estado is not None:
+            mongo = self._mongo_estado.as_dict()
+        else:
+            mongo = {"state": "no-configurado", "detail": "capa mongo ausente"}
+        marker = {
+            "backend": "mongo" if self._mongo else "sqlite",
+            "mongo": mongo,
+        }
+        (self.root / "store-backend.json").write_text(
+            json.dumps(marker, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def mongo_estado(self) -> dict[str, str]:
+        """Estado de la capa Mongo dinámica, para /salud. Sin Mongo ⇒ sqlite."""
+        if self._mongo_estado is not None:
+            return self._mongo_estado.as_dict()
+        return {"state": "no-configurado", "detail": "MONGO_URI sin definir: facturas en SQLite"}
 
     # ---------------------------------------------------------------- schema
 
@@ -270,6 +305,10 @@ class Store:
         )
         self._register_attrs(decision.file_id, extra)
         self._conn.commit()
+        self._espejar_mongo(
+            decision, sha256, codes, numero_factura, pedido, nif, iban,
+            extra, engine_version, run_id,
+        )
         if changed:
             self._ledger({
                 "event": "decision",
@@ -282,6 +321,39 @@ class Store:
                 "run_id": run_id,
             })
         return changed
+
+    def _espejar_mongo(
+        self, decision: Decision, sha256: str, codes: str, numero_factura: str,
+        pedido: str, nif: str, iban: str, extra: dict,
+        engine_version: str, run_id: str,
+    ) -> None:
+        """Espejo del estado dinámico en Mongo (colecciones `facturas` +
+        `attrs`). SQLite sigue siendo la FUENTE DE AUTORIDAD: si Mongo falla,
+        no se pierde nada y la app sigue (el fallo solo se ve en /salud)."""
+        if self._mongo is None:
+            return
+        try:
+            self._mongo.put_factura({
+                "file_id": decision.file_id,
+                "invoice_id": decision.invoice_id,
+                "sha256": sha256,
+                "result": decision.result,
+                "rule_codes": codes,
+                "numero_factura": numero_factura,
+                "pedido": pedido,
+                "nif": nif,
+                "iban": iban,
+                "config_version": decision.config_snapshot.get("config_version", ""),
+                "engine_version": engine_version,
+                "run_id": run_id,
+                "updated_at": _now(),
+                "extra": dict(extra),
+            })
+            self._mongo.register_attrs(decision.file_id, extra)
+        except Exception as exc:  # noqa: BLE001 — Mongo es espejo, jamás bloquea
+            self._mongo_estado = type(self._mongo_estado)(
+                "down", f"Mongo no responde: {exc}") if self._mongo_estado else None
+            self._escribir_backend_marker()
 
     def decision_for(self, file_id: str) -> StoredDecision | None:
         row = self._conn.execute(
