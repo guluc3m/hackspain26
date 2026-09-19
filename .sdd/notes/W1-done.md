@@ -234,3 +234,24 @@
   test_simulacro rmtree la cola REAL de W1 a mitad de suite — causa del único
   rojo residual del suite (test_ui_lote1); regenerable con el tool.
 - 251/252 verde (rojo = interferencia entre workers documentada), ruff limpio.
+
+## Actualización 10: T38 · ciclo CAZADOR — 7 hallazgos con repro
+- F1 p1 (motor/supervisor): NIF_IN_MASTER colapsa con el 1er candidato —
+  falso NO_PAGAR con un candidato SÍ en el maestro (misma clase que el ROJO
+  del T17). Repro verificado con maestro_fixture.
+- F2 p1 (parser/W2): «Subtotal» genera candidato fantasma de total y «Total
+  facturado: X» NO se captura (regex solo admite [:.\-]* tras la etiqueta) ⇒
+  NO_PAGAR falso que ADR-06 no puede salvar (repro: candidatos total=[1409.4]).
+- F3 p2: parse_amount('12,345') → None (carácter equivocado en la rama de
+  miles por coma).
+- F4 p2: parse_fecha devuelve None si la 1ª fecha es inválida.
+- F5 p2: extraer_iban descarta IBANs malformados sin candidato (veto en
+  extracción, contra §2).
+- F6 p1 (producto): overrides humanos de la UI NUNCA se consumen —
+  read_overrides existe pero no tiene ningún llamador; el bucle de revisión
+  es un callejón sin salida.
+- F7 p2 (lote 2): load_master crashea con importes como texto; duplicados de
+  pedido se sobreescriben sin aviso.
+- Nit de integración: import reordenado en test_modo_alberto (ruff).
+- 7 tickets en .sdd/backlog/open/ para el EVALUADOR/supervisor. Suite
+  285 passed, ruff limpio, higiene de secretos OK. Sin push.
