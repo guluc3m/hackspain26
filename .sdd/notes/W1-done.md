@@ -111,3 +111,26 @@
 - NOTA límite del ticket (runner final): los escaneos con timeout quedaron
   ESCALAR — correcto según política (ante duda, ESCALAR), y re-procesable
   barato vía cache cuando se revise el timeout o llegue lote 2.
+
+## Actualización 5: T17 · Auditoría de trampas contra el outcomes real
+- `tools/audit_trampas.py` + snapshot `.sdd/metrics/outcomes-lote1.jsonl`
+  (copia del outcomes.jsonl validado, 500) → `.sdd/metrics/auditoria-trampas.md`.
+- VERDE: fantasmas (3, ESCALAR citando PROVEEDOR_FANTASMA); FA-8801 duplicado
+  (1ª PAGAR, 2ª NO_PAGAR por NO_DOUBLE_PAYMENT — coherente §6); instrucciones
+  embebidas (9 marcadas, 0 PAGAR — los datos nunca son comandos); outlier 84700
+  ESCALAR; pendiente_revisar PO-2026-0007/0141 ESCALAR; 26/26 scans ESCALAR con
+  rung-4 below-threshold (0 confianzas sospechosas). Pedidos 0538–0557 (NIF
+  vacío): 0 muestras en lote 1 — riesgo documentado para lote 2.
+- **ROJO mayor (hallazgo)**: el motor colapsa values[] con el PRIMER candidato
+  de total; cuando la factura trae «Subtotal» + «TOTAL A PAGAR», elige el
+  Subtotal y compara contra el importe CON IVA del maestro ⇒ 87 de los 108
+  NO_PAGAR son FALSOS (un candidato de total sí matchea con tolerancia 0,01;
+  14 genuinos; los otros 7 NO_PAGAR vienen de otros códigos, misma causa
+  probable). Bug de matching/selección de candidato (T3/W2), no de extracción
+  ni de política — el candidato correcto ESTÁ en el store. Corrección sugerida:
+  preferir la línea «TOTAL A PAGAR» o tratar el desacuerdo entre candidatos
+  como ambigüedad (ESCALAR, §6), registrando el porqué (AGENTS §2).
+- NO se cambian resultados a mano (regla del ticket): ROJO documentado y el
+  estado PINNADO en tests/test_auditoria_trampas.py — al corregir y reprocesar
+  el test fallará a propósito y forzará re-auditar. El supervisor decide.
+- 164 tests verde, ruff limpio.
