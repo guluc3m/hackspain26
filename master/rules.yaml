@@ -1,4 +1,3 @@
-rule_set_version: v1
 rules:
   enabled:
     - DATE_VALID_NOT_FUTURE
@@ -26,3 +25,32 @@ thresholds:
     min_confidence: 0.7
   TOTALS_MUST_MATCH:
     min_confidence: 0.7
+seleccion:
+  # puntuación = confianza × peso del extractor; el field debe superarla para continuar.
+  default_score_threshold: 0.3
+  default_extractor_weights:
+    pypdf: 1.0
+    zxing: 1.0
+    tesseract: 0.9
+    vlm: 0.85
+    cloud_vlm: 0.8
+  # Desempate en empates de puntuación con valores distintos.
+  extractor_ranking: [pypdf, zxing, tesseract, vlm, cloud_vlm]
+  fields:
+    nif:
+      format_tests: [NIF_FORMAT]
+    iban:
+      format_tests: [IBAN_FORMAT]
+    pedido:
+      format_tests: [PEDIDO_FORMAT]
+    fecha:
+      format_tests: [DATE_FORMAT]
+      extractor_ranking: [pypdf, tesseract, vlm, cloud_vlm]
+    total:
+      format_tests: [AMOUNT_POSITIVE]
+    base:
+      format_tests: [AMOUNT_POSITIVE]
+    iva_amount:
+      format_tests: [AMOUNT_NON_NEGATIVE]
+    iva_rate:
+      format_tests: [AMOUNT_NON_NEGATIVE]

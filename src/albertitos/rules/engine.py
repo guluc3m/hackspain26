@@ -24,7 +24,7 @@ def evaluate(
     file_id: str,
     extractor_versions: dict[str, str] | None = None,
 ) -> Decision:
-    ctx = RuleContext(fields=fields, master=master, thresholds=rule_config.thresholds)
+    ctx = RuleContext(fields=fields, master=master, thresholds=rule_config.thresholds, seleccion=rule_config.seleccion)
     enabled = set(rule_config.enabled_codes) or {r.code for r in all_rules()}
 
     evaluations = [
@@ -41,7 +41,6 @@ def evaluate(
         result = Result.PAGAR
 
     snapshot = ConfigSnapshot(
-        rule_set_version=rule_config.rule_set_version,
         thresholds=rule_config.thresholds,
         extractor_versions=extractor_versions or {},
         master_sha256=master.sha256,

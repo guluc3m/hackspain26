@@ -34,11 +34,18 @@ def test_todo_pass_pagara(master, rule_config):
 
 def test_nif_fuera_de_maestro_no_pagara(master, rule_config):
     fields = _fields_ok(master)
-    fields["nif"] = _field("nif", "Z99999999")
+    fields["nif"] = _field("nif", "B00000000")  # forma válida (CIF), no está en el maestro
     d = evaluate(fields, master, rule_config, "inv-2", "f.pdf")
     assert d.result is Result.NO_PAGAR
     fails = [e for e in d.rule_evaluations if e.verdict is RuleVerdict.FAIL]
     assert any(e.code == "NIF_IN_MASTER" for e in fails)
+
+
+def test_nif_con_formato_invalido_escala_no_pagara(master, rule_config):
+    fields = _fields_ok(master)
+    fields["nif"] = _field("nif", "Z99999999")  # no es NIF/NIE/CIF: no es un negativo definitivo
+    d = evaluate(fields, master, rule_config, "inv-2b", "f.pdf")
+    assert d.result is Result.ESCALAR
 
 
 def test_duda_razonable_escala(master, rule_config):
@@ -83,6 +90,27 @@ def test_pedido_duplicado_no_pagara(master, rule_config):
         e.code == "NO_DOUBLE_PAYMENT" and e.verdict is RuleVerdict.FAIL
         for e in d.rule_evaluations
     )
+
+
+def test_pedido_inexistente_no_es_doble_pago(master, rule_config):
+    fields = _fields_ok(master)
+    fields["pedido"] = _field("pedido", "P-2099-999")  # no está en el ERP: no puede estar pagado
+    d = evaluate(fields, master, rule_config, "inv-8b", "f.pdf")
+    assert any(
+        e.code == "NO_DOUBLE_PAYMENT" and e.verdict is RuleVerdict.PASS
+        for e in d.rule_evaluations
+    )
+
+
+def test_pedido_formato_po_inexistente_pasa_doble_pago(master, rule_config):
+    # Caso real (2026-01-08_P001.pdf): el corpus usa prefijo PO- y el pedido
+    # no está en el ERP ⇒ NO_DOUBLE_PAYMENT pasa (no puede haber pago previo).
+    fields = _fields_ok(master)
+    fields["pedido"] = _field("pedido", "PO-2026-0096")
+    d = evaluate(fields, master, rule_config, "inv-8c", "f.pdf")
+    evs = {e.code: e for e in d.rule_evaluations}
+    assert evs["NO_DOUBLE_PAYMENT"].verdict is RuleVerdict.PASS
+    assert evs["ORDER_BELONGS_TO_SUPPLIER"].verdict is RuleVerdict.FAIL
 
 
 def test_normalizadores():

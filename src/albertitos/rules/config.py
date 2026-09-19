@@ -25,10 +25,6 @@ class RuleConfig:
         return cls(data, hashlib.sha256(raw).hexdigest()[:12])
 
     @property
-    def rule_set_version(self) -> str:
-        return str(self.data.get("rule_set_version", "v0"))
-
-    @property
     def enabled_codes(self) -> list[str]:
         return [str(c) for c in self.data.get("rules", {}).get("enabled", [])]
 
@@ -36,9 +32,13 @@ class RuleConfig:
     def thresholds(self) -> dict[str, Any]:
         return dict(self.data.get("thresholds", {}))
 
+    @property
+    def seleccion(self) -> dict[str, Any]:
+        """Config de selección de valores (tests de formato, pesos, umbrales, ranking)."""
+        return dict(self.data.get("seleccion", {}))
+
     def snapshot(self, extractor_versions: dict[str, str], master_sha: str) -> dict[str, Any]:
         return {
-            "rule_set_version": self.rule_set_version,
             "config_version": self.version,
             "thresholds": self.thresholds,
             "extractor_versions": extractor_versions,

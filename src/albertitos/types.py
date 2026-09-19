@@ -80,7 +80,6 @@ class RuleEvaluation:
 class ConfigSnapshot:
     """Configuración activa en el momento de la decisión."""
 
-    rule_set_version: str
     thresholds: dict[str, Any] = field(default_factory=dict)
     extractor_versions: dict[str, str] = field(default_factory=dict)
     master_sha256: str = ""
