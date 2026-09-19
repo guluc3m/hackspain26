@@ -114,16 +114,21 @@ def test_cambio_de_dato_solo_afecta_los_que_cruzan_y_el_historico_coexiste():
 
 def test_emision_lote2_validada_y_lote1_intacto():
     store_db = REPO / ".sdd" / "store.db"
-    store_antes = (hashlib.sha256(store_db.read_bytes()).hexdigest()
-                   if store_db.exists() else None)
+    outcomes_l1 = REPO / "outcomes.jsonl"
+    hashes_antes = {
+        str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in (store_db, outcomes_l1) if p.exists()
+    }
 
     r = simular_lote2(_cfg())
     assert r["emision"]["validacion"] == "OK"
     assert r["emision"]["lineas"] == 10
     assert r["emision"]["errores"] == []
-    # el lote 1 no se tocó: byte a byte
-    if store_db.exists():
-        assert hashlib.sha256(store_db.read_bytes()).hexdigest() == store_antes
+    # el lote 1 no se tocó: byte a byte (store Y outcomes.jsonl)
+    for p in (store_db, outcomes_l1):
+        if p.exists():
+            assert (hashlib.sha256(p.read_bytes()).hexdigest()
+                    == hashes_antes[str(p)]), f"{p.name} modificado"
     assert r["lote1_inalterado"] is True
 
 
