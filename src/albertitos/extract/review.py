@@ -8,8 +8,9 @@ UI already consumes (`src/albertitos/ui/ledger.py`, worker/w3):
 
 Human overrides arrive from the UI at `.sdd/review-queue/overrides.jsonl`
 (schema: OverrideView). They feed EXTRACTION ONLY — the decision is always
-recomputed deterministically by the rule engine. This module only reads them;
-it never duplicates the override mechanism.
+recomputed deterministically by the rule engine. The runner reads the pending
+ones (`read_overrides_pendientes`), injects each as a candidate and marks it
+consumed (`marcar_consumidas`, append-only); this module never decides.
 """
 
 from __future__ import annotations
