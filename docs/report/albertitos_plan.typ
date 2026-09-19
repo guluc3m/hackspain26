@@ -21,6 +21,7 @@
 )
 
 #include "architecture.typ"
+#include "architecture-rules.typ"
 #include "implementation.typ"
 #include "escalabilidad.typ"
 
@@ -80,6 +81,24 @@
   evidencia: [Auditoría T17 (`.sdd/metrics/auditoria-trampas.md`): 87/108 falsos con la firma exacta (candidato [1409.4, 1705.37], maestro 1705.37); reprocesado del lote 1 con diff medido `.sdd/metrics/impacto-fix-colapso.json` — 87 NO_PAGAR→PAGAR, 14 genuinos se mantienen NO_PAGAR, 0 regresiones; tests del motor con candidatos Subtotal+TOTAL, ninguno y varios matcheando (T18).],
 )
 
+#adr([Colapso de candidatos determinista y configurable (escoger)],
+  status: "ACEPTADA",
+  contexto: [El parser conserva todos los candidatos de cada campo, pero las reglas consumen escalares. Elegir el candidato en el momento de la evaluación debe ser reproducible y auditable: la auditoría del lote 1 detectó falsos NO_PAGAR por colapsar sin registrar el porqué.],
+  alternativas: [Primer candidato de la lista (bug del lote 1); quedarse con el de mayor confianza (la confianza es del extractor, no de qué línea es el valor); escalar siempre que haya varios candidatos (coste humano injustificado cuando los valores concuerdan).],
+  decision: [Colapso puro en cuatro pasos configurables por campo: trim, tests de formato con ID estable, puntuación = confianza × peso del extractor con umbral por campo, y desempate por ranking de extractores. Cada paso deja rastro (elegido, rechazado por formato, bajo umbral, desfavorecido en el desempate) y la elección se registra en la evaluación de la regla. Toda la config vive en rules.yaml (sección seleccion), con hash en el snapshot.],
+  consecuencias: [Mismo campo + misma config ⇒ mismo elegido, siempre; los cambios de criterio son datos, no código. Coste O(n) por campo, despreciable frente a la extracción.],
+  evidencia: [tests/test_escoger.py cubre rechazos por formato, umbral y desempates; el audit por candidato entra en la evidencia del store; rules.yaml `seleccion` con pesos por extractor (pypdf 1.0, tesseract 0.9, ...).],
+)
+
+#adr([Confianza mínima por regla: bajo umbral ⇒ UNKNOWN, nunca interpretar],
+  status: "ACEPTADA",
+  contexto: [Los extractores devuelven candidatos con confianza, y una lectura floja de OCR puede parecer un total o un NIF plausibles. Decidir sobre basura produce negativos definitivos que un humano nunca debería tener que deshacer.],
+  alternativas: [Umbral global único (un IVA no necesita la misma confianza que un total); interpretar siempre el mejor candidato y dejar que el motivo del FAIL explique la duda; escalar toda factura con confianza menor a 1 (todo el corpus a revisión).],
+  decision: [Cada regla fija `min_confidence` por campo (config, con valor por defecto en código): si el mejor candidato del campo no la supera tras el colapso, la regla devuelve UNKNOWN con el motivo (`UNKNOWN_CONFIANZA_BAJA`) y el motor escala. También es UNKNOWN el campo ausente o sin candidato que supere formato y umbral de puntuación.],
+  consecuencias: [Las lecturas dudosas acaban en la cola humana en vez de en NO_PAGAR dudosos; ajustar la exigencia por regla es cambiar un número en el YAML. A cambio, más ESCALAR cuando los umbrales se ponen estrictos: se calibran con el corpus.],
+  evidencia: [tests/test_rules_engine.py: `test_confianza_baja_escala_no_interpreta_basura`, `test_unknown_lleva_codigo_de_causa`, `test_duda_razonable_escala`; umbrales por regla en master/rules.yaml.],
+)
+
 #adr([App de escritorio multiplataforma: pywebview, NO Electron (ADR-07)],
   status: "ACEPTADA",
   contexto: [El requisito del usuario: que funcione también en Windows y Mac, con integración de app «tipo Electron o similar». Alberto usa la app desde Linux, pero la demo debe portarse a otros escritorios.],
@@ -92,7 +111,7 @@
 #adr([Resultado configurable por regla: `outcomes.on_fail` (FAIL → NO_PAGAR/ESCALAR) (ADR-08)],
   status: "ACEPTADA",
   contexto: [La doctrina §6 fija que un `FAIL` es un negativo definitivo y un `UNKNOWN` es duda razonable, pero no toda regla incumplida debe descartar la factura para siempre: un NIF o un IBAN que no cruzan con el maestro pueden ser un proveedor nuevo que un humano sí puede admitir. Con la frontera cableada en el motor (`FAIL ⇒ NO_PAGAR`), atender ese caso exigía excepciones por regla en código, justo lo que la arquitectura prohíbe (política como DATOS).],
-  alternativas: [Excepciones hardcodeadas por regla en el motor (toca código por cada matiz de política); un único flag global (no permite que unas reglas escalen y otras no); dejar todo `FAIL ⇒ NO_PAGAR` (bloquea definitivamente proveedores legítimos y llena de falsos negativos la cola humana); cualquier veredicto, incluido `PAGAR`, al gusto (peligroso: una regla rota jamás debe pagar).],
+  alternativas: [Excepciones hardcodeadas por regla en el motor (toca código por cada matiz de política); un único flag global (no permite que unas reglas escalen y otras no); dejar todo `FAIL ⇒ NO_PAGAR` (bloquea definitivamente proveedores legítimos y llena de falsos negativos la cola humana); cualquier veredicto, incluido `PAGAR`, al gusto (peligroso: una regla rota jamás debe pagar)],
   decision: [`outcomes.default` (por defecto `NO_PAGAR`) y `outcomes.on_fail.<RULE_CODE>` (`NO_PAGAR` o `ESCALAR`) en `rules.yaml`, configuración versionada. El motor resuelve cada `FAIL` al resultado configurado para su regla; `PAGAR` queda prohibido y la carga de la config lo rechaza con `ValueError`. La agregación resultante (algún FAIL→NO_PAGAR ⇒ NO_PAGAR; si no, FAIL→ESCALAR/UNKNOWN/sin reglas ⇒ ESCALAR; si no ⇒ PAGAR) conserva el determinismo y la pureza. El snapshot de cada decisión incluye `rule_outcomes` (resultado resuelto por regla), y el informe/API lo exponen. Se configura `NIF_IN_MASTER` e `IBAN_MATCHES_MASTER` como `ESCALAR`; el resto sigue `NO_PAGAR`.],
   consecuencias: [La frontera `NO_PAGAR`/`ESCALAR` pasa a ser DATOS auditables por decisión sin tocar código; reproducir por qué un `FAIL` escaló o no es posible desde el snapshot. El coste humano sube donde se elige escalar (los proveedores fuera de maestro ya no se descartan en solitario) — decisión consciente y reversible por config. El default `NO_PAGAR` mantiene estable el comportamiento de las reglas no declaradas.],
   evidencia: [Tests (tests/test_rules_engine.py): `on_fail` configurable ⇒ FAIL escala; sin config ⇒ NO_PAGAR; `PAGAR` y un default inválido son rechazados; el snapshot incluye `rule_outcomes`. test_report.py: un `FAIL→ESCALAR` aparece como driver de `ESCALAR` con leyenda «FAIL→ESCALAR», no como negativo definitivo. Artefactos: `master/rules.yaml`, `config.py`, `engine.py`, `report.py`, `api/app.py`.],
