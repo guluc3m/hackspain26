@@ -32,7 +32,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from albertitos.metrics import PRECIOS
+# Precios unitarios (config — el único precio de la app: llamada cloud).
+# Cloud: nº de llamadas × €/llamada. CPU local es gratis (electricidad estimada
+# aparte, citada solo en el informe).
+PRECIO_CLOUD_EUR_POR_LLAMADA = 0.004
 
 RUNG_RE = re.compile(r"rung(\d+)")
 
@@ -96,7 +99,7 @@ def stats_por_rung(
                 grupo["coste_eur"] += float(coste)
             elif rung in ("rung5", "cloud_vlm") and not es_skip:
                 # nº llamadas × precio (config T9 — fórmula intacta)
-                grupo["coste_eur"] += float(PRECIOS["cloud"]["eur_por_llamada"])
+                grupo["coste_eur"] += PRECIO_CLOUD_EUR_POR_LLAMADA
             total_filas += 1
         salida: dict[str, Any] = {}
         for rung in sorted(por_rung):
@@ -177,7 +180,7 @@ def stats_vlm(
             if "cache hit" in str(e.get("outcome", "")).lower()
             or "cache hit" in str(e.get("detail", "")).lower()
         )
-        precio = float(PRECIOS["cloud"]["eur_por_llamada"])
+        precio = PRECIO_CLOUD_EUR_POR_LLAMADA
         facturables = max(0, emitidas - cacheadas)
         out[nombre] = {
             "n_invocaciones": emitidas,
