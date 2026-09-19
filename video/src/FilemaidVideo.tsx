@@ -275,33 +275,34 @@ const Regla: React.FC<{ code: string; state: 'PASS' | 'FAIL' | 'UNKNOWN' }> = ({
 
 const Traza: React.FC = () => {
   const f = useCurrentFrame();
-  const reglasDup = REGLAS.map((code) => ({ code, state: CASO_DUPLICADO.fails.includes(`${code}:FAIL` as never) ? 'FAIL' as const : 'PASS' as const }));
-  const reglasScan = REGLAS.map((code) => ({ code, state: CASO_SCAN.unknowns === 11 && code !== 'NO_DOUBLE_PAYMENT' && code !== 'NO_EMBEDDED_INSTRUCTIONS' && code !== 'PROVEEDOR_FANTASMA' ? 'UNKNOWN' as const : 'PASS' as const }));
+  // Los 8 rule_ids reales (RULE_CODES) con el estado que salió en la corrida
+  // real: lo que no está en `notPass` del caso salió PASS.
+  const estados = (caso: { file_id: string; result: string; notPass: readonly string[]; nota: string }) =>
+    REGLAS.map((code) => ({
+      code,
+      state: (caso.notPass.includes(`${code}:FAIL` as never) ? 'FAIL'
+        : caso.notPass.includes(`${code}:UNKNOWN` as never) ? 'UNKNOWN' : 'PASS') as 'PASS' | 'FAIL' | 'UNKNOWN',
+    }));
+  const casos = [CASO_DUPLICADO, CASO_SCAN, CASO_ESCALAR];
   return (
     <Escena idx={4}>
       <Frame>
         <SectionKicker n="TRAZABILIDAD" title="Sigamos una decisión real" />
-        <div style={{ display: 'flex', gap: 36 }}>
-          <div style={{ flex: 1, ...rise(f, 20) }}>
-            <div style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700 }}>{CASO_DUPLICADO.file_id}</div>
-            <div style={{ margin: '14px 0 10px' }}><VerdictBadge result={CASO_DUPLICADO.result} /></div>
-            <div style={{ border: `2px solid ${C.ink}`, background: C.panel }}>
-              {reglasDup.map((r) => <Regla key={r.code} code={r.code} state={r.state} />)}
+        <div style={{ display: 'flex', gap: 28 }}>
+          {casos.map((caso, i) => (
+            <div key={caso.file_id} style={{ flex: 1, ...rise(f, 20 + i * 20) }}>
+              <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700 }}>{caso.file_id}</div>
+              <div style={{ margin: '12px 0 8px' }}><VerdictBadge result={caso.result} size={34} /></div>
+              <div style={{ border: `2px solid ${C.ink}`, background: C.panel }}>
+                {estados(caso).map((r) => <Regla key={r.code} code={r.code} state={r.state} />)}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 22, color: C.brown }}>{caso.nota}</div>
             </div>
-            <div style={{ marginTop: 12, fontSize: 24, color: C.brown }}>{CASO_DUPLICADO.nota}</div>
-          </div>
-          <div style={{ flex: 1, ...rise(f, 60) }}>
-            <div style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700 }}>{CASO_SCAN.file_id}</div>
-            <div style={{ margin: '14px 0 10px' }}><VerdictBadge result={CASO_SCAN.result} /></div>
-            <div style={{ border: `2px solid ${C.ink}`, background: C.panel }}>
-              {reglasScan.map((r) => <Regla key={r.code} code={r.code} state={r.state} />)}
-            </div>
-            <div style={{ marginTop: 12, fontSize: 24, color: C.brown }}>{CASO_SCAN.nota}</div>
-          </div>
+          ))}
         </div>
-        <div style={{ ...rise(f, 110), marginTop: 34, display: 'flex', gap: 18 }}>
+        <div style={{ ...rise(f, 110), marginTop: 28, display: 'flex', gap: 18 }}>
           {['sha256', 'extractor+versión', 'confianza por candidato', 'config_version', 'latencia_ms'].map((e) => (
-            <span key={e} style={{ fontFamily: MONO, fontSize: 23, background: C.sand, border: `1px solid ${C.ink}`, padding: '8px 18px' }}>{e}</span>
+            <span key={e} style={{ fontFamily: MONO, fontSize: 21, background: C.sand, border: `1px solid ${C.ink}`, padding: '8px 16px' }}>{e}</span>
           ))}
         </div>
       </Frame>

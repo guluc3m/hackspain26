@@ -1,133 +1,135 @@
 # Auditoría de requisitos — Maisa «500 Sombras de Alberto»
 
-**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Commit:** `867748b` («Ingesta por carpeta, vigilante de escritorio, revisión humana con replicación selectiva y UI Typst»)
-**Fecha:** 2026-09-19 · **Alcance:** solo lectura; verificación con comandos puntuales (sin full-suite).
+**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Commit:** `59489fa` («UI: menos clics en el flujo frecuente…»)
+**Fecha:** 2026-09-19 (22:57 UTC) · **Alcance:** solo lectura; verificación con comandos puntuales (sin full-suite). No se ha tocado código fuente.
 
-Fuentes de requisitos: https://hackathon.maisa.ai/ (transcripción completa en `caja-de-alberto/README.md`, que es el enunciado oficial) y el contrato interno `AGENTS.md`. La spec autoritativa es `docs/report/architecture.typ`.
+**Respecto a la auditoría anterior (commit `867748b`)** han entrado 8 commits (`git log 867748b..HEAD --oneline`): vídeo Remotion de 3 min + auditoría previa (`bd15555`), capturas reales de UI (`626b7b2`), ADR-06 alineado con `escoger()` y escalera de 7 en AGENTS (`94a17da`), escena de producto del vídeo (`e4ee7b6`), benchmarks local vs remoto (`cf94452`), reintento de notificación ESCALAR en watcher (`12a735f`), doc de capacidad y coste (`7c88594`) y pulido de UI (`59489fa`).
+
+**Cambio más importante desde la última auditoría:** el lote 1 ya está **corrido y validado end-to-end** (evidencia real trackeada en `video/`), el ADR-06 está **conciliado con el código**, existe **evidencia medible en el repo** (`.sdd/metrics/` + `video/data_*.json`) y hay **documentos de capacidad/coste/benchmarks** escritos. Lo que sigue crítico: los 3 entregables no están en la raíz del repo de entrega, la sección `escalabilidad.typ` sigue vacía (la página 7 del PDF sale en blanco) y el lote 2 no está ensayado.
 
 ---
 
 ## 1. Entregables (contrato §1 de AGENTS.md)
 
-El repo de **entrega** debe ser un repositorio público **separado** cuya raíz contenga **exactamente** 3 ficheros: `outcomes.jsonl`, `outcomes_lote2.jsonl`, `albertitos_plan.pdf` (AGENTS.md §1). Ninguno de los tres existe aún.
+El repo de **entrega** debe ser un repositorio público **separado** cuya raíz contenga **exactamente** 3 ficheros: `outcomes.jsonl`, `outcomes_lote2.jsonl`, `albertitos_plan.pdf` (AGENTS.md §1). Estado actual (`find . -name 'outcomes*.jsonl' -not -path './.venv/*' -not -path './data/*'` → 0 resultados en raíz; `ls docs/report/albertitos_plan.pdf` → existe):
 
 | Entregable | Estado | Evidencia |
 |---|---|---|
-| `outcomes.jsonl` | ❌ No existe | `find . -name 'outcomes*.jsonl'` (excluyendo `.venv`/`data/`) → 0 resultados. Los únicos `outcomes.jsonl` del árbol son artefactos de tests bajo `data/pytest-*` y `data/pouch-cli-smoke/outcomes.jsonl` (1 línea, fixture con `{"file_id": "Factura real ñ.PDF", "result": "ESCALAR"}`), no entregables. |
-| `outcomes_lote2.jsonl` | ❌ No existe | Misma búsqueda → 0 resultados. |
-| `albertitos_plan.pdf` | ❌ No compilado | `docs/report/.gitignore` ignora `*.pdf`; no hay PDF en el repo. La **fuente** `docs/report/albertitos_plan.typ` ✅ existe (100 líneas) con instrucciones de compilación (`typst compile --font-path fonts albertitos_plan.typ`, `docs/report/README.md`). `typst` no está en PATH en esta máquina. |
+| `outcomes.jsonl` | 🟡 **Contenido validado, fichero aún no en raíz** 🆕 | El lote 1 real está corrido y su salida trackeada en `video/data_outcomes_lote1.jsonl` (500 líneas, **verificado**: `jsonl: 500, pdfs: 500, match: True` contra `ls caja-de-alberto/facturas/`; distribución `PAGAR: 433, NO_PAGAR: 22, ESCALAR: 45`, consistente con `video/data_lote1.json`). Bastan `uv run filemaid emit --out outcomes.jsonl` (re-emisión desde el store, sin reprocesar; `run.py:36-40,115`) o copiar el JSONL validado. La ruta de raíz sigue vacía → la validación binaria del hackathon fallaría hoy. |
+| `outcomes_lote2.jsonl` | ❌ No existe | Misma búsqueda → 0 resultados. `caja-de-alberto/facturas_primin/` = 40 PDFs (verificado). El lote 2 no se ha corrido. |
+| `albertitos_plan.pdf` | ✅ **Compilado** 🆕 (con una sección vacía, ver §2.3) | `docs/report/albertitos_plan.pdf` existe (106 647 bytes, 13 páginas PDF 1.7, compilado 2026-09-19 22:49; gitignored por `docs/report/.gitignore` → **ojo: no viaja en git**, hay que compilarlo en la máquina de entrega). Texto extraído con pypdf: portada, arquitectura, implementación, ADRs (ADR-06/08 presentes). `typst` ahora está en PATH (`/home/deploy/.local/bin/typst`) → reproducible con `typst compile --font-path fonts albertitos_plan.typ`. |
 
-### 1.1 Formato del JSONL — mecanismo verificado en código ✅
+### 1.1 Formato del JSONL — mecanismo verificado en código ✅ (sin cambios)
 
-`export_outcomes` (`src/filemaid/pipeline.py:570-600`) garantiza por construcción el formato exigido:
-- una línea por decisión: `{"file_id": ..., "result": ...}` — sin campos extra;
-- `file_id` = basename exacto (rechaza rutas: `if Path(file_id).name != file_id → RuntimeError`, línea 585);
-- `result ∈ {PAGAR, NO_PAGAR, ESCALAR}` (línea 588) y sin duplicados (línea 590);
-- **cobertura completa y exacta**: `if seen != set(expected) → RuntimeError` (línea 594) — no exporta un lote incompleto (`batch_result.status != "complete"` → error, línea 573-574);
-- escritura atómica (temp + rename, `write_outcomes`, líneas 556-568).
-- Re-emisión sin reprocesar: `uv run filemaid emit --out outcomes.jsonl [--batch-id ...]` (`src/filemaid/run.py:36-40,119-123`).
+`export_outcomes` (`src/filemaid/pipeline.py`, bloque re-leído en esta auditoría) garantiza por construcción el formato exigido:
+- una línea por decisión: `{"file_id": ..., "result": ...}` — sin campos extra (el JSONL de evidencia del lote 1 lleva campos extra porque es volcado de diagnóstico; el export los elimina);
+- `file_id` = basename exacto (`Path(file_id).name != file_id → RuntimeError`);
+- `result ∈ {PAGAR, NO_PAGAR, ESCALAR}`, sin duplicados;
+- **cobertura completa y exacta**: `if seen != set(expected) → RuntimeError`; lote incompleto no exporta (`status != "complete"` → error);
+- escritura atómica (temp + `os.replace`, `write_outcomes`).
 
 ### 1.2 Cobertura esperada vs lotes reales (conteos verificados)
 
-| Lote | Directorio | PDFs reales | JSONL esperado |
-|---|---|---|---|
-| Lote 1 | `caja-de-alberto/facturas/` | **500** | 500 líneas, 1 por PDF |
-| Lote 2 | `caja-de-alberto/facturas_primin/` | **40** | 40 líneas, 1 por PDF |
+| Lote | Directorio | PDFs reales | JSONL esperado | Estado |
+|---|---|---|---|---|
+| Lote 1 | `caja-de-alberto/facturas/` | **500** | 500 líneas | ✅ Corrido y contrastado (match 500/500, ver §1) |
+| Lote 2 | `caja-de-alberto/facturas_primin/` | **40** | 40 líneas | ❌ Sin correr |
 
 - `caja-de-alberto` es el submódulo oficial del reto (`.gitmodules` → `500-sombras-de-alberto`).
-- Todos los ficheros en ambos directorios terminan en `.pdf` (0 excepciones); **0 nombres compartidos** entre lotes (`comm -12` → 0).
-- ⚠️ **No se puede validar aún la coincidencia `file_id`↔PDF** porque no existe ningún JSONL real de una corrida completa: la validación binaria del hackathon fallará hoy. Acción: correr el lote 1 y el lote 2 (o `filemaid emit`) y contrastar los `file_id` contra `ls` de cada directorio.
+- ✅ **Resuelto desde la auditoría anterior:** la coincidencia `file_id`↔PDF ya está contrastada para el lote 1 (script Python sobre `video/data_outcomes_lote1.jsonl` vs `ls facturas/` → `match: True`). Queda contrastar lo mismo para el lote 2 cuando se corra.
 
 ---
 
 ## 2. Rúbrica
 
-### 2.1 Producto, arquitectura y ADRs — 35 pts · Estado global: ⚠️
+### 2.1 Producto, arquitectura y ADRs — 35 pts · Estado global: ✅ (mejora: era ⚠️)
 
-✅ **Arquitectura documentada y razonada**: `docs/report/architecture.typ` (147 líneas) cubre extracción (escalera de 7 escalones calibrada por página, con coste/latencia por escalón), parser resiliente multilingüe con `values[]` sin colapsar, motor de reglas con thresholds configurables, persistencia PouchDB/CouchDB con revisión humana y replicación selectiva, modos standalone/servidor y retroalimentación.
+✅ **Arquitectura documentada y razonada**: `docs/report/architecture.typ` (147 líneas) — escalera de 7 escalones calibrada por página, parser resiliente multilingüe con `values[]`, motor de reglas con thresholds configurables, persistencia PouchDB/CouchDB con revisión humana y replicación selectiva, modos standalone/servidor.
 
-✅ **ADRs con la estructura exigida**: `docs/report/albertitos_plan.typ` contiene **8 ADRs**, cada uno con `contexto` / `alternativas` / `decisión` / `consecuencias` / `evidencia` y estado: motor determinista con reglas como config (v3→v4), features/parser con calibración T10, pipeline desacoplado + costura ERP, persistencia en BD, rung cloud + revisión no bloqueante, selección de candidato con provenance (ADR-06), app de escritorio pywebview (ADR-07), `outcomes.on_fail` (ADR-08). El requisito dice «2–5 ADRs»: 8 **excede** el rango (probablemente válido como mínimo, pero conviene confirmar o consolidar) — ⚠️.
+✅ **ADRs con la estructura exigida**: `docs/report/albertitos_plan.typ` contiene **8 ADRs** (`grep -c '#adr('` → 8), cada uno con contexto/alternativas/decisión/consecuencias/evidencia y estado. 🆕 El propio PDF ahora defiende explícitamente el exceso de rango (línea 101: «Los 8 ADRs anteriores son ADICIONES INCREMENTALES… el jurado puede leer los ADR-01–05 como el núcleo y los ADR-06–08 como extensiones») — la objeción «8 > 2–5» queda mitigada con texto.
 
-❌ **El PDF de entrega no está compilado** (§1).
+🆕 ✅ **ADR-06 conciliado con el código** (era ❌ divergencia; resuelto en commit `94a17da`): el ADR ahora describe la semántica real — colapso a UN candidato por puntuación (confianza × peso, config `seleccion`), `CandidateAudit` de los descartados, y el veredicto decide sobre ese candidato elegido, no sobre «todos». Verificado contra el código: `OrderBelongsToSupplier` (`rules.py:94-146`) consume `ctx.pick_coded("total", 0.7)` → `escoger()` y cruza el importe con `amounts_match(total, order.importe, TOLERANCE_EUR)`. Coherente.
 
-⚠️ **Divergencias ADR↔código detectadas** (riesgo en defensa):
-- **ADR-06** afirma que las reglas (`ORDER_AMOUNT_MATCHES`, `TOTALS_MUST_MATCH`, `IVA_CONSISTENT`, `IBAN_MATCHES_MASTER`) evalúan **todos** los candidatos del campo citando el que matchea. En el código, las reglas consumen `ctx.pick_coded(...)` → `escoger()` (`src/filemaid/rules/escoger.py:199+`), que colapsa el campo a **un** candidato por puntuación (confianza × peso) con auditoría por candidato (`CandidateAudit`). No hay regla `ORDER_AMOUNT_MATCHES` (inexistente en `master/rules.yaml` y `src/filemaid/rules/rules.py`; el cruce de importe vive dentro de `OrderBelongsToSupplier`, `rules.py:110-152`). El motor declarado es `runner-1.1.0` con esta semántica o no se ha aplicado al código actual: **conciliar antes de defender**.
-- **Evidencia citada no presente en el repo**: los ADRs citan `.sdd/metrics/corpus-dryrun.json`, `.sdd/metrics/drills.json`, `.sdd/metrics/impacto-fix-colapso.json`, `.sdd/metrics/auditoria-trampas.md`… pero **el directorio `.sdd/` no existe** (`ls .sdd` → no such file). Los números sí están volcados en `docs/report/escalabilidad_datos.typ`, pero los ficheros fuente no son verificables por el jurado.
-- AGENTS.md describe una escalera de **5** escalones; `architecture.typ` (spec que gana) y el código (`src/filemaid/extract/rungs/`: text_layer, qr, tesseract, vlm_local, typesafe_jev, firecrawl, cloud_vlm) tienen **7**. AGENTS quedó desactualizado (menor).
+🆕 ✅ **Evidencia citada verificable en el repo** (era ❌; mayoritariamente resuelto): `.sdd/` existe ahora (`git log -- .sdd` → commit `4378540`) con `.sdd/metrics/corpus-dryrun.json`, `calibracion/calibracion-rung3.json`, `calibracion.md/log`, `evidence-dryrun.jsonl`, `dryrun.log`. Los drills y el impacto del fix están trackeados como `video/data_drills.json` y `video/data_impacto.json` (el ADR-05 y ADR-06 citan ya `video/data_*.json`). **Matiz**: los ADRs y `escalabilidad_datos.typ` siguen citando `.sdd/metrics/drills.json`, `impacto-fix-colapso.json`, `auditoria-trampas.md` y `perfil-carga.json`, que **no existen** en `.sdd/metrics/` (`ls` verificado) — los datos reales viven en `video/data_*.json`. Cita muerta menor, arreglable con un renombre o una línea de alias.
 
-### 2.2 Trazabilidad y observabilidad — 20 pts · Estado global: ✅ (falta demo de una decisión real)
+❌ **La sección de escalabilidad del PDF sale vacía** (ver §2.3): página 7 del PDF compilado contiene solo el título «3 Escalabilidad y coste».
 
-✅ **Cadena completa input→resultado trazable en código**:
-1. **Input**: PDF → features por página con engine+versión+latencia (`ExtractionFeature`, `src/filemaid/types.py`; rungs en `src/filemaid/extract/rungs/`).
-2. **Evidencia**: candidatos múltiples conservados por campo con extractor y confianza (`ExtractionField.values[]`, types.py:110); colapso con auditoría por candidato (`Selection.audit`, `escoger.py:189-260`).
-3. **Reglas**: cada regla devuelve verdicto PASS/FAIL/UNKNOWN con motivo, valores consumidos y provenance `extractor@confianza` (`rules.py`: p. ej. `NIF_IN_MASTER` líneas 40-58, `IBAN_MATCHES_MASTER` 60-94, `ORDER_BELONGS_TO_SUPPLIER` 96-152).
-4. **Resultado**: `Decision` con `rule_verdicts`, `rule_outcomes` y snapshot de configuración (`engine.py:35-56`, `config.py:81-94` incluye `master_sha256`, `rule_outcomes`), persistida inmutable en PouchDB.
+⚠️ Menor: ADR-05 cita «AGENTS §13», pero `grep -n '## 13' AGENTS.md` no encuentra esa sección (AGENTS sí documenta la escalera de 7 en §3 — 🆕 resuelto desde la auditoría previa, que detectaba «5 escalones» desactualizados).
 
-✅ **Señales de operación**: API `GET /api/salud`, `/api/jobs`, `/api/logs`, `/api/trazas`, `/api/artefactos/{id}` (`src/filemaid/api/app.py:305-390`); UI con pestañas Dashboard/Ingest/Invoices/Review/Logs (`frontend/src/nav.ts`); informe HTML con drivers «FAIL→ESCALAR» (`src/filemaid/rules/report.py:195-199,456-460`).
+### 2.2 Trazabilidad y observabilidad — 20 pts · Estado global: ✅ (mejora: ya hay decisión real ejercitada)
 
-⚠️ **Pendiente**: la rúbrica pide «seguir UNA decisión real» — hay que ejercitarlo en la demo sobre una factura concreta (requiere una corrida; hoy no hay datos de lote real en el repo, solo `data/*` de tests).
+✅ **Cadena completa input→resultado trazable en código** (re-verificada):
+1. **Input**: PDF → features por página con engine+versión+latencia (`ExtractionFeature`, `src/filemaid/types.py`; 7 rungs en `src/filemaid/extract/rungs/`).
+2. **Evidencia**: candidatos múltiples conservados por campo (`ExtractionField.values[]`); colapso con auditoría por candidato (`Selection.audit`, `escoger.py`).
+3. **Reglas**: verdictos PASS/FAIL/UNKNOWN con motivo, valores consumidos y provenance `extractor@confianza` (`rules.py`: `NifInMaster:37`, `IbanMatchesMaster:56`, `OrderBelongsToSupplier:94`, …; `RULE_CODES` con las 8 reglas v3).
+4. **Resultado**: `Decision` con `rule_verdicts`, `rule_outcomes` y snapshot de configuración (`master_sha256`, `rule_outcomes`), persistida inmutable en PouchDB.
 
-### 2.3 Escalabilidad y coste — 25 pts · Estado global: ❌ (datos medidos existen, la sección está vacía)
+🆕 ✅ **«Una decisión real» ya está ejercitada y documentada** (era ⚠️): la traza de `factura_8801.pdf` (duplicada → `NO_DOUBLE_PAYMENT:FAIL` ⇒ NO_PAGAR, con su history) y el reprocesado medido (`video/data_impacto.json`: 108 re-deciden con `runner-1.1.0`, 86 NO_PAGAR→PAGAR, 0 regresiones, validador OK, 155,5 files/s en warm cache) constituyen la demo de trazabilidad; además el vídeo (escena 5) la muestra. Señales de operación intactas: `/api/salud`, `/api/jobs`, `/api/logs`, `/api/trazas`, `/api/artefactos/{id}`, `/api/reprocesar/{file_id}` (`api/app.py`, endpooints verificados por grep).
 
-- ❌ **`docs/report/escalabilidad.typ` está VACÍO** (23 bytes: solo el encabezado `= Escalabilidad y coste`). Es la sección incluida en el PDF de entrega (`albertitos_plan.typ:25`) → el entregable no respondería «¿cuántos archivos por segundo, con qué hardware, cómo calculáis el coste?».
-- ✅ **Datos medidos disponibles para explotar**: `docs/report/escalabilidad_datos.typ` (generado por `filemaid.metrics`) contiene: hardware 8 núcleos / 12 GB RAM (medido); dry-run del corpus T10 (471/500 texto usable = 94,2 %; latencias rung 1 media 0,4 ms / p95 2,0 ms; rung 2 media 42,1 ms / p95 73,0 ms; throughput rung 1: 2 636 archivos/s; wall 3,57 s para 500); calibración rung 3 (word-conf 40,0 → 89,7 % OCR pasa); perfil de carga T23 (UI+2 runners: peor p95 7,7 ms, 108,7-110 files/s por runner); lote 1: 4,16 archivos/s, distribución 433/22/45.
-- ⚠️ **Fórmula de coste incompleta**: `formulaCoste` en `escalabilidad_datos.typ` tiene electricidad «estimado» a 0,0000 EUR, llamadas cloud «medido×precio estimado» y tokens de agentes «sin datos»; `costePorArchivo`/`costePorLote` = «sin datos». Falta la fórmula explícita y una medición real del coste cloud.
-- ⚠️ **Nuevos tipos de archivo**: la respuesta estratégica existe a medias (extractores por escalón sustituibles, reglas desacopladas de extracción, ADR-03), pero el conector real solo lee PDFs: no hay soporte xlsx ni email. El cargador de maestros solo lee CSV (`master.py:52-97`), no el Excel de la Caja (`FINAL_v7_DEFINITIVO_ahorasi.xlsx`).
+⚠️ Nota de provenance detectada 🆕: las filas de `video/data_outcomes_lote1.jsonl` listan 13 códigos de regla (incluidos `ORDER_AMOUNT_MATCHES`, `NO_EMBEDDED_INSTRUCTIONS`, `PROVEEDOR_FANTASMA`, `AMOUNT_OUTLIER`, `PEDIDO_EN_REVISION` con `engine_version: runner-1.0.0`), pero el motor actual (`RULE_CODES`, `rules.py:320`) declara **8 reglas** y no existe `ORDER_AMOUNT_MATCHES` ni en `master/rules.yaml` ni en `rules.py`: el cruce de importe vive **dentro** de `OrderBelongsToSupplier`. Es evidencia del motor 1.0.0 previo al refactor; el entregable no se afecta (el export solo escribe `file_id`+`result`), pero conviene regenerar/etiquetar la evidencia con el motor actual antes de defenderla.
 
-### 2.4 Resiliencia y recuperación — 10 pts · Estado global: ✅
+### 2.3 Escalabilidad y coste — 25 pts · Estado global: ⚠️ (mejora: era ❌; falta volcarlo al entregable)
 
-✅ **Estado en disco**: PouchDB JS local (LevelDB) como única fuente (evidencia, caché, eventos, decisiones inmutables, adjuntos fragmentados); configuración en documentos `_local` no replicados (`architecture.typ` «Modos de ejecución»; `src/filemaid/store/`). Nunca `/tmp` (AGENTS §8).
+- ❌ **`docs/report/escalabilidad.typ` sigue VACÍO** (23 bytes: solo `= Escalabilidad y coste`; `wc -c` verificado). Como `albertitos_plan.typ:25` lo incluye, la **página 7 del PDF de entrega está en blanco** (verificado extrayendo el texto de la página 7 con pypdf). El entregable sigue sin responder en su PDF «¿cuántos archivos por segundo, con qué hardware, cómo calculáis el coste?».
+- 🆕 ✅ **El contenido ahora EXISTE, escrito y medido, fuera del Typst**:
+  - `docs/capacidad_y_coste.md` (10 KB): hardware medido (8 núcleos/16 GB, VLM local PaddleOCR-VL), throughput por escalón (rung 1: 0,4 ms media / 2 636 files/s; rung 2: 42,1 ms; rung 4: 33,9 s media bajo carga, n=28; rung 7: n=29 con 404, no representativo), fórmula de coste explícita (energía con TDP 65 W como cota, tarifa 0,15 €/kWh; coste cloud de lista etiquetado [estimado]), coste lote 1 = 0,00 € medido, límite operativo 4–14 k archivos/h, **plan de volumen 1k/10k/100k** con réplicas de llama-server, y respuesta a nuevos tipos de archivo (escalones sustituibles en `_RUNGS`).
+  - `docs/benchmarks_extraccion.md` (9,5 KB): comparativa local vs remoto de los escalones 4/5/7 con metodología y etiquetas [medido]/[estimado]/[no medido].
+- ✅ Datos generados por `filemaid.metrics` en `docs/report/escalabilidad_datos.typ` (dry-run T10: 94,2 % texto usable; calibración rung 3; drills 4/4; T23 perfil de carga; resultados lote 1) — listos para consumirse desde `escalabilidad.typ`.
+- ⚠️ **Nuevos tipos de archivo**: respuesta estratégica completa en el doc nuevo; el conector real sigue limitado a PDFs/imágenes y el cargador de maestros solo lee CSV (`master.py`), no el Excel de la Caja (`FINAL_v7_DEFINITIVO_ahorasi.xlsx`).
 
-✅ **Idempotencia / dedup**: caché por página con clave `(page_sha256, extractor_version, config_version)` (AGENTS §3; `src/filemaid/extract/cache.py`); `batch_result` persistido por `batch_id` determinista — reejecutar un lote completo es no-op y reexporta (`pipeline.py:146-167`); export atómico y solo con lote completo.
+**Lectura:** el criterio de 25 pts pasa de «en blanco» a «escrito pero no entregado». Volcar ~1 página resumen a `escalabilidad.typ` y recompilar es la acción de mayor relación esfuerzo/impacto que queda.
 
-✅ **Reanudación**: `run_lote` documentado «reanudable» (pipeline.py:147); CLI `filemaid reprocess` (run.py:56,154-156) y `POST /api/reprocesar/{file_id}` (app.py:346); tests de persistencia, replicación y recuperación: `tests/test_pouch_persistence.py`, `test_pouch_identity.py`, `test_couchdb_replication.py`, `test_dispute_sync.py`, `test_cache_pouch.py` (41 ficheros de tests, 287 tests en total).
+### 2.4 Resiliencia y recuperación — 10 pts · Estado global: ✅ (mejora: el drill 429 ahora tiene evidencia en el repo, pero el código actual no implementa el retry)
 
-✅ **Degradación**: cada escalón registra `skipped:<reason>` y cae al siguiente sin parar el lote (p. ej. `cloud_vlm.py`: `_skip("standalone-no-remote")`; modo standalone jamás contacta remoto, `architecture.typ`); lectura cloud como candidato extra, nunca respuesta automática.
-
-⚠️ **Proveedor caído / rate-limit**: la excepción HTTP se captura y la página degrada (`cloud_vlm.py:113-117`), pero **no hay backoff/Retry-After implementado en el código actual** — el drill `backoff-429` PASS citado en el ADR-05 respaldaba una implementación cuya evidencia (`.sdd/metrics/drills.json`) no está en el repo. Verificar si la política de reintentos vive en otra capa o reintroducirla.
+✅ **Estado en disco**: PouchDB JS local (LevelDB) como única fuente; config en `_local` no replicada. Nunca `/tmp`.
+✅ **Idempotencia/dedup**: caché por página `(page_sha256, extractor_version, config_version)`; `batch_result` por `batch_id` determinista — reejecutar es no-op; export atómico solo con lote completo. 🆕 Ejercitado en real: drill `crash-reanudacion` PASS (2 decididos tras crash, 3 tras reanudar, 0 duplicados; `video/data_drills.json`).
+✅ **Reanudación**: `run_lote` reanudable; `filemaid reprocess` + `POST /api/reprocesar/{file_id}`; 40 ficheros de tests (persistencia, replicación, recuperación).
+✅ **Degradación**: cada rung registra `skipped:<reason>` y cae al siguiente; cloud jamás respuesta automática.
+🆕 ⚠️ **Backoff/Retry-After en el rung cloud**: la evidencia medida AHORA está en el repo (`video/data_drills.json`, trackeado: `backoff-429` PASS — 429×2 con Retry-After, 3 llamadas exactas, delays aplicados; `rung5-provider-caido` PASS — 3 intentos y cola de revisión). **Pero** el código actual de `src/filemaid/extract/rungs/cloud_vlm.py` hace **una única `httpx.post` sin reintentos** (leído completo en esta auditoría: `except Exception → _skip("cloud-vlm-error:…")`), y no hay política de retry en ninguna otra capa de `src/filemaid/extract/` (grep verificado). Los drills se midieron el 2026-09-18 contra una implementación que no está en el árbol actual → **o se reintroduce el retry en el rung, o el ADR-05/drill dejan de corresponder al código** antes de la defensa. Nota aparte: 🆕 commit `12a735f` añadió reintento de notificación ESCALAR en el watcher de escritorio ( `_RETRY_NOTIF_S = 30.0`, con test de regresión) — mejora real de resiliencia de producto, distinta del retry HTTP.
 
 ### 2.5 Calidad de ejecución — 10 pts · Estado global: ✅
 
-✅ Arranque de un paso: `./run.sh [app|vlm|desktop]` + `start.py` (stdlib only, sincroniza uv, deps Node de PouchDB, build de UI) — idempotente y sin relanzamientos.
-✅ App de escritorio multiplataforma con pywebview compartiendo la misma UI Vue y el mismo motor (`src/filemaid/desktop/app.py`; ADR-07).
-✅ 287 tests en 41 ficheros; comprobación puntual ejecutada en esta auditoría: `pytest tests/test_rules_engine.py tests/test_cli_run.py` → **18 passed** en 0,25 s.
-✅ UI en español con cola de revisión, reglas visibles y ayuda contextual; informe HTML explicando la frontera NO_PAGAR/ESCALAR.
+✅ Arranque de un paso: `./run.sh [app|vlm|desktop]` + `start.py` (stdlib only) — idempotente.
+✅ App de escritorio pywebview compartiendo UI Vue y motor (`desktop/app.py`; ADR-07). 🆕 El watcher reintenta notificaciones fallidas en la misma sesión (`12a735f`).
+✅ 🆕 **Pulido de flujo frecuente** (`59489fa`): sync en topbar, auto-refresco, confirmación directa en revisión y CTA inteligente post-ingesta (134 insertions en `App.vue`, `IngestView`, `InvoicesView`, `ReviewView`) — reduce fricción en la demo.
+✅ 40 ficheros de tests; comprobación puntual ejecutada en esta auditoría: `pytest tests/test_rules_engine.py` → **17 passed** en 0,22 s.
+✅ UI en español con cola de revisión, reglas visibles e informe HTML de la frontera NO_PAGAR/ESCALAR.
 
-### 2.6 Bonus: una mejora para Alberto (+10) — Estado global: ⚠️
+### 2.6 Bonus: una mejora para Alberto (+10) — Estado global: ✅ (mejora: era ⚠️; falta solo elegir narrativa)
 
-Candidatos reales implementados: **app de escritorio** (ADR-07, `desktop/app.py`), **vigilante de carpeta** (ingesta continua, `desktop/watcher.py`, `tests/test_desktop_watcher.py`), **revisión humana con replicación selectiva** (D-003 en `docs/decisiones/DECISIONS.md`; retención fail-closed de facturas disputadas). ⚠️ La rúbrica pide «detectado, **implementado y mostrado**»: falta el «mostrado» — el vídeo está en marcha (`video/` con Remotion, en esta rama, aún sin render) y la demo requiere la app funcionando. Elegir UNA mejora como narrativa principal del bonus.
+🆕 ✅ **El vídeo está renderizado**: `video/out/filemaid.mp4` — **180,0 s exactos** (verificado del átomo `mvhd`: duration 180000 ms, timescale 1000), 6,4 MB, 8 escenas con métricas medidas (guion en `video/GUION.md`), incluye capturas reales de la UI (`e4ee7b6`, `626b7b2`) y stills exportados (`video/out/still-*.png`). La mejora (app de escritorio + vigilante + revisión humana) está **implementada y mostrada**. Pendiente menor: decidir qué mejora se narra como bonus principal (recomendado: vigilante + notificación ESCALAR, es la más diferencial).
 
 ---
 
 ## 3. Lote 2 «sorpresa» (sábado)
 
-Requisitos según el enunciado (`caja-de-alberto/README.md`, Makefile del ERP) y estado:
+Requisitos según el enunciado (`caja-de-alberto/README.md`, Makefile del ERP) y estado — **sin cambios sustanciales desde la auditoría anterior, salvo que el mecanismo de reprocesado ya está probado en real con el lote 1**:
 
 | Requisito | Estado | Evidencia y brecha |
 |---|---|---|
-| +40 facturas nuevas | ⚠️ Datos presentes, sin procesar | `caja-de-alberto/facturas_primin/` = 40 PDFs (verificados). Sin `outcomes_lote2.jsonl` (§1). |
-| ERP actualizado | ⚠️ Datos presentes, sin consumir | `caja-de-alberto/erp_export_lote2.csv` (40 asientos + cabecera; incluye estados `PAGADA`/`PENDIENTE`), `pedidos_nuevos.csv` (39 pedidos PO-2026-05xx), `proveedores_nuevos.csv` (4 proveedores); ERP simulado en `caja-de-alberto/alberto_erp.py` (puerto 8009, `make erp-lote2`). **El código de filemaid solo carga maestros de CSV propio** (`master/pedidos.csv`, `master/proveedores.csv`; `master.py:52-97`) — no hay cliente HTTP del ERP ni consumo del export del lote 2. La «costura de adaptador» del ADR-03 no está implementada como integración real. |
-| Conservar trabajo | ✅ Por diseño | Idempotencia por `(sha256, stage, engine_version, config_version)` y `batch_result` persistido; las 500 decisiones del lote 1 sobreviven reinicios en PouchDB (§2.4). |
-| Reprocesar tras el cambio | ✅ Mecanismo | `filemaid reprocess` (CLI) + `POST /api/reprocesar/{file_id}`; el recálculo es determinista con el mismo motor. Falta ensayarlo con los datos del sábado. |
-| Regla nueva (v4) | ❌ No preparada | El plan lo anuncia («la regla v4 cargada como DATOS», ADR-01) y el mecanismo existe (reglas habilitadas en `master/rules.yaml`), pero hoy solo están las 8 reglas v3.0-2026-09-19. No hay borrador ni plan de la regla del sábado. |
-| Frontera NO_PAGAR/ESCALAR como datos | ✅ | `outcomes.on_fail` en `master/rules.yaml` (NIF/IBAN → ESCALAR); validación que impide que una regla rota pague (`config.py:62-74`; probado en `tests/test_rules_engine.py`). |
+| +40 facturas nuevas | ⚠️ Datos presentes, sin procesar | `caja-de-alberto/facturas_primin/` = 40 PDFs (verificado). Sin `outcomes_lote2.jsonl`. |
+| ERP actualizado | ⚠️ Datos presentes, sin consumir | `erp_export_lote2.csv` (41 líneas), `pedidos_nuevos.csv` (40), `proveedores_nuevos.csv` (5), ERP simulado `alberto_erp.py` (`make erp-lote2`, verificado en el Makefile). **Sigue sin existir cliente HTTP del ERP ni carga de los maestros nuevos**: `master/` solo tiene `pedidos.csv` y `proveedores.csv` propios, y grep de `erp_export|alberto_erp|8009` en `src/filemaid` → 0 resultados. La costura del ADR-03 sigue siendo conceptual. |
+| Conservar trabajo | ✅ Por diseño **y probado** | Idempotencia por `(sha256, stage, engine_version, config_version)`; 🆕 el drill `crash-reanudacion` PASS demuestra la reanudación sin duplicados sobre datos reales. |
+| Reprocesar tras el cambio | ✅ **Ejercitado en real** 🆕 | `filemaid reprocess` + API; el reprocesado del lote 1 tras el fix ADR-06 (108 facturas, 86 → PAGAR, 0 regresiones, 155,5 files/s warm) está medido en `video/data_impacto.json`. Falta ensayarlo con los datos del sábado. |
+| Regla nueva (v4) | ❌ No preparada | `master/rules.yaml` sigue con las 8 reglas v3 (listado completo verificado; no hay versión v4 ni borrador). El mecanismo «regla como DATOS» existe (`enabled` + `thresholds` + `outcomes.on_fail` en YAML), pero no hay plan de la regla del sábado. |
+| Frontera NO_PAGAR/ESCALAR como datos | ✅ | `outcomes.on_fail` (NIF/IBAN → ESCALAR) en `master/rules.yaml`; validador que impide que una regla rota pague (probado en `tests/test_rules_engine.py`). |
 
 ---
 
 ## 4. Veredicto por entregable (resumen ejecutivo)
 
-| # | Requisito | Estado |
-|---|---|---|
-| 1 | `outcomes.jsonl` (500 líneas, formato correcto) | ❌ Generar y contrastar file_ids |
-| 2 | `outcomes_lote2.jsonl` (40 líneas) | ❌ Generar y contrastar file_ids |
-| 3 | `albertitos_plan.pdf` (arquitectura + ADRs) | ❌ Compilar (fuente completa ✅, 8 ADRs > rango 2-5 ⚠️) |
-| 4 | Producto/arquitectura/ADRs (35) | ⚠️ Sólido; conciliar ADR-06 con el motor; evidencia `.sdd/` ausente |
-| 5 | Trazabilidad (20) | ✅ Cadena completa en código; ensayar «una decisión» en demo |
-| 6 | Escalabilidad y coste (25) | ❌ Sección vacía pese a haber datos medidos que explotar |
-| 7 | Resiliencia (10) | ✅ Salvo backoff-429 no verificable en código/repo |
-| 8 | Calidad de ejecución (10) | ✅ |
-| 9 | Bonus (+10) | ⚠️ Implementado; falta «mostrarlo» |
-| 10 | Lote 2 sorpresa | ⚠️ Datos listos; falta consumir ERP del lote 2, procesar y preparar regla v4 |
+| # | Requisito | Estado anterior (`867748b`) | Estado actual (`59489fa`) |
+|---|---|---|---|
+| 1 | `outcomes.jsonl` (500 líneas) | ❌ No existía nada | 🟡 Lote 1 corrido y validado (500/500 match); falta emitir/copiar a la raíz de entrega |
+| 2 | `outcomes_lote2.jsonl` (40 líneas) | ❌ | ❌ Sin correr el lote 2 |
+| 3 | `albertitos_plan.pdf` | ❌ Sin compilar | ✅ Compilado (13 págs), ⚠️ pág. 7 escalabilidad en blanco; ojo: gitignored |
+| 4 | Producto/arquitectura/ADRs (35) | ⚠️ Divergencia ADR-06, evidencia ausente | ✅ ADR-06 conciliado con código; evidencia en repo (matiz: citas `.sdd/metrics/*.json` inexistentes, datos reales en `video/data_*.json`) |
+| 5 | Trazabilidad (20) | ✅ faltaba decisión real | ✅ Decisión real ejercitada (FA-8801, reprocesado medido) y mostrada en vídeo; ⚠️ provenance del JSONL con motor 1.0.0 |
+| 6 | Escalabilidad y coste (25) | ❌ Sección vacía | ⚠️ Contenido escrito y medido en `docs/capacidad_y_coste.md` + `benchmarks_extraccion.md`; falta volcar a `escalabilidad.typ` y recompilar |
+| 7 | Resiliencia (10) | ✅ salvo backoff no verificable | ⚠️→✅ Drill 429 con evidencia en repo, PERO el código actual del rung cloud no implementa retry — conciliar antes de defender |
+| 8 | Calidad de ejecución (10) | ✅ | ✅ + pulido UI (`59489fa`) y retry de notificaciones |
+| 9 | Bonus (+10) | ⚠️ Sin mostrar | ✅ Vídeo de 3 min renderizado (180,0 s medidos); elegir narrativa |
+| 10 | Lote 2 sorpresa | ⚠️ Datos listos | ⚠️ Igual + reprocesado ya probado en real; faltan ERP client, maestros nuevos y regla v4 |
 
 ---
 
@@ -135,15 +137,14 @@ Requisitos según el enunciado (`caja-de-alberto/README.md`, Makefile del ERP) y
 
 | Prio | Acción | Impacto |
 |---|---|---|
-| **P0** | Ejecutar el lote 1 (`.venv/bin/filemaid run --lote caja-de-alberto/facturas --out outcomes.jsonl` (o `uv run filemaid run …`)) y contrastar 500 `file_id` contra `ls caja-de-alberto/facturas/` | Sin esto la validación binaria del hackathon falla (no hay premio) |
-| **P0** | Ejecutar el lote 2 (`facturas_primin`) → `outcomes_lote2.jsonl` (40 líneas) y contrastar file_ids | Ídem |
-| **P0** | Escribir `docs/report/escalabilidad.typ` consumiendo `escalabilidad_datos.typ` (throughput, hardware, fórmula de coste, límites, plan de nuevos tipos) + medir coste cloud real | Criterio de 25 pts hoy en blanco |
-| **P0** | Compilar `albertitos_plan.pdf` (`typst compile --font-path fonts docs/report/albertitos_plan.typ`) | Entregable obligatorio |
-| **P1** | Conciliar ADR-06 con `escoger()`: o el motor evalúa todos los candidatos con provenance, o el ADR describe la semántica real de puntuación+auditoría | Riesgo de credibilidad en defensa (35 pts) |
-| **P1** | Regenerar/incluir la evidencia citada (`.sdd/metrics/*.json`) en el repo o en el anexo del PDF | Los ADRs citan ficheros inexistentes |
-| **P1** | Ensayar el día del lote 2: arrancar `make erp-lote2`, ingestar `facturas_primin`, reprocesar, y tener un borrador de «regla v4 como datos» | «Cómo diseñasteis el cambio, el reprocesado y los límites» |
-| **P1** | Implementar/verificar backoff + Retry-After en el rung cloud y re-ejecutar los drills con resultados en el repo | Criterio de resiliencia (10 pts) y coherencia con ADR-05 |
-| **P2** | Ensayar la trazabilidad de UNA decisión real end-to-end en la demo (factura → evidencia → reglas → resultado) | 20 pts de trazabilidad |
-| **P2** | Renderizar el vídeo (Remotion, `video/`) y elegir la mejora del bonus a mostrar | Bonus +10 |
-| **P2** | Decidir sobre el nº de ADRs (consolidar a 2-5 o defender 8) y actualizar AGENTS.md (5→7 escalones) | Pulido |
+| **P0** | Emitir `outcomes.jsonl` a la raíz del repo de entrega (`uv run filemaid emit --out outcomes.jsonl` — el store ya tiene el lote 1 completo y validado 500/500) | Sin esto la validación binaria del hackathon falla |
+| **P0** | Correr el lote 2 (`facturas_primin`) → `outcomes_lote2.jsonl` (40 líneas) y contrastar file_ids | Ídem |
+| **P0** | Escribir `docs/report/escalabilidad.typ` (1 página: hardware, throughput por escalón, fórmula de coste, límites 4–14 k arch/h, plan 1k/10k/100k) consumiendo `escalabilidad_datos.typ` y resumiendo `docs/capacidad_y_coste.md`; recompilar el PDF | El PDF de entrega tiene hoy la pág. 7 en blanco (criterio de 25 pts invisible para el jurado) |
+| **P0** | Publicar el repo de entrega separado con EXACTAMENTE los 3 ficheros; ojo: el PDF está gitignored en este repo — copiar el artefacto compilado | El contrato exige 3 ficheros en la raíz de otro repo |
+| **P1** | Conciliar retry/backoff: reintroducir la política de reintentos + Retry-After en `cloud_vlm.py` (o wherever viva) y re-ejecutar el drill `backoff-429`, o corregir ADR-05; hoy la evidencia del drill no corresponde al código del árbol | Resiliencia (10 pts) y credibilidad en defensa |
+| **P1** | Ensayar el día del lote 2: `make erp-lote2`, cliente/ingesta de los maestros nuevos (`pedidos_nuevos.csv`, `proveedores_nuevos.csv`, estado del export), y borrador de «regla v4 como datos» en `master/rules.yaml` | «Cómo diseñasteis el cambio, el reprocesado y los límites» |
+| **P1** | Regenerar la evidencia de outcomes con el motor actual (`runner-1.1.0`) o etiquetar la existente: el JSONL de lote 1 cita 13 códigos de regla del motor 1.0.0 (p. ej. `ORDER_AMOUNT_MATCHES`, hoy dentro de `ORDER_BELONGS_TO_SUPPLIER`) | Coherencia de provenance en defensa |
+| **P2** | Arreglar citas muertas: `.sdd/metrics/drills.json|impacto-fix-colapso.json|perfil-carga.json|auditoria-trampas.md` no existen (los datos están en `video/data_*.json`); ADR-05 cita «AGENTS §13» que no existe | Pulido de evidencia citada |
+| **P2** | Ensayar en la demo la trazabilidad de UNA decisión end-to-end en vivo (FA-8801 → evidencia → reglas → resultado), apoyándose en las capturas del vídeo | 20 pts de trazabilidad, cierre del círculo |
+| **P2** | Elegir la mejora del bonus a narrar (recomendado: vigilante + notificación ESCALAR con reintento) y decidir nº de ADRs si el jurado es estricto con el rango 2–5 (el PDF ya lo defiende) | Bonus +10 / pulido |
 | **P3** | Conector maestro xlsx (hoy solo CSV) si se quiere cubrir el Excel de la Caja en la demo | Robustez de producto |

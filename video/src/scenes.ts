@@ -81,31 +81,38 @@ export const DRILLS = [
   { name: 'ledger-corrupto', detail: 'ledger dañado → store consistente' },
 ] as const;
 
+// 8 reglas reales — RULE_CODES en src/filemaid/rules/rules.py (orden alfabético)
 export const REGLAS = [
-  'NIF_IN_MASTER', 'IBAN_MATCHES_MASTER', 'ORDER_BELONGS_TO_SUPPLIER',
-  'ORDER_AMOUNT_MATCHES', 'TOTALS_MUST_MATCH', 'IVA_CONSISTENT',
-  'DATE_VALID_NOT_FUTURE', 'ORDER_PENDING', 'NO_DOUBLE_PAYMENT',
-  'NO_EMBEDDED_INSTRUCTIONS', 'PROVEEDOR_FANTASMA', 'AMOUNT_OUTLIER',
+  'DATE_VALID_NOT_FUTURE', 'IBAN_MATCHES_MASTER', 'IVA_CONSISTENT',
+  'NIF_IN_MASTER', 'NO_DOUBLE_PAYMENT', 'ORDER_BELONGS_TO_SUPPLIER',
+  'ORDER_PENDING', 'TOTALS_MUST_MATCH',
 ] as const;
 
-// Casos reales de data_outcomes_lote1.jsonl
+// Casos reales de data_outcomes_lote1.jsonl (reglas de RULE_CODES; el JSONL
+// incluye 5 códigos extra aún no implementados en el motor y aquí se omiten).
+// notPass: rule_ids:estado que no salieron PASS en la corrida real.
 export const CASO_DUPLICADO = {
   file_id: 'factura_8801.pdf',
   result: 'NO_PAGAR',
-  fails: ['ORDER_AMOUNT_MATCHES:FAIL', 'NO_DOUBLE_PAYMENT:FAIL'],
+  notPass: ['NO_DOUBLE_PAYMENT:FAIL'],
   nota: '2ª copia del duplicado FA-8801: no paga',
 } as const;
 
 export const CASO_SCAN = {
   file_id: 'scan_001.pdf',
   result: 'ESCALAR',
-  unknowns: 11,
-  nota: 'escaneo ilegible: 11 reglas UNKNOWN ⇒ duda razonable',
+  notPass: [
+    'DATE_VALID_NOT_FUTURE:UNKNOWN', 'IBAN_MATCHES_MASTER:UNKNOWN',
+    'IVA_CONSISTENT:UNKNOWN', 'NIF_IN_MASTER:UNKNOWN',
+    'ORDER_BELONGS_TO_SUPPLIER:UNKNOWN', 'ORDER_PENDING:UNKNOWN',
+    'TOTALS_MUST_MATCH:UNKNOWN',
+  ],
+  nota: 'escaneo ilegible: 7 reglas UNKNOWN ⇒ duda razonable',
 } as const;
 
 export const CASO_ESCALAR = {
   file_id: '2026-03-19_P008.pdf',
   result: 'ESCALAR',
-  unknowns: ['DATE_VALID_NOT_FUTURE:UNKNOWN'],
+  notPass: ['DATE_VALID_NOT_FUTURE:UNKNOWN'],
   nota: 'fecha ilegible en evidencia ⇒ ESCALAR, no PAGAR',
 } as const;
