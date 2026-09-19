@@ -49,3 +49,8 @@ dist/
 
 # sandbox del drill T24 (estado en disco; la evidencia consolidada va en metrics/drill-rung4-live.json)
 .sdd/drill-live/
+
+# presentación Remotion (T32): build local, mp4 va aparte (entregables)
+presentation/node_modules/
+presentation/out/
+presentation/render.log
