@@ -18,6 +18,9 @@ import {
   CASO_ESCALAR,
   SCENES,
 } from './scenes';
+import shotDashboard from '../assets/shot-dashboard.png';
+import shotRevision from '../assets/shot-revision.png';
+import shotLogs from '../assets/shot-logs.png';
 
 const DISPLAY = 'Bungee, system-ui, sans-serif';
 const BODY = 'DM Sans, system-ui, sans-serif';
@@ -140,8 +143,18 @@ const Problema: React.FC = () => {
 };
 
 // ── 3 · Producto ─────────────────────────────────────────────────────────────
+const CAPTURAS = [
+  { src: shotDashboard, alt: 'Dashboard: contadores por resultado' },
+  { src: shotRevision, alt: 'Revisión: candidatos y reglas lado a lado' },
+  { src: shotLogs, alt: 'Trazas: eventos por factura' },
+];
+
 const Producto: React.FC = () => {
   const f = useCurrentFrame();
+  // Rotación de capturas: ~6,5 s cada una dentro de los 600 frames de la escena.
+  const idx = Math.min(Math.floor(f / 200), CAPTURAS.length - 1);
+  const cap = CAPTURAS[idx];
+  const capIn = fade(f - idx * 200, 0, 14);
   const pasos = [
     { icon: '📁', t: 'Watcher de carpeta', s: 'suelta PDFs → se ingesta sola' },
     { icon: '🌙', t: 'Lote 24/7', s: 'sin prompts: nadie duerme con el proceso' },
@@ -153,18 +166,30 @@ const Producto: React.FC = () => {
     <Escena idx={2}>
       <Frame>
         <SectionKicker n="EL PRODUCTO" title="Una app de escritorio, no un script" />
-        {pasos.map((p, i) => (
-          <div key={p.t} style={{
-            ...rise(f, 20 + i * 16), display: 'flex', alignItems: 'center', gap: 26,
-            background: C.panel, border: `2px solid ${C.ink}`, padding: '16px 28px',
-            marginBottom: 18, width: 1350,
-          }}>
-            <div style={{ fontSize: 44 }}>{p.icon}</div>
-            <div style={{ fontFamily: DISPLAY, fontSize: 32, width: 480 }}>{p.t}</div>
-            <div style={{ fontSize: 30, color: C.brown }}>{p.s}</div>
+        <div style={{ display: 'flex', gap: 30 }}>
+          <div style={{ flex: 1 }}>
+            {pasos.map((p, i) => (
+              <div key={p.t} style={{
+                ...rise(f, 20 + i * 16), display: 'flex', alignItems: 'center', gap: 18,
+                background: C.panel, border: `2px solid ${C.ink}`, padding: '12px 20px',
+                marginBottom: 12,
+              }}>
+                <div style={{ fontSize: 36 }}>{p.icon}</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 27, width: 400 }}>{p.t}</div>
+                <div style={{ fontSize: 24, color: C.brown }}>{p.s}</div>
+              </div>
+            ))}
           </div>
-        ))}
-        <div style={{ ...rise(f, 110), marginTop: 26, fontSize: 30, color: C.brown }}>
+          <div style={{ width: 620, ...rise(f, 60) }}>
+            <div style={{ border: `3px solid ${C.ink}`, background: '#fff', padding: 10 }}>
+              <img src={cap.src} alt={cap.alt} style={{ width: '100%', display: 'block', opacity: capIn }} />
+            </div>
+            <div style={{ marginTop: 10, fontSize: 22, fontFamily: MONO, color: C.brown, textAlign: 'center' }}>
+              {cap.alt}
+            </div>
+          </div>
+        </div>
+        <div style={{ ...rise(f, 110), marginTop: 22, fontSize: 28, color: C.brown }}>
           Misma UI Vue en navegador y ventana nativa (pywebview) · estética documental Typst
         </div>
       </Frame>
