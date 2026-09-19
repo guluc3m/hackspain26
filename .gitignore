@@ -28,3 +28,11 @@ dist/
 .sdd/store.db-wal
 .sdd/store.db-shm
 .sdd/smoke_outcomes.jsonl
+
+# entregables compilados (T19): se generan con typst / el runner, no se
+# commitean en la solución — viven en el repo de entrega (/home/deploy/delivery-repo)
+/albertitos_plan.pdf
+/albertitos_plan.pdf.tmp
+/docs/report/*.pdf
+/outcomes.jsonl
+/outcomes_lote2.jsonl

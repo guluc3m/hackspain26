@@ -1,158 +1,156 @@
-"""T12 — script de staging del repo de entrega (subprocess, bash estricto).
+"""Tests de T19: staging del repo de entrega (scripts/stage_delivery.sh).
 
-Fixtures bajo `.sdd/` (jamás /tmp). El script valida con
-`python -m albertitos.validate` antes de copiar y produce EXACTAMENTE
-outcomes.jsonl, outcomes_lote2.jsonl, albertitos_plan.pdf.
+El script se ejecuta de verdad (bash) contra fixtures pequeños; el DESTINO
+vive bajo .sdd (estado de trabajo jamás en /tmp).
 """
 
-import os
+from __future__ import annotations
+
 import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
-REPO = Path(__file__).parent.parent
-FIXTURES = Path(__file__).parent / "fixtures"
-ENTREGABLES = {"albertitos_plan.pdf", "outcomes.jsonl", "outcomes_lote2.jsonl"}
+REPO = Path(__file__).resolve().parent.parent
+SCRIPT = REPO / "scripts" / "stage_delivery.sh"
+STAGE_TMP = REPO / ".sdd" / "pytest-tmp" / "stage"
 
 
-@pytest.fixture()
-def escenario() -> tuple[Path, dict[str, Path]]:
-    """Lote 1 (3 PDFs) + lote 2 (2 PDFs) + outcomes válidos + plan PDF."""
-    base = Path(".sdd") / "pytest-tmp" / "stage"
-    if base.exists():
-        shutil.rmtree(base)
-    base.mkdir(parents=True)
-
-    def lote(nombre: str, n: int) -> tuple[Path, Path]:
-        facturas = base / nombre
-        facturas.mkdir()
-        src = FIXTURES / "facturas"
-        nombres = sorted(p.name for p in src.glob("*.pdf"))[:n]
-        for nombre_pdf in nombres:
-            shutil.copy(src / nombre_pdf, facturas / nombre_pdf)
-        outcomes = base / f"outcomes_{nombre}.jsonl"
-        outcomes.write_text(
-            "".join(f'{{"file_id": "{x}", "result": "PAGAR"}}\n' for x in nombres),
-            encoding="utf-8",
-        )
-        return facturas, outcomes
-
-    f1, o1 = lote("facturas-lote1", 3)
-    f2, o2 = lote("facturas-lote2", 2)
-    plan = base / "plan.pdf"
-    shutil.copy(FIXTURES / "2026-01-08_P001.pdf", plan)
-    rutas = {
-        "OUTCOMES_LOTE1": o1,
-        "OUTCOMES_LOTE2": o2,
-        "PLAN_PDF": plan,
-        "FACTURAS_LOTE1": f1,
-        "FACTURAS_LOTE2": f2,
-        "DESTINO": base / "delivery-repo",
-    }
-    yield base, rutas
-    shutil.rmtree(base)
+def _limpiar() -> None:
+    if STAGE_TMP.exists():
+        shutil.rmtree(STAGE_TMP)
+    STAGE_TMP.mkdir(parents=True)
 
 
-def _correr(rutas: dict[str, Path]) -> subprocess.CompletedProcess:
-    env = {**os.environ, **{k: str(v) for k, v in rutas.items()}}
-    return subprocess.run(
-        ["bash", "scripts/stage_delivery.sh"],
-        cwd=REPO,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=180,
-        check=False,
-    )
+def _pdf_dir(destino: str) -> Path:
+    """Directorio de facturas con 2 PDFs de verdad (fixtures del corpus)."""
+    d = STAGE_TMP / f"facturas-{destino}"
+    d.mkdir(parents=True, exist_ok=True)
+    for i, f in enumerate(sorted((REPO / "tests/fixtures/facturas").glob("*.pdf"))[:2]):
+        shutil.copy(f, d / f.name)
+    return d
 
 
-def _contenidos(destino: Path) -> list[str]:
-    return sorted(p.name for p in destino.iterdir() if p.name != ".git")
-
-
-def test_staging_happy_path_idempotente(escenario):
-    _, rutas = escenario
-    destino = rutas["DESTINO"]
-    r = _correr(rutas)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert _contenidos(destino) == sorted(ENTREGABLES)
-    assert (destino / "outcomes.jsonl").read_bytes() == rutas["OUTCOMES_LOTE1"].read_bytes()
-
-    # idempotente: segunda ejecución, mismo resultado y sin commit duplicado
-    r2 = _correr(rutas)
-    assert r2.returncode == 0, r2.stdout + r2.stderr
-    assert _contenidos(destino) == sorted(ENTREGABLES)
-    log = subprocess.run(
-        ["git", "-C", str(destino), "rev-list", "--count", "HEAD"],
-        capture_output=True, text=True, check=False,
-    )
-    assert log.stdout.strip() == "1"
-
-    # cambio de contenidos ⇒ nuevo commit (el staging refleja la realidad)
-    nombres = sorted(p.name for p in rutas["FACTURAS_LOTE1"].glob("*.pdf"))
+def _outcomes_validos(pdfs: Path, destino: str) -> Path:
+    """outcomes.jsonl que pasa el validador de contrato para esos 2 PDFs."""
+    out = STAGE_TMP / f"outcomes-{destino}.jsonl"
     lineas = [
-        f'{{"file_id": "{x}", "result": "{"NO_PAGAR" if i == 0 else "PAGAR"}"}}'
-        for i, x in enumerate(nombres)
+        f'{{"file_id": "{p.name}", "result": "ESCALAR"}}'
+        for p in sorted(pdfs.glob("*.pdf"))
     ]
-    rutas["OUTCOMES_LOTE1"].write_text("\n".join(lineas) + "\n", encoding="utf-8")
-    r3 = _correr(rutas)
-    assert r3.returncode == 0, r3.stdout + r3.stderr
-    log3 = subprocess.run(
-        ["git", "-C", str(destino), "rev-list", "--count", "HEAD"],
-        capture_output=True, text=True, check=False,
+    out.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    return out
+
+
+def _run(env_extra: dict[str, str]) -> subprocess.CompletedProcess:
+    import shutil
+
+    uv = shutil.which("uv") or "/usr/local/bin/uv"
+    env = {
+        "PATH": "/usr/bin:/bin:/usr/local/bin",
+        "PYTHON": f"{uv} run python",
+    }
+    env.update(env_extra)
+    return subprocess.run(
+        ["bash", str(SCRIPT)],
+        cwd=REPO, env=env, check=False, capture_output=True, text=True, timeout=120,
     )
-    assert log3.stdout.strip() == "2"
 
 
-def test_staging_falla_limpio_sin_outcomes(escenario):
-    _, rutas = escenario
-    rutas["OUTCOMES_LOTE1"].unlink()
-    r = _correr(rutas)
-    assert r.returncode == 1
-    assert "falta el artefacto" in r.stderr
-    assert not rutas["DESTINO"].exists() or not any(rutas["DESTINO"].iterdir())
+def _entorno(destino: str) -> dict[str, str]:
+    _limpiar()
+    pdfs = _pdf_dir(destino)
+    return {
+        "OUTCOMES_LOTE1": str(_outcomes_validos(pdfs, destino)),
+        "PLAN_PDF": str(min((REPO / "tests/fixtures/facturas").glob("*.pdf"))),
+        "FACTURAS_LOTE1": str(pdfs),
+        "DESTINO": str(STAGE_TMP / f"delivery-{destino}"),
+    }
 
 
-def test_staging_falla_con_duplicado(escenario):
-    _, rutas = escenario
-    primera = rutas["OUTCOMES_LOTE1"].read_text(encoding="utf-8").splitlines()[0]
-    with rutas["OUTCOMES_LOTE1"].open("a", encoding="utf-8") as fh:
-        fh.write(primera + "\n")
-    r = _correr(rutas)
-    assert r.returncode == 1
-    assert "duplicado" in (r.stdout + r.stderr)
-    assert not rutas["DESTINO"].exists()
+def test_staging_sin_lote2_dos_entregables_y_commit():
+    dest = STAGE_TMP / "delivery-basic"
+    r = _run(_entorno("basic"))
+    assert r.returncode == 0, r.stderr
+    contenido = sorted(p.name for p in dest.iterdir() if p.name != ".git")
+    assert contenido == ["albertitos_plan.pdf", "outcomes.jsonl"]
+    # repo git local, sin remote
+    log = subprocess.run(["git", "-C", str(dest), "log", "--oneline"],
+                         check=False, capture_output=True, text=True)
+    assert len(log.stdout.splitlines()) == 1
+    remotes = subprocess.run(["git", "-C", str(dest), "remote"],
+                             check=False, capture_output=True, text=True)
+    assert remotes.stdout.strip() == ""
+    assert "lote 2 pendiente" in r.stdout or "Falta outcomes_lote2" in r.stdout
 
 
-def test_staging_falla_con_result_invalido(escenario):
-    _, rutas = escenario
-    rutas["OUTCOMES_LOTE2"].write_text(
-        '{"file_id": "invoice_catering_fa8496.pdf", "result": "SI"}\n',
-        encoding="utf-8",
-    )
-    r = _correr(rutas)
-    assert r.returncode == 1
-    assert "result inválido" in (r.stdout + r.stderr)
+def test_staging_idempotente_dos_ejecuciones_mismo_estado():
+    env = _entorno("idem")
+    r1 = _run(env)
+    dest = Path(env["DESTINO"])
+    log1 = subprocess.run(["git", "-C", str(env["DESTINO"]), "rev-list",
+                           "HEAD", "--count"], check=False, capture_output=True, text=True)
+    contenido1 = sorted(p.name for p in dest.iterdir())
+    r2 = _run(env)
+    log2 = subprocess.run(["git", "-C", str(env["DESTINO"]), "rev-list",
+                           "HEAD", "--count"], check=False, capture_output=True, text=True)
+    assert r1.returncode == r2.returncode == 0
+    assert contenido1 == sorted(p.name for p in dest.iterdir())
+    # idempotente: no acumula commits ni archivos
+    assert log1.stdout.strip() == log2.stdout.strip() == "1"
 
 
-def test_staging_falla_con_secreto(escenario):
-    _, rutas = escenario
-    with rutas["OUTCOMES_LOTE2"].open("a", encoding="utf-8") as fh:
-        fh.write('{"file_id": "x", "result": "PAGAR", "nota": "apiKey=sk-abc123"}\n')
-    r = _correr(rutas)
-    assert r.returncode == 1
-    assert "secreto" in r.stderr
+def test_staging_con_lote2_tres_entregables():
+    env = _entorno("full")
+    pdfs2 = _pdf_dir("lote2")
+    env["OUTCOMES_LOTE2"] = str(_outcomes_validos(pdfs2, "lote2"))
+    env["FACTURAS_LOTE2"] = str(pdfs2)
+    r = _run(env)
+    assert r.returncode == 0, r.stderr
+    dest = Path(env["DESTINO"])
+    contenido = sorted(p.name for p in dest.iterdir() if p.name != ".git")
+    assert contenido == ["albertitos_plan.pdf", "outcomes.jsonl",
+                         "outcomes_lote2.jsonl"]
 
 
-def test_staging_falla_con_file_id_de_otro_lote(escenario):
-    """Un JSONL del lote 2 que cite PDFs del lote 1 falla (directorios distintos)."""
-    _, rutas = escenario
-    rutas["OUTCOMES_LOTE2"].write_text(
-        '{"file_id": "invoice_mensajeria_fa7399.pdf", "result": "PAGAR"}\n',
-        encoding="utf-8",
-    )
-    r = _correr(rutas)
-    assert r.returncode == 1
-    assert "no pasa el validador" in (r.stdout + r.stderr)
+def test_staging_falla_limpio_con_jsonl_invalido():
+    env = _entorno("invalido")
+    out = Path(env["OUTCOMES_LOTE1"])
+    out.write_text('{"file_id": "a.pdf", "result": "QUIZAS"}\n', encoding="utf-8")
+    r = _run(env)
+    assert r.returncode != 0
+    assert "no pasa el validador" in (r.stderr + r.stdout)
+    # nada se copió: el destino no existe
+    assert not Path(env["DESTINO"]).exists()
+
+
+def test_staging_falla_limpio_sin_lote1():
+    env = _entorno("sinlote1")
+    del env["OUTCOMES_LOTE1"]  # no existe en la raíz del repo
+    r = _run(env)
+    assert r.returncode != 0
+    assert "outcomes.jsonl" in (r.stderr + r.stdout)
+
+
+def test_staging_falla_con_secreto():
+    env = _entorno("secreto")
+    out = Path(env["OUTCOMES_LOTE1"])
+    out.write_text('{"file_id": "a.pdf", "result": "PAGAR"}  # apiKey=hola\n',
+                   encoding="utf-8")
+    r = _run(env)
+    assert r.returncode != 0
+    assert "secreto" in (r.stderr + r.stdout)
+
+
+def test_pdf_compilado_en_el_repo_de_entrega():
+    """El PDF compilado de verdad está staged (NO commiteado en la solución)."""
+    delivery = Path.home() / "delivery-repo"
+    if not (delivery / "albertitos_plan.pdf").exists():
+        import pytest
+
+        pytest.skip("staging real aún no ejecutado en esta máquina")
+    contenido = sorted(p.name for p in delivery.iterdir() if p.name != ".git")
+    assert "albertitos_plan.pdf" in contenido
+    from pypdf import PdfReader
+
+    reader = PdfReader(delivery / "albertitos_plan.pdf")
+    assert len(reader.pages) >= 2

@@ -1,0 +1,154 @@
+{
+  "escalabilidad": {
+    "archivos_por_segundo": {
+      "etiqueta": "sin datos",
+      "nota": "",
+      "valor": null
+    },
+    "coste_lote": {
+      "coste_por_archivo": {
+        "etiqueta": "sin datos",
+        "valor_eur": null
+      },
+      "etiqueta_total": "sin datos",
+      "formula": "electricidad_cpu(horas×kW×€/kWh, estimada) + llamadas_cloud(nº×€/llamada) + tokens_agentes(1k×€)",
+      "lote": 500,
+      "precios": {
+        "agentes": {
+          "etiqueta_precio": "sin datos",
+          "eur_por_1k_tokens": 0.0
+        },
+        "cloud": {
+          "etiqueta_precio": "estimado",
+          "eur_por_llamada": 0.004
+        },
+        "electricidad": {
+          "etiqueta_precio": "estimado",
+          "eur_por_kwh": 0.25,
+          "potencia_kw": 0.1
+        }
+      },
+      "terminos": {
+        "electricidad_cpu": {
+          "etiqueta": "estimado",
+          "eur_por_kwh": 0.25,
+          "horas": 0.0,
+          "potencia_kw": 0.1,
+          "valor_eur": 0.0
+        },
+        "llamadas_cloud": {
+          "etiqueta": "medido×precio estimado",
+          "eur_por_llamada": 0.004,
+          "n_llamadas": 0,
+          "valor_eur": 0.0
+        },
+        "tokens_agentes": {
+          "etiqueta": "sin datos",
+          "nota": "sin telemetría de tokens de agentes en la evidencia",
+          "valor_eur": null
+        }
+      },
+      "total_eur": 0.0
+    },
+    "etiquetas": {
+      "estimado": "proyección sobre datos medidos (precio o paralelismo)",
+      "medido": "calculado desde filas de evidencia del ledger",
+      "sin datos": "no hay evidencia suficiente; no se inventa cifra"
+    },
+    "hardware": {
+      "_todo_medido": true,
+      "nucleos": [
+        "8",
+        "medido"
+      ],
+      "ram": [
+        "12.0 GB",
+        "medido"
+      ]
+    },
+    "limite_throughput_secuencial": {
+      "etiqueta": "sin datos",
+      "nota": "",
+      "valor": null
+    },
+    "n_archivos_con_evidencia": 0,
+    "n_decisiones": 0,
+    "por_rung": {},
+    "rung_mas_lento": null
+  },
+  "t10_t12": {
+    "calibracionCobertura": [
+      [
+        "texto: media 0.954, p5 0.8 (n=493)",
+        "medido"
+      ],
+      [
+        "OCR: media 0.483, p50 0.4 (n=29)",
+        "medido"
+      ]
+    ],
+    "calibracionDecision": [
+      "word_conf 40.0: 89.7 % OCR pasa (cobertura 0.4: 72.4 % OCR, 100.0 % texto)",
+      "calibrado con corpus (T10)"
+    ],
+    "drillsPorNombre": [],
+    "drillsResumen": [
+      "PENDIENTE-MEDICIÓN(T14)",
+      "sin datos"
+    ],
+    "dryrunLatenciaRung1": [
+      [
+        "0.4 ms",
+        "2.0 ms"
+      ]
+    ],
+    "dryrunLatenciaRung2": [
+      [
+        "42.1 ms",
+        "73.0 ms"
+      ]
+    ],
+    "dryrunRutas": [
+      [
+        "rung1 texto usable",
+        "471"
+      ],
+      [
+        "raster sin QR",
+        "29"
+      ],
+      [
+        "solo QR",
+        "0"
+      ],
+      [
+        "errores / timeouts",
+        "0 / 0"
+      ]
+    ],
+    "dryrunTextoUsable": [
+      "471 / 500 (94.2 %)",
+      "medido"
+    ],
+    "dryrunThroughput": [
+      "2636.364",
+      "medido"
+    ],
+    "dryrunWall": [
+      "3.57 s para 500 archivos",
+      "medido"
+    ],
+    "exactitudLote1": [
+      "PENDIENTE-MEDICIÓN(T14)",
+      "sin datos"
+    ],
+    "impactoReprocesado": [
+      "PENDIENTE-MEDICIÓN(T14)",
+      "sin datos"
+    ],
+    "resultadosLote1": [
+      "PENDIENTE-MEDICIÓN(T14)",
+      "sin datos"
+    ]
+  }
+}

@@ -29,7 +29,19 @@ def datos_informe(store_dir: Path | None = None) -> dict[str, Any]:
     Cada métrica es una tupla (valor, etiqueta) con etiqueta 'medido' o
     'sin datos', salvo las que son dict de métricas.
     """
-    base = Path(store_dir) if store_dir else Path(".sdd") / "ledger"
+    if store_dir is None:
+        # Fuente real: el store SQLite del runner (T8). El ledger solo queda
+        # como ruta explícita (tests / formatos legacy).
+        return _datos_desde_store(Path(".sdd") / "store.db")
+    base = Path(store_dir)
+    if base.is_dir() and not base.is_file() and base.name != ".sdd":
+        return _datos_desde_ledger(base)
+    if base.is_dir():
+        return _datos_desde_ledger(base / "ledger")
+    return _datos_desde_store(base if base.suffix == ".db" else base / "store.db")
+
+
+def _datos_desde_ledger(base: Path) -> dict[str, Any]:
     decisiones: list[dict[str, Any]] = []
     evidencia: list[dict[str, Any]] = []
     if base.is_dir():
@@ -89,6 +101,81 @@ def datos_informe(store_dir: Path | None = None) -> dict[str, Any]:
         ),
         "erroresProveedor": m(
             str(sum(1 for e in evidencia if e.get("outcome") == "error"))
+        ),
+    }
+
+
+def _datos_desde_store(db_path: Path) -> dict[str, Any]:
+    """Métricas desde el store real (SQLite: invoices + evidence, T4/T8).
+
+    Mismas claves que el lector de ledger; cifras MEDIDAS o 'sin datos'.
+    """
+    import sqlite3
+
+    if not db_path.exists():
+        return _datos_desde_ledger(Path("/no/existe"))
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        decisiones = conn.execute(
+            "SELECT file_id, result, config_version FROM invoices"
+        ).fetchall()
+        evidencia = conn.execute(
+            "SELECT file_id, stage, extractor, extractor_version, "
+            "config_version, latency_ms, outcome, detail FROM evidence"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    conteo = Counter(str(r["result"]) for r in decisiones)
+    version = next(
+        (str(r["config_version"]) for r in reversed(decisiones)
+         if r["config_version"]),
+        None,
+    )
+    latencias = [int(r["latency_ms"]) for r in evidencia
+                 if r["latency_ms"] is not None]
+    paginas = sum(
+        1 for r in evidencia
+        if str(r["stage"]).startswith("extract:")
+    )  # una fila de extract:rungN por página (T1)
+    repeticiones = Counter(
+        (r["file_id"], r["stage"], r["extractor"]) for r in evidencia
+    )
+    extractores = Counter(str(r["extractor"]) for r in evidencia)
+
+    def m(valor: str) -> tuple[str, str]:
+        return valor, "medido"
+
+    # throughput medido por el runner (estado de la última corrida)
+    fps = SIN_DATOS
+    estado = Path(".sdd") / "state" / "runner.json"
+    try:
+        rj = json.loads(estado.read_text(encoding="utf-8"))
+        if rj.get("files_per_second"):
+            fps = m(f"{rj['files_per_second']} archivos/s")
+    except (OSError, json.JSONDecodeError, KeyError):
+        pass
+
+    return {
+        "facturasDecididas": m(str(len(decisiones))),
+        "conteoResultados": {r: m(str(conteo.get(r, 0))) for r in RESULTADOS},
+        "paginasExtraccion": m(str(paginas)),
+        "latenciaMedia": (
+            m(f"{round(sum(latencias) / len(latencias))} ms") if latencias else SIN_DATOS
+        ),
+        "costeAcumulado": SIN_DATOS,  # el store no factura coste: honesto
+        "versionReglas": m(version) if version else SIN_DATOS,
+        "facturasPorSegundo": fps,
+        "costePorFactura": SIN_DATOS,
+        "extractores": {k: m(str(v)) for k, v in sorted(extractores.items())},
+        "reintentos": m(str(sum(1 for v in repeticiones.values() if v > 1))),
+        "omisiones": m(
+            str(sum(1 for r in evidencia
+                    if str(r["outcome"] or "").startswith("skipped")))
+        ),
+        "erroresProveedor": m(
+            str(sum(1 for r in evidencia if r["outcome"] == "error"))
         ),
     }
 
