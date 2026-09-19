@@ -16,6 +16,7 @@
     (name: "Luis Daniel Casais Mezquida", email: "luisdaniel.casais@alumnos.uc3m.es"),
     (name: "Albert Giurgiu", email: "fedesito@posteo.es"),
     (name: "Jorge Adrian Saghin Dudulea", email: "zanajorgesaghin@gmail.com"),
+    (name: "Henry Díaz Bordón", email: "henrydiazbordon@gmail.com"),
   ),
 )
 
