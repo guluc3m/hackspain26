@@ -4,12 +4,12 @@ import dataclasses
 
 import pytest
 
-from albertitos.parse.normalizers import amounts_match, normalize_iban, normalize_nif, parse_amount
-from albertitos.rules.base import RuleContext
-from albertitos.rules.config import RuleConfig
-from albertitos.rules.engine import evaluate
-from albertitos.rules.rules import DateValidNotFuture
-from albertitos.types import ExtractionField, Result, RuleVerdict
+from filemaid.parse.normalizers import amounts_match, normalize_iban, normalize_nif, parse_amount
+from filemaid.rules.base import RuleContext
+from filemaid.rules.config import RuleConfig
+from filemaid.rules.engine import evaluate
+from filemaid.rules.rules import DateValidNotFuture
+from filemaid.types import ExtractionField, Result, RuleVerdict
 
 
 def _field(tipo: str, valor, conf: float = 0.9, extractor: str = "test") -> ExtractionField:

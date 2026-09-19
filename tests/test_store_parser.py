@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from unittest.mock import patch
 
-from albertitos.extract.ladder import PageExtraction
-from albertitos.parse.parser import parse_fields
-from albertitos.store.db import Store
-from albertitos.store.ledger import Ledger
-from albertitos.types import ExtractionFeature, Result
-
+from filemaid.extract.ladder import PageExtraction
+from filemaid.parse.parser import parse_fields
+from filemaid.pipeline import Pipeline
+from filemaid.store.db import Store
+from filemaid.store.ledger import Ledger
+from filemaid.types import ExtractionFeature, Result
 
 def _feature(texto: str, method: str) -> ExtractionFeature:
     return ExtractionFeature(
@@ -120,3 +122,83 @@ def test_store_backfill_reason_code_de_filas_legacy(cfg):
     reopened = Store(cfg.store_path)  # la migración añade columna y clasifica las filas legacy
     row = reopened.rule_evaluations_for("inv-1", "run-1")[0]
     assert row["reason_code"] == "SIN_CAMPO"
+
+def test_store_guarda_stage_timings(store):
+    store.upsert_invoice("inv-1", "f.pdf", "sha-1")
+    store.save_decision(
+        "inv-1",
+        "run-1",
+        "PAGAR",
+        {"thresholds": {}},
+        extraction_ms=120,
+        parser_ms=15,
+        evaluation_ms=5,
+        total_ms=140,
+        timings={"extraction_ms": 120, "parser_ms": 15, "pypdf_p0": 110},
+    )
+    rows = store.decision_rows_for_run("run-1")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["extraction_ms"] == 120
+    assert r["parser_ms"] == 15
+    assert r["evaluation_ms"] == 5
+    assert r["total_ms"] == 140
+    timings = json.loads(r["timings"])
+    assert timings["pypdf_p0"] == 110
+
+
+def test_store_backfill_decisions_timings_legacy(cfg):
+    # Simula store con tabla decisions sin las nuevas columnas
+    store = Store(cfg.store_path)
+    store.upsert_invoice("inv-1", "f.pdf", "sha-1")
+    # Al abrir Store, las columnas ya existen debido a _migrate()
+    row = store.conn.execute("SELECT * FROM decisions WHERE invoice_id = 'inv-1'").fetchone()
+    assert row is None
+    store.save_decision("inv-1", "run-old", "PAGAR", {})
+    row = store.decision_rows_for_run("run-old")[0]
+    assert row["extraction_ms"] == 0
+    assert row["total_ms"] == 0
+    assert json.loads(row["timings"]) == {}
+
+def test_pipeline_records_stage_timings(cfg, tmp_path):
+    pdf_path = tmp_path / "factura_test.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 mock content")
+
+    pipe = Pipeline(cfg)
+    feat = ExtractionFeature(
+        type="pdf_text",
+        extraction_method="pypdf",
+        data="FACTURA 2026/001 Fecha: 15/01/2026 Total: 121,00 EUR NIF: B12345678",
+        page=0,
+        latency_ms=45,
+        confidence=0.9,
+    )
+    mock_page = PageExtraction(page=0, features=[feat], content=str(feat.data))
+
+    with patch("filemaid.pipeline.extract_file", return_value=[mock_page]):
+        decision = pipe.process_pdf(pdf_path)
+
+    assert decision.extraction_ms >= 0
+    assert decision.parser_ms >= 0
+    assert decision.evaluation_ms >= 0
+    assert decision.total_ms >= 0
+    assert "pypdf_p0" in decision.timings
+    assert decision.timings["pypdf_p0"] == 45
+
+    # Check store row
+    rows = pipe.store.decision_rows_for_run(pipe.rule_config.version)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["extraction_ms"] == decision.extraction_ms
+    assert r["parser_ms"] == decision.parser_ms
+    assert r["evaluation_ms"] == decision.evaluation_ms
+    assert r["total_ms"] == decision.total_ms
+
+    # Check ledger row
+    ledger_lines = [json.loads(l) for l in Path(cfg.ledger_path).read_text().splitlines()]
+    decision_event = next(e for e in ledger_lines if e.get("type") == "decision")
+    assert decision_event["extraction_ms"] == decision.extraction_ms
+    assert decision_event["parser_ms"] == decision.parser_ms
+    assert decision_event["evaluation_ms"] == decision.evaluation_ms
+    assert decision_event["total_ms"] == decision.total_ms
+    assert "pypdf_p0" in decision_event["timings"]

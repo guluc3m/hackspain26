@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from albertitos.rules.engine import evaluate
-from albertitos.rules.report import collect_run, write_report
-from albertitos.types import ExtractionField
+from filemaid.rules.engine import evaluate
+from filemaid.rules.report import collect_run, write_report
+from filemaid.types import ExtractionField
 
 
 def _field(tipo: str, valor, conf: float = 0.9, extractor: str = "test") -> ExtractionField:
@@ -143,6 +143,9 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert "Errores comunes" in index
     assert "DATE_VALID_NOT_FUTURE" in index and "ORDER_BELONGS_TO_SUPPLIER" in index
     assert "sin campo" in index  # tipo de UNKNOWN del informe ESCALAR
+    assert "latencia media" in index
+    assert "extracción · parser · reglas" in index
+
 
     detalle = (out / "facturas" / "inv-no.html").read_text(encoding="utf-8")
     assert "NIF_IN_MASTER" in detalle and "NO_PAGAR" in detalle
@@ -151,6 +154,11 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
 
     inv_ok = (out / "facturas" / "inv-ok.html").read_text(encoding="utf-8")
     assert "ELEGIDO" in inv_ok
+    assert "latencia total" in inv_ok
+    assert "extracción (escalera)" in inv_ok
+    assert "parser (candidatos)" in inv_ok
+    assert "evaluación de reglas" in inv_ok
+
 
     lineas = [
         json.loads(l) for l in (out / "detalle.jsonl").read_text(encoding="utf-8").splitlines()
@@ -158,3 +166,4 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert len(lineas) == 3
     assert {l["result"] for l in lineas} == {"PAGAR", "NO_PAGAR", "ESCALAR"}
     assert all("fields" in l and "evaluations" in l for l in lineas)
+    assert all("extraction_ms" in l and "parser_ms" in l and "evaluation_ms" in l and "total_ms" in l for l in lineas)

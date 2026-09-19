@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from albertitos.rules.base import RuleContext
-from albertitos.rules.escoger import ELEGIDO, FieldSelection, escoger, field_selection
-from albertitos.types import ExtractionField
+from filemaid.rules.base import RuleContext
+from filemaid.rules.escoger import ELEGIDO, FieldSelection, escoger, field_selection
+from filemaid.types import ExtractionField
 
 
 def _field(tipo: str, *candidatos: tuple[str, object, float]) -> ExtractionField:

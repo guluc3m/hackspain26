@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from albertitos.config import AppConfig
-from albertitos.rules.config import RuleConfig
-from albertitos.rules.master import MasterData, Pedido, Proveedor
-from albertitos.store.db import Store
+from filemaid.config import AppConfig
+from filemaid.rules.config import RuleConfig
+from filemaid.rules.master import MasterData, Pedido, Proveedor
+from filemaid.store.db import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

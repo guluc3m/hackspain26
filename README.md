@@ -1,4 +1,4 @@
-# albertitos
+# filemaid
 
 Sistema de decisión para las facturas de Alberto: lee PDFs, extrae campos y decide
 si cada factura se puede pagar — `PAGAR`, `NO_PAGAR` o `ESCALAR` — con evidencia
@@ -13,7 +13,7 @@ PDF ──▶ EXTRACCIÓN ──▶ FEATURES ──▶ PARSER ──▶ CAMPOS �
 ## Estructura
 
 ```
-src/albertitos/
+src/filemaid/
   types.py          contrato: ExtractionFeature, ExtractionField, Decision...
   config.py         rutas de estado (data/, nunca /tmp) y config de extracción
   pipeline.py       worker: lote idempotente y resumable (clave: sha+stage+version+config)
@@ -33,24 +33,24 @@ frontend/           Svelte + Vite (TS): Operaciones, Facturas, Revisión, Reglas
 
 ```sh
 uv sync                              # entorno (Python 3.13, user-space)
-uv run albertitos run --lote caja-de-alberto/facturas --out outcomes.jsonl
-uv run albertitos emit               # re-emite outcomes desde el store
-uv run albertitos serve              # API + UI de revisión
-uv run albertitos clean              # borra store.db (pide confirmación)
+uv run filemaid run --lote caja-de-alberto/facturas --out outcomes.jsonl
+uv run filemaid emit               # re-emite outcomes desde el store
+uv run filemaid serve              # API + UI de revisión
+uv run filemaid clean              # borra store.db (pide confirmación)
 uv run pytest                        # tests
 uv run ruff check src tests          # lint
 ```
 
 ### Limpiar el estado (`clean`)
 
-Borra estado en disco para empezar de cero. Respeta `ALBERTITOS_DATA` (por
+Borra estado en disco para empezar de cero. Respeta `FILEMAID_DATA` (por
 defecto `data/`). Por defecto borra el store; pide confirmación salvo `-y`.
 
 ```sh
-uv run albertitos clean              # store.db + WAL/SHM
-uv run albertitos clean -y           # sin confirmación
-uv run albertitos clean --all -y     # store + cache + pages + ledger
-uv run albertitos clean --cache --pages --ledger -y
+uv run filemaid clean              # store.db + WAL/SHM
+uv run filemaid clean -y           # sin confirmación
+uv run filemaid clean --all -y     # store + cache + pages + ledger
+uv run filemaid clean --cache --pages --ledger -y
 ```
 
 | Flag | Borra |

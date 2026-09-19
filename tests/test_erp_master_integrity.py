@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from albertitos.rules.config import RuleConfig
-from albertitos.rules.engine import evaluate
-from albertitos.rules.master import load_master
-from albertitos.types import ExtractionField, Result, RuleVerdict
+from filemaid.rules.config import RuleConfig
+from filemaid.rules.engine import evaluate
+from filemaid.rules.master import load_master
+from filemaid.types import ExtractionField, Result, RuleVerdict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ERP_SCRIPT_PATH = REPO_ROOT / "caja-de-alberto" / "alberto_erp.py"

@@ -37,7 +37,7 @@ Two phases, strictly separated:
 
 The decision engine consumes fields + rules and emits the result **and the rule codes that produced it**.
 
-### Types (implemented in `src/albertitos/types.py`)
+### Types (implemented in `src/filemaid/types.py`)
 
 ```ts
 interface ExtractionFeature {

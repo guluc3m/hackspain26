@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from albertitos.types import Candidate, ExtractionField, Result, RuleVerdict
+from filemaid.types import Candidate, Decision, ExtractionField, Result, RuleVerdict
 
 
 def test_resultado_solo_tres_valores():
@@ -37,3 +37,20 @@ def test_candidate_campos_del_contrato():
 def test_tipos_de_campo_esperados(tipo: str):
     f = ExtractionField(type=tipo)
     assert f.type == tipo
+
+def test_decision_timings_fields():
+    d = Decision(
+        invoice_id="inv-1",
+        file_id="a.pdf",
+        result=Result.PAGAR,
+        extraction_ms=100,
+        parser_ms=10,
+        evaluation_ms=5,
+        total_ms=115,
+        timings={"extraction_ms": 100, "parser_ms": 10, "evaluation_ms": 5, "total_ms": 115},
+    )
+    assert d.extraction_ms == 100
+    assert d.parser_ms == 10
+    assert d.evaluation_ms == 5
+    assert d.total_ms == 115
+    assert d.timings["extraction_ms"] == 100

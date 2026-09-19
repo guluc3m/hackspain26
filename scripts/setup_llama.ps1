@@ -3,13 +3,13 @@
 # llama.app (o winget), pesos en <repo>/models/llama. Sin admin, sin /tmp.
 #
 # Uso:  powershell -File scripts/setup_llama.ps1
-# Env:  LLAMA_MODEL_REPO, ALBERTITOS_MODELS
+# Env:  LLAMA_MODEL_REPO, FILEMAID_MODELS
 
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ModelRepo = if ($env:LLAMA_MODEL_REPO) { $env:LLAMA_MODEL_REPO } else { "PaddlePaddle/PaddleOCR-VL-1.6-GGUF" }
-$ModelsDir = if ($env:ALBERTITOS_MODELS) { $env:ALBERTITOS_MODELS } else { Join-Path $RepoRoot "models/llama" }
+$ModelsDir = if ($env:FILEMAID_MODELS) { $env:FILEMAID_MODELS } else { Join-Path $RepoRoot "models/llama" }
 $Base = "https://huggingface.co/$ModelRepo/resolve/main"
 
 function Log($msg) { Write-Host "[llama] $msg" }
@@ -59,4 +59,4 @@ foreach ($name in @("PaddleOCR-VL-1.6-GGUF.gguf", "PaddleOCR-VL-1.6-GGUF-mmproj.
 Log "setup completo"
 Log "binario : $((Get-Command llama -ErrorAction SilentlyContinue).Source ?? '~/.llama-app o winget')"
 Log "gguf    : $ModelsDir"
-Log "arranque: uv run python -m albertitos.llama_manager start"
+Log "arranque: uv run python -m filemaid.llama_manager start"

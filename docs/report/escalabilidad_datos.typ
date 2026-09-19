@@ -1,4 +1,4 @@
-// Generado por albertitos.metrics — NO editar a mano.
+// Generado por filemaid.metrics — NO editar a mano.
 // Números medidos desde el ledger; cada valor lleva su etiqueta.
 #let latenciasPorRung = (:)
 #let archivosPorSegundo = ("—", "sin datos")

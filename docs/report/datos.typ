@@ -1,4 +1,4 @@
-// Generado por albertitos.report_data — NO editar a mano.
+// Generado por filemaid.report_data — NO editar a mano.
 // Cada métrica es (valor, etiqueta) con etiqueta 'medido' o 'sin datos'.
 #let facturasDecididas = ("500", "medido")
 #let conteoResultados = (

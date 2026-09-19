@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from albertitos.parse.extractors import (
+from filemaid.parse.extractors import (
     all_extractors,
     _base,
     _fecha,
@@ -13,7 +13,7 @@ from albertitos.parse.extractors import (
     _pedido,
     _total,
 )
-from albertitos.rules.escoger import FORMAT_TESTS
+from filemaid.rules.escoger import FORMAT_TESTS
 
 
 class TestFechaExtractor:

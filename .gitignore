@@ -37,7 +37,7 @@ models/
 /docs/report/*.pdf
 /outcomes.jsonl
 /outcomes_lote2.jsonl
-# informe HTML de decisiones (reglas + breadcrumbs): se regenera con `albertitos report`
+# informe HTML de decisiones (reglas + breadcrumbs): se regenera con `filemaid report`
 /rules/
 .sdd/lote1
 # runtime pesado regenerable (W1): imágenes de revisión, tessdata, workdir drills

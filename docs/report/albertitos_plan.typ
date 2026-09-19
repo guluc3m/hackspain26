@@ -84,7 +84,7 @@
   status: "ACEPTADA",
   contexto: [El requisito del usuario: que funcione también en Windows y Mac, con integración de app «tipo Electron o similar». Alberto usa la app desde Linux, pero la demo debe portarse a otros escritorios.],
   alternativas: [Electron (runtime ~200 MB, toolchain Node adicional, empaquetado por OS); PWA sola (requiere navegador abierto); app nativa por OS (tres codebases).],
-  decision: [pywebview: ventana nativa con el webview del OS (WebKit en Mac, WebView2/Edge en Windows, GTK en Linux) sobre nuestra UI FastAPI/HTMX existente, arrancada por `python -m albertitos.desktop` (uvicorn en hilo, puerto efímero, cierre limpio con la ventana). Launchers `iniciar.sh/.command/.bat/.ps1` de un paso. Fallback: sin webview, aviso en español y navegador.],
+  decision: [pywebview: ventana nativa con el webview del OS (WebKit en Mac, WebView2/Edge en Windows, GTK en Linux) sobre nuestra UI FastAPI/HTMX existente, arrancada por `python -m filemaid.desktop` (uvicorn en hilo, puerto efímero, cierre limpio con la ventana). Launchers `iniciar.sh/.command/.bat/.ps1` de un paso. Fallback: sin webview, aviso en español y navegador.],
   consecuencias: [Cero Node, cero runtime extra en la base (pywebview es extra opcional `desktop`); la misma UI sirve a navegador y ventana. Límite honesto: un instalador .exe/.dmg firmado exige una máquina por OS — desde Linux entregamos fuente + arranque de un paso, suficiente para la defensa.],
   evidencia: [Tests del bootstrap (tests/test_desktop.py): servidor en hilo responde y se apaga limpio; degradación a navegador sin webview y si falla el init del webkit; launchers idempotentes. ADR citado en el informe y en `desktop.py`.],
 )

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from albertitos.extract.cache import FeatureCache, sha256_bytes
-from albertitos.extract.plausibility import text_is_plausible
-from albertitos.types import ExtractionFeature
+from filemaid.extract.cache import FeatureCache, sha256_bytes
+from filemaid.extract.plausibility import text_is_plausible
+from filemaid.types import ExtractionFeature
 
 
 def test_texto_bueno_pasa():
@@ -35,3 +35,44 @@ def test_cache_feature_roundtrip(tmp_path):
     assert got.data == "hola"
     assert cache.get(sha256_bytes(b"img"), "1", "cfg-2") is None
     assert cache.get(sha256_bytes(b"otra"), "1", "cfg-1") is None
+
+
+def test_ladder_architecture_six_rungs():
+    from filemaid.extract.ladder import _RUNGS
+    rung_names = [name for name, _, _, _ in _RUNGS]
+    assert rung_names == [
+        "pypdf",
+        "zxing",
+        "tesseract",
+        "vlm",
+        "typesafe_jev",
+        "cloud_vlm",
+    ]
+
+def test_ladder_execution_fallback_all_rungs(tmp_path):
+    from filemaid.extract.ladder import ExtractionLadder
+    from filemaid.extract.rungs.context import PageContext
+    cache = FeatureCache(tmp_path / "cache")
+    ladder = ExtractionLadder(cache=cache, config={}, pages_dir=tmp_path / "pages")
+
+    # Create a valid 1x1 PNG using PIL to exercise extract_page_any (start=1)
+    from PIL import Image as PILImage
+    import io
+    im = PILImage.new("RGB", (10, 10), color="white")
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    dummy_img = tmp_path / "page_0.png"
+    dummy_img.write_bytes(buf.getvalue())
+    extraction = ladder.extract_page_any(dummy_img, 0, start=1)
+    assert extraction.page == 0
+    methods = [f.extraction_method for f in extraction.features]
+    # Should execute through qr -> tesseract -> vlm -> typesafe_jev -> cloud_vlm
+    # All skip gracefully without throwing
+    assert any("pypdfium2" in m or "skipped" in m for m in methods)
+    assert any("typesafe" in m for m in methods)
+    assert any("cloud" in m or "api-key" in m for m in methods)
+    # Every feature records latency_ms
+    for f in extraction.features:
+        assert hasattr(f, "latency_ms")
+        assert isinstance(f.latency_ms, int)
+        assert f.latency_ms >= 0

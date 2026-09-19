@@ -14,7 +14,7 @@ extraction_version: v1
 rungs:
   # Escalón 1: capa de texto (pypdf). Sin umbral numérico: se acepta por
   # plausibilidad (mojibake de fuentes CID pasa con "confianza", así que
-  # un número no lo filtra — ver src/albertitos/extract/plausibility.py).
+  # un número no lo filtra — ver src/filemaid/extract/plausibility.py).
   # Solo se rasteriza si el texto NO pasa este chequeo.
   text_layer:
     plausibility:
@@ -42,3 +42,19 @@ rungs:
   vlm_local:
     min_word_confidence: 60.0
     min_field_coverage: 0.5
+
+  # Escalón 5: TypeSafe System One Jev (penúltimo escalón).
+  # POST https://api.typesafe.ai/v1/systemone
+  typesafe_jev:
+    endpoint: "https://api.typesafe.ai/v1/systemone"
+    model: "jev-latest"
+    min_confidence: 0.6
+    timeout: 60.0
+
+  # Escalón 6: VLM cloud (>25B, multimodal / OpenAI-compatible endpoint).
+  # Vía de escalado final; su lectura es otro candidato, nunca respuesta automática.
+  cloud_vlm:
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o-mini"
+    temperature: 0.0
+    timeout: 60.0

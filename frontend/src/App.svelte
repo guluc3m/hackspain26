@@ -20,7 +20,7 @@
 </script>
 
 <header>
-  <h1>albertitos</h1>
+  <h1>filemaid</h1>
   <nav>
     {#each vistas as v (v.id)}
       <a href="#{v.id}" class:active={vista === v.id} onclick={() => (vista = v.id)}>{v.etiqueta}</a>

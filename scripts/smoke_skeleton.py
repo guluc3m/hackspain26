@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from albertitos.config import AppConfig
-from albertitos.pipeline import Pipeline
+from filemaid.config import AppConfig
+from filemaid.pipeline import Pipeline
 
 
 def make_text_pdf(path: Path, text: str) -> None:
@@ -43,11 +43,50 @@ def main() -> None:
 
     cfg = AppConfig.load()
     pipeline = Pipeline(cfg)
-    decisions = pipeline.run_lote(lote, Path("data/smoke/outcomes.jsonl"))
+    outcomes_path = Path("data/smoke/outcomes.jsonl")
+    decisions = pipeline.run_lote(lote, outcomes_path)
+
+    assert len(decisions) >= 2, f"Esperadas al menos 2 decisiones, obtenidas {len(decisions)}"
     for d in decisions:
         for e in d.rule_evaluations:
             print(f"  {e.code:26} {e.verdict.value:8} {e.reason}")
-        print(f"{d.file_id}: {d.result.value}")
+        print(
+            f"{d.file_id}: {d.result.value} "
+            f"(extraction={d.extraction_ms}ms, parser={d.parser_ms}ms, eval={d.evaluation_ms}ms, total={d.total_ms}ms)"
+        )
+
+        # Assert in code that decisions contain stage metrics
+        assert d.extraction_ms >= 0, f"extraction_ms inválido: {d.extraction_ms}"
+        assert d.parser_ms >= 0, f"parser_ms inválido: {d.parser_ms}"
+        assert d.evaluation_ms >= 0, f"evaluation_ms inválido: {d.evaluation_ms}"
+        assert d.total_ms >= 0, f"total_ms inválido: {d.total_ms}"
+        assert isinstance(d.timings, dict), f"timings no es dict: {d.timings}"
+        assert "extraction_ms" in d.timings
+        assert "parser_ms" in d.timings
+        assert "evaluation_ms" in d.timings
+        assert "total_ms" in d.timings
+
+    # 3. Verify outcomes.jsonl and database rows in SQLite
+    assert outcomes_path.exists(), f"outcomes_path no existe: {outcomes_path}"
+    outcomes_lines = [
+        line.strip() for line in outcomes_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    assert len(outcomes_lines) == len(decisions)
+
+    db_rows = pipeline.store.decision_rows_for_run(pipeline.rule_config.version)
+    assert len(db_rows) >= len(decisions), f"Filas en DB ({len(db_rows)}) < decisiones ({len(decisions)})"
+    db_rows_by_file = {r["file_id"]: r for r in db_rows}
+
+    for d in decisions:
+        assert d.file_id in db_rows_by_file, f"Fila en DB no encontrada para {d.file_id}"
+        row = db_rows_by_file[d.file_id]
+        assert row["result"] == d.result.value
+        assert row["extraction_ms"] == d.extraction_ms
+        assert row["parser_ms"] == d.parser_ms
+        assert row["evaluation_ms"] == d.evaluation_ms
+        assert row["total_ms"] == d.total_ms
+
+    print("Smoke skeleton verification PASSED: all stage metrics verified in decisions, outcomes.jsonl, and SQLite.")
 
 
 if __name__ == "__main__":

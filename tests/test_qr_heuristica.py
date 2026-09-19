@@ -15,9 +15,9 @@ from qrcode.image.pil import PilImage
 pypdfium2 = pytest.importorskip("pypdfium2")
 pytest.importorskip("zxingcpp")
 
-from albertitos.extract.cache import FeatureCache
-from albertitos.extract.ladder import extract_document, extract_file
-from albertitos.extract.rungs.qr import _page_qr_confidence, _signal_payload_shape
+from filemaid.extract.cache import FeatureCache
+from filemaid.extract.ladder import extract_document, extract_file
+from filemaid.extract.rungs.qr import _page_qr_confidence, _signal_payload_shape
 
 _QR_PAYLOAD = (
     "https://example.com/verifactu?id=abc&IDEMISOR=B12345678&FECHA=15-01-2026"
@@ -95,7 +95,7 @@ def test_heuristica_texto_baja_confianza(tmp_path):
 
 
 def test_escalera_qr_only_para_en_rung2(tmp_path):
-    from albertitos.config import AppConfig
+    from filemaid.config import AppConfig
 
     cfg = AppConfig(tmp_path / "data")
     pdf = tmp_path / "qr_only.pdf"
@@ -108,7 +108,7 @@ def test_escalera_qr_only_para_en_rung2(tmp_path):
 
 
 def test_escalera_texto_para_en_rung1(tmp_path):
-    from albertitos.config import AppConfig
+    from filemaid.config import AppConfig
 
     cfg = AppConfig(tmp_path / "data")
     pdf = tmp_path / "text.pdf"
@@ -119,7 +119,7 @@ def test_escalera_texto_para_en_rung1(tmp_path):
 
 def test_imagen_entra_directo_en_rung2(tmp_path):
     """png/jpg no tienen capa de texto: la escalera empieza en el escalón 2."""
-    from albertitos.config import AppConfig
+    from filemaid.config import AppConfig
 
     qr_img = qrcode.QRCode(border=4, box_size=10)
     qr_img.add_data("https://example.com/verifactu?id=abc&x=1")

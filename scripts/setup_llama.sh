@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Setup llama-server for albertitos (extraction rung 4).
+# Setup llama-server for filemaid (extraction rung 4).
 #
 # Installs llama.cpp via the official installer (https://llama.app) and
 # downloads the PaddleOCR-VL 1.6 Q8 model + mmproj into a project-local dir.
@@ -15,13 +15,13 @@
 # Usage: uv run scripts/setup_llama.sh
 # Env overrides:
 #   LLAMA_MODEL_REPO   HF repo (default PaddlePaddle/PaddleOCR-VL-1.6-GGUF)
-#   ALBERTITOS_MODELS  target dir (default <repo>/models/llama, git-ignored)
+#   FILEMAID_MODELS    target dir (default <repo>/models/llama, git-ignored)
 
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODEL_REPO="${LLAMA_MODEL_REPO:-PaddlePaddle/PaddleOCR-VL-1.6-GGUF}"
-MODELS_DIR="${ALBERTITOS_MODELS:-$REPO_ROOT/models/llama}"
+MODELS_DIR="${FILEMAID_MODELS:-$REPO_ROOT/models/llama}"
 GGUF="$MODELS_DIR/PaddleOCR-VL-1.6-GGUF.gguf"
 MMPROJ="$MODELS_DIR/PaddleOCR-VL-1.6-GGUF-mmproj.gguf"
 BASE_URL="https://huggingface.co/$MODEL_REPO/resolve/main"
@@ -61,4 +61,4 @@ log "[llama] setup complete"
 log "[llama] binary : $(command -v llama)"
 log "[llama] gguf   : $GGUF"
 log "[llama] mmproj : $MMPROJ"
-log "[llama] start  : uv run python -m albertitos.llama_manager start   (or via API /health)"
+log "[llama] start  : uv run python -m filemaid.llama_manager start   (or via API /health)"
