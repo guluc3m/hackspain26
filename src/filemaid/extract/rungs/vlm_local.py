@@ -41,27 +41,28 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         return cached
 
     vlm_base_url = (ctx.config.get("vlm_base_url") or "").strip().rstrip("/")
-    headers: dict[str, str] = {}
     vlm_model = ctx.config.get("vlm_model") or ""
+    local_fallback = bool(ctx.config.get("local_vlm_fallback", False))
 
     if vlm_base_url:
-        # Remote or custom endpoint: avoid starting local llama
+        # Remote or custom endpoint: avoid starting local llama unless the
+        # configured local fallback is needed after a remote failure.
         endpoint_url = (
             f"{vlm_base_url}/chat/completions"
             if vlm_base_url.endswith("/v1")
             else f"{vlm_base_url}/v1/chat/completions"
         )
+        headers: dict[str, str] = {}
         custom_key = os.environ.get("FILEMAID_VLM_KEY", "").strip()
         if custom_key:
             headers["Authorization"] = f"Bearer {custom_key}"
+        remote_model = vlm_model
     else:
-        from filemaid.llama_manager import get_manager
-
-        mgr = get_manager()
-        if not mgr.ensure_started():
+        endpoint_url = _local_endpoint()
+        if endpoint_url is None:
             return _skip("llama-unavailable", latency_ms=int((time.monotonic() - t0) * 1000))
-        mgr.touch()
-        endpoint_url = f"{mgr.base_url}/v1/chat/completions"
+        headers = {}
+        remote_model = ""
 
     # la imagen de página ya existe (el escalón 2 la renderizó/guardó);
     # si no se guardó en disco, re-render no vale la pena: usamos el PNG
@@ -71,7 +72,7 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         return _skip("no-page-png", latency_ms=int((time.monotonic() - t0) * 1000))
     min_conf = threshold(ctx, "vlm_local", "min_field_coverage", 0.5)
 
-    def _query_vlm(img_bytes: bytes) -> str | None:
+    def _query_vlm(img_bytes: bytes, url: str, hdrs: dict[str, str], model: str) -> str | None:
         r = None
         try:
             payload: dict[str, Any] = {
@@ -85,24 +86,33 @@ def extract(ctx: PageContext) -> ExtractionFeature:
                 "temperature": 0,
                 "max_tokens": 1024,
             }
-            if vlm_model:
-                payload["model"] = vlm_model
+            if model:
+                payload["model"] = model
             r = httpx.post(
-                endpoint_url,
-                headers=headers,
+                url,
+                headers=hdrs,
                 timeout=120.0,
                 json=payload,
             )
             r.raise_for_status()
             response = r.json()
             return response["choices"][0]["message"]["content"]
-        except (httpx.HTTPError, KeyError, IndexError):
+        except (httpx.HTTPError, ValueError, KeyError, IndexError):
+            # ValueError covers json.JSONDecodeError from a 200 non-JSON body
+            # (misconfigured proxy/captive portal): degrade, never abort the batch.
             return None
         finally:
             if r is not None:
                 capture_response(NAME, r)
 
-    text = _query_vlm(png)
+    text = _query_vlm(png, endpoint_url, headers, remote_model)
+    active = (endpoint_url, headers, remote_model)
+    if text is None and vlm_base_url and local_fallback:
+        # Local fallback: never receives the remote auth header or model name.
+        local_url = _local_endpoint()
+        if local_url is not None:
+            text = _query_vlm(png, local_url, {}, "")
+            active = (local_url, {}, "")
     if text is None:
         return _skip("vlm-error", latency_ms=int((time.monotonic() - t0) * 1000))
 
@@ -113,7 +123,7 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         enhanced_png = enhance_scan_image(png)
         if enhanced_png != png:
             capture_artifact(NAME, "enhanced.png", enhanced_png, "image/png")
-            text_retry = _query_vlm(enhanced_png)
+            text_retry = _query_vlm(enhanced_png, *active)
             if text_retry and text_is_plausible(text_retry) and len(text_retry.split()) >= _MIN_TEXT_WORDS:
                 conf_retry = _field_coverage(text_retry)
                 if conf_retry > confidence:
@@ -135,6 +145,17 @@ def extract(ctx: PageContext) -> ExtractionFeature:
     )
     ctx.cache.put(ctx.page_image_sha, feat, ctx.config.get("config_version", ""))
     return feat
+
+
+def _local_endpoint() -> str | None:
+    """Start (or reuse) the local llama sidecar; None if unavailable."""
+    from filemaid.llama_manager import get_manager
+
+    mgr = get_manager()
+    if not mgr.ensure_started():
+        return None
+    mgr.touch()
+    return f"{mgr.base_url}/v1/chat/completions"
 
 
 def _page_png(ctx: PageContext) -> bytes | None:

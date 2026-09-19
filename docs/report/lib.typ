@@ -210,7 +210,7 @@
 ///
 /// - event (content): Event label for the cover chip, e.g. `\[ MAISA · HACKSPAIN 2026 \]`
 /// - challenge (str): Challenge name, e.g. `"500 Sombras de Alberto"`
-/// - title (content): Report title, e.g. `[ALBERTITOS PLAN]`
+/// - title (content): Report title, e.g. `[FILEMAID PLAN]`
 /// - subtitle (content, none): Report subtitle
 /// - place (content): Place label for the cover chip
 /// - date (content, none): Date shown at the bottom of the cover
@@ -226,7 +226,7 @@
 #let conf(
   event: [MAISA · HACKSPAIN 2026],
   challenge: "500 Sombras de Alberto",
-  title: [ALBERTITOS PLAN],
+  title: [FILEMAID PLAN],
   subtitle: none,
   place: [ETSIT UPM · MADRID],
   date: [Entrega · dom 20 sep 2026 · 11:00],
@@ -240,7 +240,7 @@
   doc,
 ) = {
   set document(
-    title: "albertitos_plan · " + challenge,
+    title: "filemaid · " + challenge,
     author: authors.map(a => if type(a) == "string" { a } else { a.name }),
   )
 
@@ -256,7 +256,7 @@
       let heads = query(heading.where(level: 1)).filter(h => h.numbering != none)
       let page = here().page()
       let visible = heads.filter(h => h.location().page() <= page)
-      let section = if visible.len() > 0 { visible.last().body } else { [albertitos_plan] }
+      let section = if visible.len() > 0 { visible.last().body } else { [filemaid] }
       grid(
         columns: (auto, 1fr, auto),
         gutter: 10pt,

@@ -1,1 +1,1 @@
-"""Ventana nativa (pywebview) de albertitos."""
+"""Ventana nativa (pywebview) de filemaid."""

@@ -1,4 +1,4 @@
-# albertitos_plan
+# filemaid — plan de arquitectura
 
 Fuente Typst del PDF de entrega `albertitos_plan.pdf` (arquitectura y ADRs) del
 reto [*500 Sombras de Alberto*](https://hackathon.maisa.ai/) — Maisa × HackSpain 2026.

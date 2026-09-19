@@ -303,10 +303,7 @@ def _setup_app_config(tmp_path: Path) -> AppConfig:
     master_d.mkdir(parents=True, exist_ok=True)
     rules_p = master_d / "rules.yaml"
 
-    # Master files minimal setup
-    (master_d / "proveedores.json").write_text("[]", encoding="utf-8")
-    (master_d / "pedidos.json").write_text("[]", encoding="utf-8")
-    (master_d / "facturas_historicas.json").write_text("[]", encoding="utf-8")
+    # Master files minimal setup (CSV, como load_master; sin JSON intermedio)
     rules_p.write_text(
         """version: "adversarial-test"
 tolerance:
@@ -325,9 +322,12 @@ escalation:
 
 
 def test_pipeline_never_crashes_mid_batch_on_api_adversities(tmp_path: Path):
-    """Batch run containing files where some fail catastrophically and some succeed.
-    Verifies that pipeline never halts mid-batch, records clean skipped/error features
-    with latency, and produces outcomes.jsonl with all decisions."""
+    """Un fallo real de fichero deja el lote incompleto y sin salida final.
+
+    Los escalones que degradan (``skipped:``) no abortan el lote; un crash de
+    fichero sí lo deja incompleto: se registra ``item_error``, se conservan las
+    decisiones ya persistidas y NO se emite ``outcomes.jsonl`` parcial.
+    """
     cfg = _setup_app_config(tmp_path)
     lote_dir = tmp_path / "lote"
     lote_dir.mkdir(parents=True, exist_ok=True)
@@ -369,19 +369,18 @@ def test_pipeline_never_crashes_mid_batch_on_api_adversities(tmp_path: Path):
             raise RuntimeError("Corrupted PDF structure")
 
     pipe = Pipeline(cfg)
-    with patch("filemaid.pipeline.extract_file", side_effect=mock_extract_file):
-        decisions = pipe.run_lote(lote_dir, outcomes_path)
+    with (
+        patch("filemaid.pipeline.extract_file", side_effect=mock_extract_file),
+        pytest.raises(RuntimeError, match="lote incompleto"),
+    ):
+        pipe.run_lote(lote_dir, outcomes_path)
 
-    # Decisions list should contain processed files (f1, f2)
-    assert len(decisions) == 2
-    f_names = [d.file_id for d in decisions]
-    assert "invoice_1.pdf" in f_names
-    assert "invoice_2.pdf" in f_names
+    # No partial final artifact: the batch is incomplete.
+    assert not outcomes_path.exists()
+    assert pipe.store.get(f"batch_result:{pipe.last_batch_id}") is None
 
-    # outcomes.jsonl is written
-    assert outcomes_path.is_file()
-    outcomes_lines = [json.loads(line) for line in outcomes_path.read_text().splitlines()]
-    assert len(outcomes_lines) == 2
+    # The two successful invoices persisted durable batch associations.
+    assert len(pipe.store.list("batch_item:")) == 2
 
     # PouchStore recorded the item_error for invoice_3.pdf
     events = [pipe.store.hydrate(d) for d in pipe.store.list("event:")]

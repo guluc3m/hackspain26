@@ -17,7 +17,7 @@
 | `parse/parser.py`, `parse/extractors.py` | Lista completa de `ExtractionField(type, timestamp, values[])`; cada candidato mantiene extractor, valor y confianza, sin colapso ni deduplicación adicional. |
 | `rules/engine.py`, `types.py` | `Decision` completa: resultado, lista de `RuleEvaluation` con `consumed`, `chosen_candidates`, `reason_code`, snapshot de umbrales/versiones/master/outcomes y timings. Motor sin cambios. |
 | `store/pouch.py`, `store/trace.py`, `api/app.py` | Única persistencia PouchDB: evidencia, candidatos, decisiones, caché, eventos y overrides con antes/después/quién/escalón/motivo. Sin proyección relacional ni ledger externo. |
-| `rules/report.py`, `run.py` | `index.html`, `facturas/<uuid>.html`, `detalle.jsonl`, `outcomes.jsonl`; resumen de conteos y latencias impreso en CLI, derivable de decisiones conservadas. |
+| `rules/report.py`, `run.py` | `index.html`, `facturas/<uuid>.html`; `outcomes.jsonl`/`outcomes_lote2.jsonl` como export final atómico desde PouchDB; resumen de conteos y latencias impreso en CLI, derivable de decisiones conservadas. |
 | `frontend/src/api.ts`, `views/LogsView.vue`, `InvoiceTable.vue`, `desktop/app.py` | La conexión real y los motores del puente estaban sin implementar; el visor filtraba datos sintéticos por factura y tipo, con botón «logs». No había logs de UI reales que migrar. Se conecta el visor al backend real; los targets `*_syncth` conservan su función de demo. |
 
 No se guardan claves, cabeceras Authorization ni el diccionario runtime de configuración que contiene secretos. Los payloads del documento/proveedor son datos no confiados, no instrucciones. No se altera la frontera `NO_PAGAR`/`ESCALAR`.
@@ -50,6 +50,9 @@ Estas formas son convenciones de los productores actuales, no tablas ni una list
 | `decision` | `decision:<scan_id>` | `Decision` completa bajo `decision`, run_id, identidad y timestamp. Solo PAGAR/NO_PAGAR/ESCALAR. Referencia fields y scan. |
 | `event` | `event:<scan_id>:<UUID>` | `type` y `payload` (`invoice_seen`, `decision`, `item_error`, `feature`, `fields`, `override`) con referencia a su documento/fichero. |
 | `cache` | clave determinista de página, motor y configuración | Feature reutilizable completa; almacenada en PouchDB y recuperable tras reinicio. |
+| `batch` | `batch:<batch_id>` | pertenencia estable del lote: `lote`, `expected` (basenames exactos), `run_id`, `extraction_config_version`, `master_sha256`, `started_at`. Inmutable. |
+| `batch_item` | `batch_item:<batch_id>:<file_key>` | asociación durable por factura: `file_id`, `file_key`, `scan_id`, `decision_id`, `timestamp`. Inmutable; es el progreso reanudable. |
+| `batch_result` | `batch_result:<batch_id>` | finalización: `status: complete`, `expected`, `decisions` (IDs ordenados), `finished_at`. Solo existe cuando todas las facturas esperadas tienen decisión. |
 | local | `_local/runtime-settings` | modo, URL sync, URL VLM y modelo. Configuración específica del dispositivo; nunca se replica. |
 
 Campos JSON/texto hasta 256 KiB se guardan inline. Valores mayores se serializan en UTF-8 JSON (o bytes, sin `repr`) y se sustituyen por referencia a artifact (`payload_ref`, con encoding). La lectura los reconstruye. Fragmentación evita cargar PDFs enteros en el canal IPC base64; se comprueban SHA-256 y longitud al leer. Cada artifact se publica solo después de sus blobs. Adjuntos huérfanos tras un crash son inocuos; no se purgan automáticamente porque podrían pertenecer a trabajo en curso.
@@ -71,6 +74,14 @@ Nunca se actualiza ni borra un documento de dominio; `_rev` no es histórico de 
 La vista se versiona, no se muta sobre lecturas en vuelo. Se rechazan lecturas con `_conflicts`. La sincronización soportada es la replicación nativa PouchDB <-> CouchDB descrita abajo. Los conflictos nativos de CouchDB nunca se fusionan silenciosamente: cualquier conflicto detiene el flujo o se marca como error (fail-closed). Compaction no elimina historia porque cada decisión es un documento independiente.
 Los escalones se guardan al terminar, antes de iniciar el siguiente. Si falla una página posterior, las páginas/escalones anteriores permanecen. El original se captura antes de extracción; las imágenes se aíslan por scan. La decisión se publica después de fields/evidencia y nunca se sobrescribe. Una caída del servidor deja la evidencia local disponible para sincronizar más tarde; los errores de sincronización se muestran, no se transforman en decisiones.
 
+## Lotes reanudables y export final
+
+`filemaid run` procesa un directorio y su pertenencia/progreso viven en PouchDB, no en memoria. El `batch_id` es determinista: `uuid5` sobre `{lote absoluto, run_id, extraction_config_version, master_sha256, [[file_id, sha256]…]}`. Repetir el mismo comando reanuda el mismo lote en lugar de duplicarlo; cambiar reglas, config de extracción, maestro o el contenido de un fichero produce un lote nuevo.
+
+Cada factura decidida publica un `batch_item` inmutable que asocia `file_key`→`scan_id`→`decision_id`. Al reanudar, un item con decisión persistida se reutiliza (no se re-extrae); el resto se procesa. La salida final `outcomes.jsonl` (o `outcomes_lote2.jsonl`) se escribe de forma atómica (temp único + rename) **solo** cuando existe `batch_result`, es decir, cuando todas las facturas esperadas tienen decisión y el conjunto de basenames coincide exactamente con `expected` (sin duplicados, sin omisiones, solo PAGAR/NO_PAGAR/ESCALAR). Un fallo deja el lote incompleto, sin `batch_result` y sin artefacto final; el comando termina con error y muestra el `batch_id` para reanudar.
+
+`filemaid emit [--batch-id]` re-emite desde el store el lote indicado (por defecto el último); si el lote está incompleto falla en lugar de emitir un artefacto parcial o mezclado. El export final se archiva una sola vez por lote como artifact (`artifact:batch-<batch_id>:…`), nunca una copia por scan. La sincronización remota es best-effort: un fallo de red no descarta la decisión local ni hace fallar el comando; el estado queda pendiente y se reintenta.
+
 ## Sincronización nativa con CouchDB y servicio VLM
 
 La sincronización entre dispositivos delega en el protocolo de replicación nativo de CouchDB a través de `PouchDB.sync(remote_url)`.
@@ -90,19 +101,22 @@ El acceso a la base CouchDB remota se autentica mediante:
 - No se persisten credenciales en la configuración local `_local/runtime-settings` ni en documentos sincronizados.
 
 ### Servicio VLM independiente (`server.py`)
-El servicio `filemaid server` aloja exclusivamente el escalador VLM (`/v1/chat/completions`) y carece de rutas `/sync/*`.
+
+`filemaid server` es Linux-only (guard en `run.py` y `start.py`) y aloja exclusivamente el escalador VLM local (`/v1/chat/completions`), sin rutas `/sync/*`. No existe modo de upstream remoto: al arrancar aprovisiona (instala + arranca + health-check) el sidecar local PaddleOCR-VL Q8 (llama.cpp) y **rechaza servir si no está listo** (el lifespan falla).
+
 Límites y operación VLM:
-- Acepta multimodal OpenAI-compatible en `/v1/chat/completions`, cuerpo hasta 24 MiB, respuesta hasta 2 MiB, máximo cuatro peticiones upstream simultáneas y timeout de 120 s. Streaming de tokens no soportado.
-- Upstream fijado por entorno del servidor (`FILEMAID_SERVER_VLM_URL`), nunca por datos del documento. Sin upstream configurado se inicia el sidecar local con presupuesto de hilos (`FILEMAID_LLAMA_THREADS`, default 4).
-- Autenticación del servidor VLM mediante `FILEMAID_SERVER_TOKEN`. Clientes con endpoint VLM dedicado usan `FILEMAID_VLM_KEY`.
-- El endpoint VLM es completamente independiente de la URL de CouchDB: en blanco utiliza el sidecar local; nunca se deduce de la URL de sincronización.
+- Acepta multimodal OpenAI-compatible en `/v1/chat/completions`, cuerpo hasta 24 MiB, respuesta hasta 2 MiB, máximo cuatro peticiones simultáneas y timeout de 120 s. Streaming de tokens no soportado.
+- Autenticación mediante `FILEMAID_SERVER_TOKEN`: obligatoria para acceso no-loopback (fail-closed 403 si falta); en loopback sin token se permite. El cliente con endpoint VLM dedicado usa `FILEMAID_VLM_KEY`.
+- El endpoint VLM es independiente de la URL de CouchDB: nunca se deduce de ella.
+
+En el cliente, el modo standalone usa el VLM local; el modo servidor exige un endpoint VLM remoto explícito; el fallback local es opcional según la configuración guardada.
 ## Instalación y operación
 
 Desde el repositorio: `uv run -- npm ci --prefix src/filemaid/store/pouchdb`, después `uv run filemaid serve` (app) o `uv run filemaid server` (escalador VLM). Node >=20 en PATH. Estado y temporales bajo FILEMAID_DATA, nunca `/tmp`. Backup: detener escritores y copiar el directorio PouchDB completo. `clean` solo elimina workspaces descartables; no elimina la base ni la caché persistida.
 
 ### Verificación de la persistencia y replicación
 
-`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, fallo parcial y enlace exacto de informes/reprocesado. Las pruebas de sincronización cubren la replicación nativa PouchDB <-> CouchDB, autenticación y manejo de checkpoints/conflictos; `test_runtime_settings.py` y `test_startup_choice.py` cubren configuración local y elección de modo.
+`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, fallo parcial y enlace exacto de informes/reprocesado. `test_pouch_persistence.py` cubre además los lotes reanudables: un fallo deja el lote incompleto sin salida final, re-ejecutar reutiliza las decisiones persistidas (sin re-extraer) y emite un único `outcomes.jsonl` con los campos exactos; un fallo de sincronización remota no descarta la decisión local. Las pruebas de sincronización cubren la replicación nativa PouchDB <-> CouchDB, autenticación y manejo de checkpoints/conflictos; `test_runtime_settings.py` y `test_startup_choice.py` cubren configuración local y elección de modo.
 
 Para ejecutar las pruebas contra Apache CouchDB real: configure `FILEMAID_TEST_COUCHDB_URL` con la URL raíz de un servidor de pruebas aislado, `FILEMAID_TEST_COUCHDB_USER` y `FILEMAID_TEST_COUCHDB_PASSWORD`, y ejecute `uv run pytest tests/test_couchdb_replication.py`. Cada prueba crea y elimina una base de nombre aleatorio. Sin esas variables, las pruebas de integración remota se omiten explícitamente; no se reemplaza CouchDB por un simulador ni se inicia uno en el cliente.
 

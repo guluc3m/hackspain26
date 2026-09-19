@@ -13,9 +13,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 from filemaid.store.pouch import INLINE_LIMIT, PouchStore
 from filemaid.types import ExtractionFeature
@@ -31,12 +30,6 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def encode(obj: Any) -> str:
-    if is_dataclass(obj):
-        obj = asdict(obj)
-    return json.dumps(obj, sort_keys=True, ensure_ascii=False, default=repr)
 
 
 class FeatureCache:

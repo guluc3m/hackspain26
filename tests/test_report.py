@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from filemaid.extract.cache import sha256_file
 from filemaid.rules.engine import evaluate
 from filemaid.rules.report import collect_run, write_report
@@ -133,7 +131,7 @@ def test_reporte_fail_escalado_no_es_negativo_definitivo(store, cfg, master, rul
     assert "FAIL→ESCALAR" in inv["driver_kind"]
 
 
-def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
+def test_write_report_html(store, cfg, master, rule_config, tmp_path):
     _lote(store, master, rule_config)
     out = write_report(store, cfg, rule_config.version, tmp_path / "rules")
 
@@ -153,13 +151,5 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert "IVA_CONSISTENT" in detalle  # el resto de reglas también se listan
     assert "TOTALS_MUST_MATCH" in detalle
 
-    lineas = [
-        json.loads(l) for l in (out / "detalle.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert len(lineas) == 3
-    assert {l["result"] for l in lineas} == {"PAGAR", "NO_PAGAR", "ESCALAR"}
-    assert all("fields" in l and "evaluations" in l for l in lineas)
-    assert all(
-        "extraction_ms" in l and "parser_ms" in l and "evaluation_ms" in l and "total_ms" in l
-        for l in lineas
-    )
+    # El informe es solo HTML: no se emiten artefactos JSONL intermedios.
+    assert not (out / "detalle.jsonl").exists()

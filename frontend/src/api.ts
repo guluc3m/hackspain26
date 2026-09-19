@@ -118,11 +118,44 @@ export interface RuntimeConfig {
   sync_url: string
   vlm_url: string
   vlm_model: string
+  local_vlm_fallback: boolean
+  /** Derivado por el backend desde la base de datos; nunca autoridad del payload. */
+  configured: boolean
+}
+
+/** Payload de PUT /api/config: `configured` lo deriva el backend. */
+export interface RuntimeConfigInput {
+  mode: 'standalone' | 'server'
+  sync_url: string
+  vlm_url: string
+  vlm_model: string
+  local_vlm_fallback: boolean
+}
+
+export type VlmState = 'idle' | 'downloading' | 'starting' | 'ready' | 'error' | 'remote-only'
+
+export interface VlmStatus {
+  mode: 'standalone' | 'server'
+  local_required: boolean
+  local_fallback: boolean
+  state: VlmState
+  downloaded: boolean
+  running: boolean
+  /** `true` solo con el modelo en ejecución y sano, no solo descargado. */
+  ready: boolean
+  detail: string
+  error: string | null
+  model: string | null
+  mmproj: string | null
+  binary: string | null
 }
 
 export interface SyncStatus {
-  ok: boolean
-  state: 'idle' | 'syncing' | 'synced' | 'error' | 'standalone'
+  state: 'idle' | 'syncing' | 'synced' | 'pending' | 'error' | 'standalone'
+  pending: boolean
+  last_sync?: number | null
+  /** Compatibilidad con respuestas previas. */
+  ok?: boolean
   error?: string | null
 }
 
@@ -136,7 +169,9 @@ export interface Api {
   salud(): Promise<Salud>
   logs(params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }): Promise<LogsResponse>
   getConfig(): Promise<RuntimeConfig>
-  saveConfig(config: RuntimeConfig): Promise<RuntimeConfig>
+  saveConfig(config: RuntimeConfigInput): Promise<RuntimeConfig>
+  vlmStatus(): Promise<VlmStatus>
+  vlmProvision(): Promise<VlmStatus>
   sync(): Promise<{ ok: boolean; [key: string]: unknown }>
   syncStatus(): Promise<SyncStatus>
 }
@@ -178,6 +213,8 @@ const realApi: Api = {
   ), undefined, 'GET'),
   getConfig: () => request('/api/config', undefined, 'GET'),
   saveConfig: config => request('/api/config', config, 'PUT'),
+  vlmStatus: () => request('/api/vlm/status', undefined, 'GET'),
+  vlmProvision: () => request('/api/vlm/provision', {}, 'POST'),
   sync: () => request('/api/sync', {}, 'POST'),
   syncStatus: () => request('/api/sync/status', undefined, 'GET')
 }

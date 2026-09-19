@@ -105,7 +105,10 @@ async function replicate(url, credentials) {
       if (page.rows.length < 128) break;
       startkey = page.rows.at(-1).id;
     }
-    return { ok: true, pushed: result.push.docs_written, pulled: result.pull.docs_written };
+    // Capture the completed sequence inside the same locked operation so a
+    // concurrent write after this point stays pending, never marked synced.
+    const info = await db.info();
+    return { ok: true, pushed: result.push.docs_written, pulled: result.pull.docs_written, seq: info.update_seq };
   } catch (error) {
     if (error.message?.startsWith('Unresolved revision conflicts:')) throw error;
     const status = Number.isInteger(error.status) ? ` (HTTP ${error.status})` : '';

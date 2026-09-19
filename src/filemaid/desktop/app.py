@@ -6,6 +6,9 @@ arquitectura: engines.extraction y engines.decision.
 
 La conexión real utiliza el mismo FastAPI local que el navegador. Los motores
 del puente histórico no participan en la persistencia de ingestión.
+
+Con `--headless` no se abre ventana: se sirve la misma UI y API en loopback,
+para máquinas sin display.
 """
 
 from __future__ import annotations
@@ -58,16 +61,15 @@ def _dist_index() -> Path:
 
 
 def ui_destino() -> str:
-    """Qué carga la ventana: URL de dev (ALBERTITOS_UI_URL) o el build dist."""
-    url = os.environ.get("ALBERTITOS_UI_URL", "")
+    """Qué carga la ventana: URL de dev (FILEMAID_UI_URL) o el build dist."""
+    url = os.environ.get("FILEMAID_UI_URL", "")
     if url:
         return url
     dist = _dist_index()
     if dist.exists():
         return _start_api()
     raise SystemExit(
-        "UI no construida: uv run -- npm --prefix frontend run build "
-        "(o ALBERTITOS_UI_URL=http://127.0.0.1:5173 con dev)"
+        "UI no construida: python start.py client (o FILEMAID_UI_URL=http://127.0.0.1:5173 con dev)"
     )
 
 
@@ -104,13 +106,14 @@ def _start_api() -> str:
 
 
 def _gui_backend() -> str | None:
-    """Backend explícito si QT está disponible en Linux.
+    """Backend explícito si QT está disponible en Linux o Windows.
 
-    Con gui='qt' pywebview no sondea GTK: evita el ruido
-    '[pywebview] GTK cannot be loaded' en cada arranque. En otras
-    plataformas se deja la selección automática (backends nativos).
+    Con gui='qt' pywebview no sondea GTK (Linux) ni cae a MSHTML si falta el
+    runtime WebView2 (Windows): el bundle Vue usa módulos ES y MSHTML no los
+    soporta. En otras plataformas se deja la selección automática (backends
+    nativos).
     """
-    if sys.platform != "linux":
+    if sys.platform not in {"linux", "win32"}:
         return None
     try:
         import qtpy  # noqa: F401
@@ -134,11 +137,18 @@ class _StderrArranque:
 
     def __init__(self) -> None:
         self._restaurado = False
+        self._activo = False
         self._lock = threading.Lock()
         self._captura = bytearray()
 
     def __enter__(self) -> Self:
-        self._viejo = os.dup(2)
+        try:
+            self._viejo = os.dup(2)
+        except OSError:
+            # Sin fd 2 válido (p. ej. pythonw en Windows): no hay nada que capturar.
+            self._activo = False
+            return self
+        self._activo = True
         self._r, self._w = os.pipe()
         os.dup2(self._w, 2)
         self._cerrado = threading.Event()
@@ -167,6 +177,8 @@ class _StderrArranque:
             if self._restaurado:
                 return
             self._restaurado = True
+        if not self._activo:
+            return
         os.dup2(self._viejo, 2)
         os.close(self._w)
         self._cerrado.set()
@@ -174,6 +186,8 @@ class _StderrArranque:
 
     def __exit__(self, *exc: object) -> None:
         self.restaurar()
+        if not self._activo:
+            return
         os.close(self._r)
         os.close(self._viejo)
 
@@ -182,14 +196,45 @@ class _StderrArranque:
             return self._captura.decode(errors="replace")
 
 
-def main() -> int:
+def _serve_headless(port: int) -> int:
+    """Sirve la UI y la API en loopback sin abrir ventana (sin display)."""
+    import uvicorn
+
+    from filemaid.api.app import create_app
+
+    uvicorn.run(create_app(), host="127.0.0.1", port=port)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="filemaid-desktop", description="UI de filemaid: ventana nativa o servicio headless"
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="sirve la UI y la API en loopback sin abrir ventana (máquinas sin display)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("FILEMAID_PORT", "8000")),
+        help="puerto loopback en modo headless (por defecto FILEMAID_PORT o 8000)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.headless:
+        return _serve_headless(args.port)
+
     try:
         import webview
     except ImportError:
         raise SystemExit("falta pywebview: uv sync --extra desktop")
 
     ventana = webview.create_window(
-        "albertitos — decisión de facturas",
+        "filemaid — decisión de facturas",
         ui_destino(),
         js_api=Api(),
         width=1280,

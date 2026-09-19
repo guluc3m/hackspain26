@@ -27,7 +27,7 @@ from filemaid.store.trace import capture_response
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
-from .context import PageContext
+from .context import PageContext, remote_allowed
 
 NAME = "cloud_vlm"
 VERSION = "cloud_vlm-1"
@@ -53,6 +53,8 @@ def _get_setting(ctx: PageContext, key: str, env_var: str, default: Any = "") ->
 def extract(ctx: PageContext) -> ExtractionFeature:
     t0 = time.monotonic()
 
+    if not remote_allowed(ctx):
+        return _skip("standalone-no-remote", latency_ms=int((time.monotonic() - t0) * 1000))
     if ctx.page_image_sha is None:
         return _skip("no-page-image", latency_ms=int((time.monotonic() - t0) * 1000))
 

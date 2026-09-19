@@ -3,14 +3,45 @@
 from __future__ import annotations
 
 import base64
-import fcntl
+import errno
 import hashlib
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+if os.name == "nt":  # Windows: no fcntl; lock one byte via the CRT
+    import msvcrt
+
+    def _lock_file(handle: Any) -> None:
+        deadline = time.monotonic() + 300.0
+        while True:
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                # Only genuine contention is retried; anything else is a real error.
+                if exc.errno not in (errno.EACCES, errno.EDEADLOCK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("could not acquire PouchDB lock") from exc
+                time.sleep(0.1)
+
+    def _unlock_file(handle: Any) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock_file(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+
+    def _unlock_file(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 CHUNK_SIZE = 1024 * 1024
 INLINE_LIMIT = 256 * 1024
@@ -52,7 +83,13 @@ class PouchStore:
     def request(self, **request: Any) -> Any:
         self.root.mkdir(parents=True, exist_ok=True)
         with (self.root / "pouchdb.lock").open("a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            # msvcrt.locking needs a byte inside the file; a zero-length lock
+            # file would make the Windows lock region invalid.
+            lock.seek(0, os.SEEK_END)
+            if lock.tell() == 0:
+                lock.write(b"\0")
+                lock.flush()
+            _lock_file(lock)
             try:
                 proc = subprocess.run(
                     ["node", str(BRIDGE), str((self.root / "pouchdb").resolve())],
@@ -65,6 +102,8 @@ class PouchStore:
                 raise RuntimeError(
                     "PouchDB unavailable; install Node and npm ci in store/pouchdb"
                 ) from exc
+            finally:
+                _unlock_file(lock)
             try:
                 response = json.loads(proc.stdout)
             except ValueError as exc:

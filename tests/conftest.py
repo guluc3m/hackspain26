@@ -13,6 +13,38 @@ from filemaid.store.pouch import PouchStore
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+class FakeProvisioner:
+    """Dependency stub: tests never download or start a real VLM."""
+
+    def __init__(self, ready: bool = False) -> None:
+        self._ready = ready
+
+    def ensure(self, wait: bool = False) -> dict:
+        return self.status()
+
+    def status(self) -> dict:
+        return {
+            "state": "ready" if self._ready else "idle",
+            "downloaded": self._ready,
+            "running": self._ready,
+            "ready": self._ready,
+            "detail": "",
+            "error": "",
+            "model": "",
+            "mmproj": "",
+            "binary": None,
+        }
+
+
+@pytest.fixture(autouse=True)
+def _fake_provisioner(monkeypatch):
+    """Inject a not-ready provisioner by default; readiness tests inject their own."""
+    fake = FakeProvisioner()
+    monkeypatch.setattr("filemaid.provision.get_provisioner", lambda cfg=None: fake)
+    monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None: fake)
+    monkeypatch.setattr("filemaid.server.get_provisioner", lambda cfg=None: fake)
+
+
 @pytest.fixture
 def cfg(tmp_path: Path) -> AppConfig:
     cfg = AppConfig(tmp_path / "data")

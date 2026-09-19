@@ -35,7 +35,7 @@ case "$command" in
     exec uv run filemaid server --host "$host" --port "$port"
     ;;
   desktop)
-    exec uv run albertitos-desktop
+    exec uv run filemaid-desktop
     ;;
   *)
     printf 'uso: %s [app|vlm|desktop]\n' "$0" >&2

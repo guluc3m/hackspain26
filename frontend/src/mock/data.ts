@@ -21,8 +21,10 @@ import type {
   Resultado,
   RuleEvaluationRow,
   RuntimeConfig,
+  RuntimeConfigInput,
   Salud,
-  SyncStatus
+  SyncStatus,
+  VlmStatus
 } from '../api'
 
 const AHORA = () => Date.now() / 1000
@@ -567,12 +569,32 @@ let mockConfig: RuntimeConfig = {
   mode: 'standalone',
   sync_url: '',
   vlm_url: '',
-  vlm_model: ''
+  vlm_model: '',
+  local_vlm_fallback: false,
+  configured: true
 }
 let mockSyncStatus: SyncStatus = {
-  ok: true,
   state: 'standalone',
+  pending: false,
+  last_sync: null,
+  ok: true,
   error: null
+}
+// Estado VLM sintético: la referencia local se declara lista sin verificación
+// real (no hay modelo ni binario en modo sintético).
+let mockVlmStatus: VlmStatus = {
+  mode: 'standalone',
+  local_required: true,
+  local_fallback: false,
+  state: 'ready',
+  downloaded: true,
+  running: true,
+  ready: true,
+  detail: 'referencia sintética: sin verificación real',
+  error: null,
+  model: null,
+  mmproj: null,
+  binary: null
 }
 
 export const mockApi = {
@@ -585,20 +607,51 @@ export const mockApi = {
   logs: async (params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }) =>
     logs(params),
   getConfig: async () => ({ ...mockConfig }),
-  saveConfig: async (cfg: RuntimeConfig) => {
-    mockConfig = { ...cfg }
+  saveConfig: async (cfg: RuntimeConfigInput) => {
+    const standalone = cfg.mode === 'standalone'
+    mockConfig = {
+      mode: cfg.mode,
+      sync_url: standalone ? '' : cfg.sync_url,
+      vlm_url: standalone ? '' : cfg.vlm_url,
+      vlm_model: standalone ? '' : cfg.vlm_model,
+      local_vlm_fallback: standalone ? false : cfg.local_vlm_fallback,
+      configured: true
+    }
     mockSyncStatus = {
-      ok: true,
       state: cfg.mode === 'server' ? 'synced' : 'standalone',
+      pending: false,
+      last_sync: cfg.mode === 'server' ? Date.now() / 1000 : null,
+      ok: true,
       error: null
     }
+    mockVlmStatus = {
+      ...mockVlmStatus,
+      mode: cfg.mode,
+      local_required: standalone,
+      local_fallback: standalone ? false : cfg.local_vlm_fallback,
+      state: standalone ? 'ready' : (cfg.local_vlm_fallback ? 'ready' : 'remote-only'),
+      downloaded: true,
+      running: true,
+      ready: true
+    }
     return { ...mockConfig }
+  },
+  vlmStatus: async () => ({ ...mockVlmStatus }),
+  vlmProvision: async () => {
+    mockVlmStatus = { ...mockVlmStatus, state: 'ready', downloaded: true, running: true, ready: true, error: null }
+    return { ...mockVlmStatus }
   },
   sync: async () => {
     if (mockConfig.mode !== 'server') {
       throw new Error('La sincronización requiere modo servidor')
     }
-    mockSyncStatus = { ok: true, state: 'synced', error: null }
+    mockSyncStatus = {
+      state: 'synced',
+      pending: false,
+      last_sync: Date.now() / 1000,
+      ok: true,
+      error: null
+    }
     return { ok: true, pushed: 0, pulled: 0 }
   },
   syncStatus: async () => ({ ...mockSyncStatus })

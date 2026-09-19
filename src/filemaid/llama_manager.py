@@ -18,8 +18,9 @@ from typing import Any
 
 import httpx
 
+from .provision import binary_path, model_paths
+
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
-_MODELS = Path(__file__).resolve().parents[2] / "models" / "llama"
 DEFAULT_IDLE_TIMEOUT = 300.0
 _STARTUP_TIMEOUT = 180.0
 _POLL = 0.5
@@ -36,8 +37,9 @@ class LlamaSidecar:
         log_dir: Path | None = None,
     ) -> None:
         self.base_url = (base_url or DEFAULT_BASE_URL + "/v1").removesuffix("/v1").rstrip("/")
-        self.model = model or Path(os.environ.get("FILEMAID_LLAMA_MODEL", _MODELS / "PaddleOCR-VL-1.6-GGUF.gguf"))
-        self.mmproj = mmproj or Path(os.environ.get("FILEMAID_LLAMA_MMPROJ", _MODELS / "PaddleOCR-VL-1.6-GGUF-mmproj.gguf"))
+        default_model, default_mmproj = model_paths()
+        self.model = model or Path(os.environ.get("FILEMAID_LLAMA_MODEL", default_model))
+        self.mmproj = mmproj or Path(os.environ.get("FILEMAID_LLAMA_MMPROJ", default_mmproj))
         self.binary = binary
         self.idle_timeout = idle_timeout
         self.log_dir = log_dir
@@ -78,7 +80,7 @@ class LlamaSidecar:
             return True
         with self._lock:
             if self._proc is None or self._proc.poll() is not None:
-                resolved = shutil.which(self.binary) or _llama_app(self.binary)
+                resolved = shutil.which(self.binary) or binary_path()
                 if resolved is None or not (self.model.is_file() and self.mmproj.is_file()):
                     return False
                 self._spawn_locked(resolved)
@@ -101,8 +103,8 @@ class LlamaSidecar:
 
     def _spawn_locked(self, binary: str) -> None:
         cmd = [binary]
-        if self._serve is not False:
-            cmd.append("serve")  # CLI unificado de llama.app; fallback abajo
+        if self._serve is not False and Path(binary).name in {"llama", "llama.exe"}:
+            cmd.append("serve")  # CLI unificado de llama.app; llama-server no lo usa
         cmd += [
             "-m", str(self.model),
             "--mmproj", str(self.mmproj),
@@ -158,12 +160,14 @@ class LlamaSidecar:
                 self.stop()
 
 
-def _llama_app(binary: str) -> str | None:
-    """Fallback fuera de PATH: instala el binario en ~/.llama-app (y .exe en Windows)."""
-    for cand in (Path.home() / ".llama-app" / binary, Path.home() / ".llama-app" / f"{binary}.exe"):
-        if cand.is_file():
-            return str(cand)
-    return None
+def _loopback_base_url(url: str) -> str:
+    """The local sidecar is always loopback; a remote env URL is never used."""
+    from urllib.parse import urlsplit
+
+    host = urlsplit(url).hostname or ""
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        return url
+    return DEFAULT_BASE_URL + "/v1"
 
 
 _manager: LlamaSidecar | None = None
@@ -176,7 +180,7 @@ def get_manager(cfg: Any = None, **kwargs: Any) -> LlamaSidecar:
     with _manager_lock:
         if _manager is None:
             if cfg is not None:
-                kwargs.setdefault("base_url", cfg.llama_base_url)
+                kwargs.setdefault("base_url", _loopback_base_url(cfg.llama_base_url))
                 kwargs.setdefault("log_dir", cfg.root)
             _manager = LlamaSidecar(**kwargs)
         return _manager

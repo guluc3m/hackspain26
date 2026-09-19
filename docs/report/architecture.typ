@@ -101,6 +101,31 @@ escalador VLM. Los endpoints se configuran en la UI y se guardan en documentos
 locales no replicados.
 
 
+=== Modos de ejecución y arranque del VLM
+
+La configuración de ejecución vive en documentos locales no replicados
+(`_local/runtime-settings`) y es la fuente de verdad: sobrevive reinicios y no
+viaja a CouchDB. `GET /api/config` expone `configured`; `PUT /api/config`
+persiste primero en local y después sincroniza, de modo que una caída remota
+nunca descarta la configuración confirmada (el estado de sincronización se
+reporta aparte en `GET /api/sync/status`).
+
+- *Standalone*: usa siempre el VLM local; no contacta CouchDB, VLM remoto,
+  TypeSafe, Firecrawl ni cloud aunque existan endpoints o claves antiguas. Los
+  escalones remotos se registran como `skipped:standalone-no-remote`.
+- *Servidor*: requiere URL de CouchDB y URL de VLM remoto (nunca se deduce una
+  de otra). El fallback local opcional (`local_vlm_fallback`) solo se usa si el
+  VLM remoto falla; desactivado, no se descarga ni arranca ningún modelo local.
+
+El VLM es PaddleOCR-VL 1.6 full Q8 (texto q8_0 + mmproj q8_0, D-002). El
+aprovisionamiento (binario llama.cpp + pesos con verificación sha256) reutiliza
+`scripts/setup_llama.{sh,ps1}` y su manifiesto vive en
+`_local/provision-manifest`. `GET /api/vlm/status` distingue `downloaded` de
+`running`/`ready`: `ready` exige el sidecar sano sirviendo el modelo esperado,
+no solo ficheros en disco. El servidor VLM arranca con aprovisionamiento local
+obligatorio y no sirve si no está listo.
+
+
 == Retroalimentación
 Para los casos escalados, los resultados de la resolución también se guardan en
 la base de datos, para poder usarlos en futuros entrenamientos.

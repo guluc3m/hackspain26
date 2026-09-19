@@ -1,4 +1,10 @@
-"""Device-local runtime configuration, stored only in PouchDB _local documents."""
+"""Device-local runtime configuration, stored only in PouchDB _local documents.
+
+The persisted runtime doc is the source of truth: it survives restarts and is
+never replicated (``_local/*`` docs are excluded from CouchDB replication), so
+credentials and local endpoints stay on the device. Saving is durable and
+independent of remote availability; remote sync is a separate, resumable state.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +12,17 @@ import os
 from urllib.parse import urlsplit
 
 from filemaid.store.pouch import PouchStore, couchdb_url
+
+SETTINGS_ID = "runtime-settings"
+SYNC_STATE_ID = "sync-state"
+
+_DEFAULT = {
+    "mode": "standalone",
+    "sync_url": "",
+    "vlm_url": "",
+    "vlm_model": "",
+    "local_vlm_fallback": False,
+}
 
 
 def endpoint(value: str, name: str) -> str:
@@ -29,38 +46,110 @@ class RuntimeSettings:
         self.store = PouchStore(cfg.root)
 
     def get(self) -> dict:
-        saved = self.store.local_get("runtime-settings") or {}
-        return {
-            "mode": saved.get("mode", "standalone"),
+        saved = self.store.local_get(SETTINGS_ID)
+        if not isinstance(saved, dict) or saved.get("mode") not in {"standalone", "server"}:
+            return {**_DEFAULT, "configured": False}
+        # A legacy server doc without a remote VLM URL is not a valid current
+        # configuration: report unconfigured so the UI repairs it instead of
+        # silently confirming a server with no VLM at all.
+        if saved["mode"] == "server" and not (saved.get("sync_url") and saved.get("vlm_url")):
+            return {**_DEFAULT, "configured": False}
+        values = {
+            "mode": saved["mode"],
             "sync_url": saved.get("sync_url", ""),
             "vlm_url": saved.get("vlm_url", ""),
             "vlm_model": saved.get("vlm_model", ""),
+            "local_vlm_fallback": bool(saved.get("local_vlm_fallback", False)),
+            "configured": True,
         }
+        return self._coerce(values)
+
+    @staticmethod
+    def _coerce(values: dict) -> dict:
+        """Standalone never keeps remote endpoints or a remote model name."""
+        if values["mode"] == "standalone":
+            values["sync_url"] = ""
+            values["vlm_url"] = ""
+            values["vlm_model"] = ""
+            values["local_vlm_fallback"] = False
+        return values
 
     def validate(self, values: dict) -> dict:
         mode = values.get("mode")
         if mode not in {"standalone", "server"}:
             raise ValueError("Seleccione standalone o server")
-        sync_url = values.get("sync_url", "").strip()
-        if sync_url:
-            sync_url = couchdb_url(sync_url)
-        vlm_url = endpoint(values.get("vlm_url", ""), "Endpoint VLM")
-        if mode == "server" and not sync_url:
+        vlm_model = str(values.get("vlm_model", "")).strip()
+        if mode == "standalone":
+            return {
+                "mode": "standalone",
+                "sync_url": "",
+                "vlm_url": "",
+                "vlm_model": "",
+                "local_vlm_fallback": False,
+            }
+        sync_url = str(values.get("sync_url", "")).strip()
+        if not sync_url:
             raise ValueError("El modo servidor requiere la URL de una base CouchDB")
+        sync_url = couchdb_url(sync_url)
+        vlm_url = endpoint(values.get("vlm_url", ""), "Endpoint VLM")
+        if not vlm_url:
+            raise ValueError("El modo servidor requiere la URL del VLM remoto")
         return {
-            "mode": mode,
+            "mode": "server",
             "sync_url": sync_url,
             "vlm_url": vlm_url,
-            "vlm_model": values.get("vlm_model", "").strip(),
+            "vlm_model": vlm_model,
+            "local_vlm_fallback": bool(values.get("local_vlm_fallback", False)),
         }
 
     def save(self, values: dict) -> dict:
+        """Durable local save. Never contacts the network."""
         settings = self.validate(values)
-        self.store.local_put("runtime-settings", settings)
-        return settings
+        self.store.local_put(SETTINGS_ID, settings)
+        return {**settings, "configured": True}
 
     def sync(self, settings: dict | None = None) -> dict:
         settings = settings or self.get()
         if settings["mode"] != "server":
             raise ValueError("La sincronización requiere modo servidor")
         return self.store.sync(settings["sync_url"], os.environ.get("FILEMAID_SYNC_TOKEN", ""))
+
+    # -- remote sync state (device-local, resumable) ----------------------
+
+    def sync_state(self) -> dict:
+        saved = self.store.local_get(SYNC_STATE_ID)
+        if not isinstance(saved, dict):
+            saved = {}
+        return {
+            "state": saved.get("state", "idle"),
+            "ok": bool(saved.get("ok", True)),
+            "error": saved.get("error", ""),
+            "last_sync": saved.get("last_sync"),
+            "last_seq": saved.get("last_seq"),
+            "synced_url": saved.get("synced_url", ""),
+            "failed_url": saved.get("failed_url", ""),
+        }
+
+    def set_sync_state(
+        self,
+        *,
+        state: str,
+        ok: bool,
+        error: str = "",
+        last_sync: float | None = None,
+        last_seq: object = None,
+        synced_url: str = "",
+        failed_url: str = "",
+    ) -> None:
+        self.store.local_put(
+            SYNC_STATE_ID,
+            {
+                "state": state,
+                "ok": ok,
+                "error": error,
+                "last_sync": last_sync,
+                "last_seq": last_seq,
+                "synced_url": synced_url,
+                "failed_url": failed_url,
+            },
+        )

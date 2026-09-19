@@ -1,55 +1,75 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api, SINTETICO, type RuntimeConfig, type SyncStatus } from './api'
+import { api, SINTETICO, type RuntimeConfig, type SyncStatus, type VlmStatus } from './api'
 import { irA, tab, tabs } from './nav'
 import DashboardView from './views/DashboardView.vue'
 import InvoicesView from './views/InvoicesView.vue'
 import LogsView from './views/LogsView.vue'
 import ConnectionSettings from './components/ConnectionSettings.vue'
 
-// Estado de modo seleccionado en esta sesión de la aplicación:
-// En synthetic mode (MODE === 'syncth') se considera confirmado por defecto para que funcione autónomo de inmediato.
-// En modo real, se requiere selección explícita del usuario en cada arranque (montaje de la app).
-const confirmed = ref<boolean>(SINTETICO)
+// `confirmed` refleja el marcador `configured` persistido en la base de datos:
+// si ya hay un modo guardado, no se fuerza el selector en cada arranque.
+const confirmed = ref<boolean>(false)
 const showSettings = ref<boolean>(false)
+const configError = ref<string>('')
 
 const currentConfig = ref<RuntimeConfig>({
   mode: 'standalone',
   sync_url: '',
   vlm_url: '',
-  vlm_model: ''
+  vlm_model: '',
+  local_vlm_fallback: false,
+  configured: false
 })
 
 const syncStatus = ref<SyncStatus | null>(null)
+const vlmStatus = ref<VlmStatus | null>(null)
+const vlmUnavailable = ref<boolean>(false)
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 async function fetchSyncStatus() {
-  if (SINTETICO) return
   try {
-    const s = await api.syncStatus()
-    syncStatus.value = s
+    syncStatus.value = await api.syncStatus()
   } catch (error) {
-    syncStatus.value = { ok: false, state: 'error', error: String(error) }
+    syncStatus.value = {
+      state: 'error',
+      pending: false,
+      ok: false,
+      error: String(error)
+    }
+  }
+}
+
+async function fetchVlmStatus() {
+  try {
+    vlmStatus.value = await api.vlmStatus()
+    vlmUnavailable.value = false
+  } catch {
+    // No se conserva un estado "listo" obsoleto: se marca como no disponible.
+    vlmStatus.value = null
+    vlmUnavailable.value = true
   }
 }
 
 async function cargarConfigInicial() {
-  if (SINTETICO) {
-    confirmed.value = true
-    return
-  }
   try {
     const cfg = await api.getConfig()
     currentConfig.value = cfg
-    await fetchSyncStatus()
-  } catch {
-    // Si no se puede contactar todavía, mantener defaults
+    confirmed.value = cfg.configured
+    configError.value = ''
+    await Promise.all([fetchSyncStatus(), fetchVlmStatus()])
+  } catch (e: any) {
+    // No se ocultan los fallos de carga con valores por defecto silenciosos.
+    configError.value = `No se pudo cargar la configuración guardada: ${e?.message || e}`
   }
 }
 
 onMounted(() => {
   cargarConfigInicial()
-  pollTimer = setInterval(fetchSyncStatus, 10_000)
+  pollTimer = setInterval(() => {
+    fetchSyncStatus()
+    fetchVlmStatus()
+  }, 10_000)
 })
 
 onUnmounted(() => {
@@ -60,36 +80,66 @@ function onConfirmed(saved: RuntimeConfig) {
   currentConfig.value = saved
   confirmed.value = true
   showSettings.value = false
+  configError.value = ''
   fetchSyncStatus()
+  fetchVlmStatus()
 }
 
 function onManualSync() {
   fetchSyncStatus()
 }
 
+const vlmNotReady = computed(() => {
+  if (!confirmed.value) return false
+  if (vlmUnavailable.value) return true
+  if (!vlmStatus.value) return false
+  return vlmStatus.value.local_required && !vlmStatus.value.ready
+})
+
+const vlmBannerText = computed(() => {
+  if (vlmUnavailable.value) return 'No se pudo consultar el estado del VLM local.'
+  const s = vlmStatus.value
+  if (!s) return ''
+  if (s.state === 'downloading') return 'Descargando el modelo VLM local…'
+  if (s.state === 'starting') return 'Iniciando el modelo VLM local…'
+  if (s.state === 'error') return `El VLM local no está listo: ${s.error || s.detail || 'error'}`
+  return 'El VLM local aún no está preparado.'
+})
+
 const statusBadgeText = computed(() => {
   if (SINTETICO) return 'sintético'
   if (!confirmed.value) return 'sin configurar'
   if (currentConfig.value.mode === 'server') {
-    if (syncStatus.value?.state === 'syncing') return 'sincronizando...'
-    if (syncStatus.value?.state === 'error') return 'error sync'
-    if (syncStatus.value?.state === 'synced') return 'servidor (sync ok)'
+    const s = syncStatus.value
+    if (s?.state === 'error') return 'error sync'
+    if (s?.state === 'syncing') return 'sincronizando...'
+    if (s?.state === 'pending' || s?.pending) return 'sync pendiente'
+    if (s?.state === 'synced') return 'servidor (sync ok)'
     return 'servidor'
+  }
+  if (vlmUnavailable.value) return 'VLM sin estado'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return vlmStatus.value.state === 'error' ? 'VLM error' : 'preparando VLM...'
   }
   return 'autónomo'
 })
 
 const statusBadgeTitle = computed(() => {
   if (SINTETICO) return 'Datos sintéticos de referencia (sin conexión real)'
-  if (!confirmed.value) return 'Modo de ejecución pendiente de seleccionar en esta sesión'
+  if (!confirmed.value) return 'Modo de ejecución pendiente de configurar'
   if (currentConfig.value.mode === 'server') {
     let msg = `Sincronizando con CouchDB: ${currentConfig.value.sync_url || '—'}`
-    if (syncStatus.value?.error) {
-      msg += `\nError: ${syncStatus.value.error}`
-    } else if (syncStatus.value?.state) {
-      msg += `\nEstado: ${syncStatus.value.state}`
+    const s = syncStatus.value
+    if (s?.error) {
+      msg += `\nError: ${s.error}`
+    } else if (s?.state) {
+      msg += `\nEstado: ${s.state}`
     }
     return msg
+  }
+  if (vlmUnavailable.value) return 'No se pudo consultar el estado del VLM local'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return `VLM local: ${vlmStatus.value.state}${vlmStatus.value.error ? `\nError: ${vlmStatus.value.error}` : ''}`
   }
   return 'Modo autónomo (local con PouchDB independiente)'
 })
@@ -98,9 +148,15 @@ const statusBadgeClass = computed(() => {
   if (SINTETICO) return 'badge-synthetic'
   if (!confirmed.value) return 'badge-unconfigured'
   if (currentConfig.value.mode === 'server') {
-    if (syncStatus.value?.state === 'error') return 'badge-error'
-    if (syncStatus.value?.state === 'synced') return 'badge-ok'
+    const s = syncStatus.value
+    if (s?.state === 'error') return 'badge-error'
+    if (s?.state === 'pending' || s?.pending) return 'badge-server'
+    if (s?.state === 'synced') return 'badge-ok'
     return 'badge-server'
+  }
+  if (vlmUnavailable.value) return 'badge-error'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return vlmStatus.value.state === 'error' ? 'badge-error' : 'badge-server'
   }
   return 'badge-standalone'
 })
@@ -144,15 +200,18 @@ const statusBadgeClass = computed(() => {
       </button>
 
       <!-- Bloque reservado para el logo -->
-      <div class="logo-box" title="albertitos">
+      <div class="logo-box" title="filemaid">
         <img src="/logo.svg" alt="logo" />
       </div>
     </div>
   </header>
 
   <main>
-    <!-- Si la aplicación aún no ha confirmado el modo de esta sesión, mostramos el selector de inicio -->
+    <!-- Sin modo persistido en la base de datos, mostramos el selector de inicio -->
     <div v-if="!confirmed" class="startup-container">
+      <div v-if="configError" class="config-error" role="alert" aria-live="assertive">
+        {{ configError }}
+      </div>
       <ConnectionSettings
         :can-close="false"
         @confirmed="onConfirmed"
@@ -162,6 +221,9 @@ const statusBadgeClass = computed(() => {
 
     <!-- Vistas operativas normales cuando el modo está confirmado -->
     <template v-else>
+      <div v-if="vlmNotReady" class="vlm-banner" role="status" aria-live="polite">
+        {{ vlmBannerText }}
+      </div>
       <DashboardView v-if="tab === 'dashboard'" />
       <InvoicesView v-else-if="tab === 'invoices'" />
       <LogsView v-else />
@@ -299,6 +361,27 @@ main {
 
 .startup-container {
   padding-top: 30px;
+}
+
+.config-error {
+  max-width: 680px;
+  margin: 0 auto 16px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  border: 1px solid var(--bad-fg);
+}
+
+.vlm-banner {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border: 1px solid var(--warn-fg);
 }
 
 /* Modal backdrop & content */

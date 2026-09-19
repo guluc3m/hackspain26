@@ -1,4 +1,4 @@
-"""Integration tests for Filemaid VLM proxy server."""
+"""Integration tests for the Filemaid local VLM server."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 
 from filemaid.server import create_server
 
@@ -17,6 +17,26 @@ from filemaid.server import create_server
 class DummyConfig:
     def __init__(self, root: Path) -> None:
         self.root = root
+
+
+class ReadyProvisioner:
+    """Injected dependency: the local VLM is ready (no real download/start)."""
+
+    def ensure(self, wait: bool = False) -> dict:
+        return self.status()
+
+    def status(self) -> dict:
+        return {
+            "state": "ready",
+            "downloaded": True,
+            "running": True,
+            "ready": True,
+            "detail": "",
+            "error": "",
+            "model": "",
+            "mmproj": "",
+            "binary": None,
+        }
 
 
 def _find_free_port() -> int:
@@ -42,10 +62,84 @@ def _stop_server_and_join(server_obj: uvicorn.Server, thread: threading.Thread) 
     thread.join(timeout=5.0)
 
 
+class NotReadyProvisioner:
+    def ensure(self, wait: bool = False) -> dict:
+        return self.status()
+
+    def status(self) -> dict:
+        return {
+            "state": "error",
+            "downloaded": False,
+            "running": False,
+            "ready": False,
+            "detail": "",
+            "error": "weights incomplete",
+            "model": "",
+            "mmproj": "",
+            "binary": None,
+        }
+
+
+def test_server_refuses_to_start_without_local_vlm(tmp_path):
+    app = create_server(DummyConfig(tmp_path / "server_data"), provisioner=NotReadyProvisioner())
+    port = _find_free_port()
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="critical")
+    server = uvicorn.Server(config)
+
+    def _run() -> None:
+        try:
+            server.run()
+        except SystemExit:
+            pass  # uvicorn exits nonzero when lifespan startup fails
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout=5)
+    assert not server.started
+
+
+class FlakyProvisioner:
+    """Ready at startup, then reports not-ready (sidecar stopped/crashed)."""
+
+    def __init__(self) -> None:
+        self.ready = True
+
+    def ensure(self, wait: bool = False) -> dict:
+        return self.status()
+
+    def status(self) -> dict:
+        return {
+            "state": "ready" if self.ready else "idle",
+            "downloaded": True,
+            "running": self.ready,
+            "ready": self.ready,
+            "detail": "",
+            "error": "",
+            "model": "",
+            "mmproj": "",
+            "binary": None,
+        }
+
+
+def test_healthz_reflects_stopped_sidecar(tmp_path):
+    provisioner = FlakyProvisioner()
+    app = create_server(DummyConfig(tmp_path / "server_data"), provisioner=provisioner)
+    port = _find_free_port()
+    server_obj, thread = _run_server_in_thread(app, port)
+
+    try:
+        base = f"http://127.0.0.1:{port}"
+        assert httpx.get(f"{base}/healthz").json()["vlm_ready"] is True
+        provisioner.ready = False  # sidecar stopped after startup
+        assert httpx.get(f"{base}/healthz").json()["vlm_ready"] is False
+    finally:
+        _stop_server_and_join(server_obj, thread)
+
+
 def test_server_auth_and_fail_closed(tmp_path, monkeypatch):
     monkeypatch.setenv("FILEMAID_SERVER_TOKEN", "my-secret-key")
     server_dir = tmp_path / "server_data"
-    app = create_server(DummyConfig(server_dir))
+    app = create_server(DummyConfig(server_dir), provisioner=ReadyProvisioner())
     port = _find_free_port()
     server_obj, thread = _run_server_in_thread(app, port)
 
@@ -73,7 +167,7 @@ def test_server_auth_and_fail_closed(tmp_path, monkeypatch):
 def test_former_sync_routes_return_404(tmp_path, monkeypatch):
     monkeypatch.setenv("FILEMAID_SERVER_TOKEN", "my-secret-key")
     server_dir = tmp_path / "server_data"
-    app = create_server(DummyConfig(server_dir))
+    app = create_server(DummyConfig(server_dir), provisioner=ReadyProvisioner())
     port = _find_free_port()
     server_obj, thread = _run_server_in_thread(app, port)
 
@@ -103,68 +197,72 @@ def test_former_sync_routes_return_404(tmp_path, monkeypatch):
         _stop_server_and_join(server_obj, thread)
 
 
-def test_vlm_forwarding_and_error_scrubbing(tmp_path, monkeypatch):
-    # Set up mock upstream VLM server
-    mock_upstream_app = FastAPI()
+def test_vlm_forwards_to_local_sidecar(tmp_path, monkeypatch):
+    # A real local HTTP sidecar stub (not a mock echo): exercises the forward path.
+    sidecar = FastAPI()
 
-    @mock_upstream_app.post("/v1/chat/completions")
-    async def mock_vlm(request: Request):
-        auth = request.headers.get("Authorization", "")
-        if auth != "Bearer secret-upstream-key":
-            raise HTTPException(status_code=401, detail="Unauthorized upstream")
+    @sidecar.post("/v1/chat/completions")
+    async def handler(request: Request):
         data = await request.json()
         assert data["messages"][0]["content"] == "OCR:"
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": "TOTAL 123.45 EUR",
-                    }
-                }
-            ]
-        }
+        return {"choices": [{"message": {"role": "assistant", "content": "TOTAL 123.45 EUR"}}]}
 
-    upstream_port = _find_free_port()
-    upstream_server, upstream_thread = _run_server_in_thread(mock_upstream_app, upstream_port)
+    sidecar_port = _find_free_port()
+    sidecar_server, sidecar_thread = _run_server_in_thread(sidecar, sidecar_port)
 
-    # Configure Filemaid server pointing to upstream
+    class _Manager:
+        base_url = f"http://127.0.0.1:{sidecar_port}"
+
+        def ensure_started(self, wait_s: float = 0) -> bool:
+            return True
+
+        def touch(self) -> None:
+            pass
+
+    monkeypatch.setattr("filemaid.server.get_manager", lambda cfg=None: _Manager())
     monkeypatch.setenv("FILEMAID_SERVER_TOKEN", "client-token")
-    monkeypatch.setenv("FILEMAID_SERVER_VLM_URL", f"http://127.0.0.1:{upstream_port}/v1")
-    monkeypatch.setenv("FILEMAID_SERVER_VLM_KEY", "secret-upstream-key")
-
-    server_dir = tmp_path / "server_data"
-    app = create_server(DummyConfig(server_dir))
+    app = create_server(DummyConfig(tmp_path / "server_data"), provisioner=ReadyProvisioner())
     server_port = _find_free_port()
     server_obj, server_thread = _run_server_in_thread(app, server_port)
 
     try:
         base = f"http://127.0.0.1:{server_port}"
-        # 1. Forward request through server to upstream VLM
         resp = httpx.post(
             f"{base}/v1/chat/completions",
             headers={"Authorization": "Bearer client-token"},
-            json={
-                "messages": [{"role": "user", "content": "OCR:"}],
-            },
+            json={"messages": [{"role": "user", "content": "OCR:"}]},
             timeout=10.0,
         )
         assert resp.status_code == 200
-        res_data = resp.json()
-        assert res_data["choices"][0]["message"]["content"] == "TOTAL 123.45 EUR"
-
-        # 2. Test error scrubbing: upstream down
-        _stop_server_and_join(upstream_server, upstream_thread)
-
-        err_resp = httpx.post(
-            f"{base}/v1/chat/completions",
-            headers={"Authorization": "Bearer client-token"},
-            json={"messages": []},
-            timeout=10.0,
-        )
-        assert err_resp.status_code == 502
-        # Ensure upstream key is not leaked in error detail
-        assert "secret-upstream-key" not in err_resp.text
+        assert resp.json()["choices"][0]["message"]["content"] == "TOTAL 123.45 EUR"
     finally:
         _stop_server_and_join(server_obj, server_thread)
-        _stop_server_and_join(upstream_server, upstream_thread)
+        _stop_server_and_join(sidecar_server, sidecar_thread)
+
+
+def test_vlm_unavailable_returns_503(tmp_path, monkeypatch):
+    class _DownManager:
+        base_url = "http://127.0.0.1:9"
+
+        def ensure_started(self, wait_s: float = 0) -> bool:
+            return False
+
+        def touch(self) -> None:
+            pass
+
+    monkeypatch.setattr("filemaid.server.get_manager", lambda cfg=None: _DownManager())
+    monkeypatch.setenv("FILEMAID_SERVER_TOKEN", "client-token")
+    app = create_server(DummyConfig(tmp_path / "server_data"), provisioner=ReadyProvisioner())
+    port = _find_free_port()
+    server_obj, thread = _run_server_in_thread(app, port)
+
+    try:
+        resp = httpx.post(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            headers={"Authorization": "Bearer client-token"},
+            json={"messages": [{"role": "user", "content": "OCR:"}]},
+            timeout=10.0,
+        )
+        assert resp.status_code == 503
+    finally:
+        _stop_server_and_join(server_obj, thread)
