@@ -77,24 +77,30 @@ _RE_FECHA_TEXTO = re.compile(
 
 
 def parse_fecha(texto: str) -> str | None:
-    """Extrae la primera fecha plausible del texto y la devuelve ISO YYYY-MM-DD."""
-    m = _RE_FECHA_NUM.search(texto)
-    if m:
+    """Extrae la primera fecha VÁLIDA del texto y la devuelve ISO YYYY-MM-DD.
+
+    T38-F4: una fecha inválida (30/02/2026) NO anula el campo entero — se
+    itera con `finditer` y se devuelve la primera que sea una fecha real.
+    Las inválidas no generan valor (inventar ambigüedad es peor señal); si
+    solo hay inválidas, None — como siempre.
+    """
+    for m in _RE_FECHA_NUM.finditer(texto):
         d, mm, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try:
             datetime.date(y, mm, d)
         except ValueError:
-            return None
+            continue
         return f"{y:04d}-{mm:02d}-{d:02d}"
-    m = _RE_FECHA_TEXTO.search(texto)
-    if m:
-        d, mes, y = int(m.group(1)), _MESES.get(m.group(2).lower(), 0), int(m.group(3))
-        if mes:
-            try:
-                datetime.date(y, mes, d)
-            except ValueError:
-                return None
-            return f"{y:04d}-{mes:02d}-{d:02d}"
+    for m in _RE_FECHA_TEXTO.finditer(texto):
+        d, y = int(m.group(1)), int(m.group(3))
+        mes = _MESES.get(m.group(2).lower(), 0)
+        if not mes:
+            continue
+        try:
+            datetime.date(y, mes, d)
+        except ValueError:
+            continue
+        return f"{y:04d}-{mes:02d}-{d:02d}"
     return None
 
 
