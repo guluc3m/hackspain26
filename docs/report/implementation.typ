@@ -16,8 +16,8 @@ The architecture is implemented in three main parts:
     - Decisiones inmutables por ejecución y candidatos sin colapsar.
     - Artefactos binarios fragmentados en adjuntos; originales recuperables sin
       depender de copias de trabajo. Estado en disco, nunca en `/tmp`.
-    - Modo servidor: sincronización bidireccional con otro PouchDB a través
-      del servicio FastAPI, sin servidor CouchDB. Configuración local no replicada.
+    - Modo servidor: replicación bidireccional nativa PouchDB <-> CouchDB remoto,
+      sin instalar CouchDB localmente. Configuración local no replicada.
 + Frontend (Vue + Vite, TypeScript, en español) + backend API (FastAPI,
     same Python repo as the pipeline).
     - The API shares the `types.py` contract, the store access layer and the

@@ -1,4 +1,4 @@
-"""CLI: run (lote), emit (outcomes desde store), serve (API+UI), server (FastAPI), reprocess."""
+"""CLI: run (lote), emit (outcomes desde store), serve (API+UI), server (VLM FastAPI), reprocess."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("serve", help="arranca la API (FastAPI) y la UI")
 
-    p_server = sub.add_parser("server", help="arranca el servidor de sincronización y VLM")
+    p_server = sub.add_parser("server", help="arranca el servidor proxy VLM")
     p_server.add_argument("--host", default="127.0.0.1", help="host del servidor")
     p_server.add_argument("--port", type=int, default=8001, help="puerto del servidor")
 

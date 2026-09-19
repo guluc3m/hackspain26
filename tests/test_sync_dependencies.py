@@ -3,7 +3,7 @@ import pytest
 from filemaid.store.pouch import PouchStore
 
 
-def test_invalid_dependencies_never_poison_changes_feed(tmp_path):
+def test_invalid_dependencies_never_enter_replication_source(tmp_path):
     store = PouchStore(tmp_path)
     for doc in (
         {"_id": "artifact:bad", "kind": "artifact", "chunks": None},
@@ -20,6 +20,4 @@ def test_invalid_dependencies_never_poison_changes_feed(tmp_path):
             store.put(doc)
         assert store.get(doc["_id"]) is None
     store.put({"_id": "valid:new-kind", "new_field": {"arbitrary": True}})
-    assert [d["_id"] for d in store.request(op="changes", since=0, limit=10)["results"]] == [
-        "valid:new-kind"
-    ]
+    assert [d["_id"] for d in store.list("")] == ["valid:new-kind"]

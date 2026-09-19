@@ -1,7 +1,7 @@
 == Implementation
 - *Dos motores de persistencia*: descartados. PouchDB JS local conserva
   evidencia, candidatos, snapshots, caché y eventos como documentos dinámicos.
-  El modo servidor sincroniza con otro PouchDB sin desplegar CouchDB.
+  El modo servidor replica con una base remota CouchDB sin requerir CouchDB local.
 - *Backend in Go*: the UI must write overrides and re-trigger the
   deterministic engine (Python); duplicating the engine breaks the
   byte-for-byte determinism guarantee and drifts the type contract.

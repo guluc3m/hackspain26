@@ -94,9 +94,11 @@ explotarse.
 La persistencia runtime usa únicamente PouchDB JS local (LevelDB): documentos
 dinámicos para evidencia, caché, eventos y decisiones inmutables, con adjuntos
 fragmentados. La app solicita standalone o servidor al iniciar la UI; el batch
-permanece no interactivo. El servicio FastAPI aloja el intercambio entre bases
-PouchDB y el escalador VLM sin servidor CouchDB. Los endpoints se configuran en
-la UI y se guardan en documentos locales no replicados.
+permanece no interactivo. En modo servidor, PouchDB replica bidireccionalmente
+de forma nativa con una base de datos remota Apache CouchDB (sin requerir
+CouchDB en el cliente). El servicio FastAPI aloja de forma independiente el
+escalador VLM. Los endpoints se configuran en la UI y se guardan en documentos
+locales no replicados.
 
 
 == Retroalimentación

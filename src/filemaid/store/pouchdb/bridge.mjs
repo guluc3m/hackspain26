@@ -1,5 +1,5 @@
 import PouchDB from 'pouchdb';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 // One finite operation. Python holds the cross-process lock through db.close().
@@ -64,6 +64,58 @@ async function views() {
     },
   });
 }
+
+async function replicate(url, credentials) {
+  const target = new URL(url);
+  if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash || !target.pathname.replaceAll('/', '')) {
+    fail('CouchDB requires an HTTP(S) database URL without credentials');
+  }
+  const remote = new PouchDB(url, {
+    skip_setup: true,
+    auth: credentials.user ? { username: credentials.user, password: credentials.password } : undefined,
+    fetch: (address, options = {}) => {
+      const headers = new Headers(options.headers);
+      if (credentials.token) headers.set('Authorization', `Bearer ${credentials.token}`);
+      return PouchDB.fetch(address, { ...options, headers, redirect: 'error' });
+    },
+  });
+  let replication;
+  let deadline;
+  let denied = false;
+  let timedOut = false;
+  try {
+    await remote.info(); // The configured database must already exist.
+    replication = db.sync(remote, {
+      live: false, retry: false, timeout: 30000,
+      batch_size: 16, batches_limit: 1,
+      filter: doc => !doc._id.startsWith('_'),
+    });
+    replication.on('denied', () => { denied = true; replication.cancel(); });
+    deadline = setTimeout(() => { timedOut = true; replication.cancel(); }, 90000);
+    const result = await replication;
+    if (denied || timedOut || !result.push.ok || !result.pull.ok || result.push.errors?.length || result.pull.errors?.length) {
+      fail('CouchDB replication incomplete or denied');
+    }
+    // Native replication retains revision branches. Never report success while
+    // readers would silently see an arbitrary winning conflicting revision.
+    let startkey;
+    while (true) {
+      const page = await db.allDocs({ startkey, skip: startkey ? 1 : 0, limit: 128, include_docs: true, conflicts: true });
+      for (const row of page.rows) checked(row.doc);
+      if (page.rows.length < 128) break;
+      startkey = page.rows.at(-1).id;
+    }
+    return { ok: true, pushed: result.push.docs_written, pulled: result.pull.docs_written };
+  } catch (error) {
+    if (error.message?.startsWith('Unresolved revision conflicts:')) throw error;
+    const status = Number.isInteger(error.status) ? ` (HTTP ${error.status})` : '';
+    fail(`CouchDB replication failed${status}; check endpoint, credentials and database permissions`);
+  } finally {
+    clearTimeout(deadline);
+    replication?.cancel();
+    await remote.close();
+  }
+}
 let result;
 try {
   if (request.op === 'put') {
@@ -97,17 +149,7 @@ try {
     });
     result = response.rows.map(row => checked(row.doc));
   } else if (request.op === 'info') {
-    const info = await db.info();
-    let instanceId = '';
-    try {
-      const idDoc = await db.get('_local/db_identity');
-      instanceId = idDoc.uuid;
-    } catch (err) {
-      if (err.status !== 404) throw err;
-      instanceId = randomUUID();
-      await db.put({ _id: '_local/db_identity', uuid: instanceId });
-    }
-    result = { ...info, instance_id: instanceId };
+    result = await db.info();
   } else if (request.op === 'local_get') {
     const id = request.id.startsWith('_local/') ? request.id : `_local/${request.id}`;
     try {
@@ -145,40 +187,8 @@ try {
     }
     if (!saved) fail(`CAS conflict updating local doc: ${id}`);
     result = { ok: true };
-  } else if (request.op === 'changes') {
-    const since = Number(request.since || 0);
-    const limit = Math.max(1, Math.min(Number(request.limit || 100), 500));
-    const ch = await db.changes({
-      since,
-      limit,
-      include_docs: true,
-      attachments: false,
-      conflicts: true,
-    });
-    const docs = [];
-    let last = since;
-    let size = 0;
-    for (const r of ch.results) {
-      if (r.deleted) fail('Deleted documents cannot be synchronized');
-      if (r.id.startsWith('_')) { last = r.seq; continue; }
-      let doc = checked(r.doc);
-      if (r.id.startsWith('blob:')) {
-        doc = { _id: r.id, kind: 'blob' };
-      } else if (doc._attachments) {
-        doc = checked(await db.get(r.id, { conflicts: true, attachments: true }));
-      }
-      const bytes = Buffer.byteLength(JSON.stringify(doc));
-      if (bytes > 2 * 1024 * 1024 - 4096) fail('Document exceeds sync limit; use artifacts');
-      if (size + bytes > 2 * 1024 * 1024 - 4096 && docs.length) break;
-      docs.push(doc);
-      size += bytes;
-      last = r.seq;
-    }
-    result = { last_seq: ch.results.length ? last : ch.last_seq, results: docs };
-  } else if (request.op === 'sync_put') {
-    if (typeof request.doc?._id !== 'string' || request.doc._id.startsWith('_')) fail('Reserved sync document ID');
-    if (Object.keys(request.doc).some(k => k.startsWith('_') && !['_id', '_attachments'].includes(k))) fail('Reserved sync document key');
-    result = await immutable(request.doc);
+  } else if (request.op === 'sync') {
+    result = await replicate(request.url, request.credentials || {});
   } else {
     fail('Unknown operation');
   }

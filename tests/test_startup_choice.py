@@ -8,7 +8,7 @@ from filemaid.store.pouch import PouchStore
 
 
 def test_saved_server_mode_waits_for_startup_choice(cfg, monkeypatch):
-    RuntimeSettings(cfg).save({"mode": "server", "sync_url": "http://127.0.0.1:65533"})
+    RuntimeSettings(cfg).save({"mode": "server", "sync_url": "http://127.0.0.1:65533/facturas"})
     calls = []
 
     def sync(self, url, token=""):

@@ -41,7 +41,6 @@ def test_custom_endpoint_never_receives_sync_credential(tmp_path, monkeypatch):
             "config_version": "custom",
             "vlm_base_url": "https://provider.invalid/v1",
             "vlm_model": "configured-model",
-            "vlm_server_auth": False,
             "rungs": {"vlm_local": {"min_field_coverage": 0}},
         },
     )

@@ -56,10 +56,10 @@
 #adr([Trazabilidad e histórico en base de datos],
   status: "ACEPTADA",
   contexto: [Muchas legislaciones exigen conservar histórico de facturas y decisiones; Alberto necesita reproducir cualquier decisión y alimentar futuros entrenamientos con los casos escalados.],
-  alternativas: [Logs planos, doble almacenamiento relacional/documental, servidor CouchDB externo, guardar solo el resultado final.],
-  decision: [PouchDB JS local como único motor: documentos dinámicos con todos los candidatos, eventos, caché y decisiones inmutables; adjuntos fragmentados para artefactos. Modo servidor mediante sincronización entre bases PouchDB y escalador VLM alojados en FastAPI, sin CouchDB. Configuración local excluida del intercambio.],
-  consecuencias: [Un motor y esquema dinámico, con recuperación sin ficheros originales. Coste de arranque del puente Node por operación; conflictos de contenido se rechazan, no se resuelven con último escritor. El modo se elige en la UI sin bloquear el batch.],
-  evidencia: [Contrato en docs/db-mig.md; pruebas de ingestión y recuperación en tests/test_pouch_persistence.py y tests/test_pouch_identity.py; protocolo servidor en tests/test_sync_server.py.],
+  alternativas: [Logs planos, doble almacenamiento relacional/documental, servidor CouchDB local en cada cliente, guardar solo el resultado final.],
+  decision: [PouchDB JS local como único motor cliente: documentos dinámicos con todos los candidatos, eventos, caché y decisiones inmutables; adjuntos fragmentados para artefactos. Modo servidor mediante replicación nativa PouchDB a una base de datos remota CouchDB existente, sin instalar CouchDB localmente. Escalador VLM independiente alojado en FastAPI. Configuración local excluida del intercambio.],
+  consecuencias: [Un motor y esquema dinámico local, con recuperación sin ficheros originales. Sincronización transparente PouchDB<->CouchDB con gestión de revisiones; conflictos de contenido operan en modo fail-closed sin resolución silenciosa. El modo se elige en la UI sin bloquear el batch.],
+  evidencia: [Contrato en docs/db-mig.md; pruebas de ingestión y recuperación en tests/test_pouch_persistence.py y tests/test_pouch_identity.py; replicación contra Apache CouchDB real en tests/test_couchdb_replication.py.],
 )
 
 #adr([Rung 5 en la nube: deepseek-v4.1-flash; revisión humana no bloqueante],

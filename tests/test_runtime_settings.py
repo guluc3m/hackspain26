@@ -32,6 +32,8 @@ def test_configuration_rejects_invalid_mode_and_credential_urls(cfg):
         {"mode": "server", "sync_url": ""},
         {"mode": "standalone", "vlm_url": "file:///etc/passwd"},
         {"mode": "server", "sync_url": "https://user:secret@host"},
+        {"mode": "server", "sync_url": "http://couchdb:5984"},
+        {"mode": "server", "sync_url": "http://couchdb:5984/_users"},
     ):
         assert client.put("/api/config", json=values).status_code == 422
     assert client.get("/api/config").json()["mode"] == "standalone"
@@ -45,8 +47,22 @@ def test_failed_sync_does_not_commit_server_mode(cfg, monkeypatch):
     monkeypatch.setattr(PouchStore, "sync", failure)
     client = TestClient(create_app(cfg))
     response = client.put(
-        "/api/config", json={"mode": "server", "sync_url": "http://127.0.0.1:65534"}
+        "/api/config", json={"mode": "server", "sync_url": "http://127.0.0.1:65534/facturas"}
     )
     assert response.status_code == 502
     assert client.get("/api/config").json()["mode"] == "standalone"
     assert client.get("/api/sync/status").json()["state"] == "error"
+
+
+def test_couchdb_endpoint_never_becomes_vlm_endpoint(cfg):
+    settings = RuntimeSettings(cfg)
+    settings.save({"mode": "server", "sync_url": "https://couch.example/facturas"})
+    assert cfg.extraction_config()["vlm_base_url"] == ""
+    settings.save(
+        {
+            "mode": "server",
+            "sync_url": "https://couch.example/facturas",
+            "vlm_url": "https://vision.example/v1",
+        }
+    )
+    assert cfg.extraction_config()["vlm_base_url"] == "https://vision.example/v1"

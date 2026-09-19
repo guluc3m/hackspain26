@@ -6,9 +6,11 @@ import base64
 import fcntl
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 CHUNK_SIZE = 1024 * 1024
 INLINE_LIMIT = 256 * 1024
@@ -21,6 +23,26 @@ def canonical(value: Any) -> bytes:
 
 def file_key(file_id: str, sha256: str) -> str:
     return hashlib.sha256(canonical([file_id, sha256])).hexdigest()
+
+
+def couchdb_url(value: str) -> str:
+    value = value.strip().rstrip("/")
+    parsed = urlsplit(value)
+    name = unquote(parsed.path.rsplit("/", 1)[-1])
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or not name
+        or name.startswith("_")
+        or "/" in name
+    ):
+        raise ValueError("Se requiere la URL HTTP(S) de una base CouchDB sin credenciales")
+    _ = parsed.port
+    return value
 
 
 class PouchStore:
@@ -129,6 +151,13 @@ class PouchStore:
         self.request(op="local_put", id=name, payload=payload)
 
     def sync(self, remote_url: str, token: str = "") -> dict:
-        from .sync import sync_store
-
-        return sync_store(self, remote_url, token)
+        url = couchdb_url(remote_url)
+        user = os.environ.get("FILEMAID_COUCHDB_USER", "")
+        password = os.environ.get("FILEMAID_COUCHDB_PASSWORD", "")
+        if bool(user) != bool(password):
+            raise ValueError("Configure usuario y contraseña de CouchDB conjuntamente")
+        if token and user:
+            raise ValueError("Configure Basic o Bearer para CouchDB, no ambos")
+        return self.request(
+            op="sync", url=url, credentials={"user": user, "password": password, "token": token}
+        )

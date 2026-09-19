@@ -83,7 +83,7 @@ const statusBadgeTitle = computed(() => {
   if (SINTETICO) return 'Datos sintéticos de referencia (sin conexión real)'
   if (!confirmed.value) return 'Modo de ejecución pendiente de seleccionar en esta sesión'
   if (currentConfig.value.mode === 'server') {
-    let msg = `Conectado a servidor: ${currentConfig.value.sync_url || '—'}`
+    let msg = `Sincronizando con CouchDB: ${currentConfig.value.sync_url || '—'}`
     if (syncStatus.value?.error) {
       msg += `\nError: ${syncStatus.value.error}`
     } else if (syncStatus.value?.state) {

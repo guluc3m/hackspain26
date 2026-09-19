@@ -30,7 +30,7 @@ src/filemaid/
   rules/            motor puro y determinista + 8 reglas + maestros (CSV/Excel)
   store/            PouchDB JS local: datos, adjuntos, caché, eventos y configuración
   api/              FastAPI: comparte types, store y motor con el pipeline
-  server.py         sincronización PouchDB + escalador VLM remoto (sin CouchDB)
+  server.py         escalador y servicio VLM remoto dedicado (sin sincronización)
 master/             datos maestros y thresholds de reglas (versionados)
 frontend/           Vue 3 + Vite (TS, pnpm): Dashboard (cola de revisión),
                     Invoices (facturas + carpeta) y Logs (buscador de entradas,
@@ -57,7 +57,7 @@ uv run -- npm ci --prefix src/filemaid/store/pouchdb  # motor PouchDB; requiere 
 uv run filemaid run --lote caja-de-alberto/facturas --out outcomes.jsonl
 uv run filemaid emit               # re-emite outcomes desde el store
 uv run filemaid serve              # API de revisión
-uv run filemaid server             # servicio sync + VLM, puerto 8001
+uv run filemaid server             # servicio VLM remoto dedicado, puerto 8001
 uv run pytest                        # tests
 uv run ruff check src tests          # lint
 uv run -- npx pnpm --dir frontend install
@@ -87,25 +87,27 @@ candidatos. `uv run filemaid serve` sirve la API y `frontend/dist`.
 Los targets `*_syncth` siguen disponibles para la demo sin datos reales.
 
 La UI pregunta **Standalone** o **Servidor** en cada arranque. Configuración
-permite editar URL del servidor sync, endpoint VLM (base OpenAI-compatible `/v1`)
+permite editar la URL completa de la base de datos CouchDB remota (ej. `http://couchdb:5984/facturas`),
+el endpoint VLM (base OpenAI-compatible `/v1`, independiente de CouchDB; en blanco usa el sidecar local)
 y modelo. Los valores se guardan únicamente en PouchDB local; no se replican.
-En modo servidor, la confirmación realiza una sincronización real y los cambios
-se sincronizan periódicamente y tras los scans. Un fallo mantiene los datos locales
-y muestra el error; no sustituye el resultado de las reglas.
+En modo servidor, la confirmación realiza una sincronización PouchDB<->CouchDB nativa y los cambios
+se sincronizan periódicamente y tras los scans. El cliente usa PouchDB LevelDB local sin instalar ni requerir
+CouchDB localmente. Un fallo mantiene los datos locales y muestra el error; no sustituye el resultado de las reglas.
 
-### Servidor de sincronización y VLM
+### Sincronización con CouchDB y servicio VLM
 
+La sincronización entre dispositivos se realiza mediante replicación nativa PouchDB a una base de datos remota Apache CouchDB existente (proporcionada por el usuario o infraestructura central, ej. `http://couchdb:5984/facturas`).
+El cliente no requiere instalar CouchDB localmente: PouchDB (LevelDB) gestiona la persistencia local y replica bidireccionalmente contra CouchDB.
+
+Para autenticación con CouchDB:
+- Variables de entorno de credenciales básicas: `FILEMAID_COUCHDB_USER` y `FILEMAID_COUCHDB_PASSWORD`.
+- O alternativamente token Bearer: `FILEMAID_SYNC_TOKEN`.
+
+Para el servicio VLM (`server.py`), el comando `filemaid server` aloja exclusivamente el escalador VLM:
 ```sh
 FILEMAID_DATA=data/servidor uv run filemaid server --host 127.0.0.1 --port 8001
 ```
-
-En otra máquina, configure `FILEMAID_SERVER_TOKEN` en el servidor y el mismo
-valor en `FILEMAID_SYNC_TOKEN` en el cliente (variables de entorno, nunca git).
-El bind no-loopback exige token. Use HTTPS mediante un proxy de confianza en redes
-no locales. `FILEMAID_SERVER_VLM_URL` selecciona el upstream VLM fijo (base `/v1`),
-y `FILEMAID_SERVER_VLM_KEY` su credencial si la requiere; sin URL se usa el sidecar local.
-El cliente puede dejar el endpoint VLM vacío para usar `<sync_url>/v1`.
-
+En el servidor VLM, configure `FILEMAID_SERVER_TOKEN` para proteger el acceso. En clientes o upstream VLM use `FILEMAID_VLM_KEY` o el token correspondiente. El endpoint VLM es totalmente independiente de la base de datos CouchDB (nunca se deduce de `sync_url`).
 PouchDB es el único almacén runtime, en `FILEMAID_DATA/pouchdb`; no hay fallback
 ni persistencia relacional. Los documentos tienen esquema dinámico; decisiones y
 artefactos históricos son inmutables. Esquema, sincronización y límites:

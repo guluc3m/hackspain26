@@ -46,8 +46,6 @@ class AppConfig:
         raw = yaml.safe_load(self.extraction_config_path.read_bytes()) or {}
         settings = self.runtime_settings()
         vlm_url = settings["vlm_url"]
-        if settings["mode"] == "server" and not vlm_url:
-            vlm_url = settings["sync_url"] + "/v1"
         config = {
             "config_version": self.extraction_config_path.stem
             + ":"
@@ -67,7 +65,4 @@ class AppConfig:
         }
         config["vlm_base_url"] = vlm_url
         config["vlm_model"] = settings["vlm_model"]
-        config["vlm_server_auth"] = (
-            settings["mode"] == "server" and vlm_url == settings["sync_url"] + "/v1"
-        )
         return config

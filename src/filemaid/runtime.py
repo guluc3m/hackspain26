@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from urllib.parse import urlsplit
 
-from filemaid.store.pouch import PouchStore
+from filemaid.store.pouch import PouchStore, couchdb_url
 
 
 def endpoint(value: str, name: str) -> str:
@@ -41,10 +41,12 @@ class RuntimeSettings:
         mode = values.get("mode")
         if mode not in {"standalone", "server"}:
             raise ValueError("Seleccione standalone o server")
-        sync_url = endpoint(values.get("sync_url", ""), "Servidor de sincronización")
+        sync_url = values.get("sync_url", "").strip()
+        if sync_url:
+            sync_url = couchdb_url(sync_url)
         vlm_url = endpoint(values.get("vlm_url", ""), "Endpoint VLM")
         if mode == "server" and not sync_url:
-            raise ValueError("El modo servidor requiere una URL de sincronización")
+            raise ValueError("El modo servidor requiere la URL de una base CouchDB")
         return {
             "mode": mode,
             "sync_url": sync_url,

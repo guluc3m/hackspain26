@@ -24,9 +24,9 @@ No se guardan claves, cabeceras Authorization ni el diccionario runtime de confi
 
 ## Motor y seam
 
-PouchDB JS 9 local, adaptador LevelDB, en `FILEMAID_DATA/pouchdb`. Python ejecuta un puente Node finito por operación bajo un bloqueo interproceso que abarca apertura hasta cierre. No hay servidor CouchDB, MongoDB ni fallback. PouchDB es la única persistencia runtime, incluida caché, logs y configuración; no se crean bases SQLite ni ledgers JSONL. Los JSONL de resultados son exports, no almacenamiento interno. Las imágenes y copias de trabajo son descartables y recuperables desde los adjuntos.
+PouchDB JS 9 local, adaptador LevelDB, en `FILEMAID_DATA/pouchdb`. Python ejecuta un puente Node finito por operación bajo un bloqueo interproceso que abarca apertura hasta cierre. En el cliente no se instala ni ejecuta un servidor CouchDB local. PouchDB es la única persistencia runtime local, incluida caché, logs y configuración; no se crean bases SQLite ni ledgers JSONL. Los JSONL de resultados son exports, no almacenamiento interno. Las imágenes y copias de trabajo son descartables y recuperables desde los adjuntos.
 
-Modo standalone: PouchDB local y VLM local o endpoint explícito. Modo servidor: la misma base local intercambia documentos y adjuntos con otro PouchDB mediante el servicio FastAPI; el servicio también aloja el escalador VLM. La UI exige elegir modo al arrancar y permite reconfigurarlo. No se añaden prompts al procesamiento batch.
+Modo standalone: PouchDB local y VLM local o endpoint explícito. Modo servidor: la base local PouchDB sincroniza directamente con una base de datos remota Apache CouchDB existente (proporcionada por el usuario o infraestructura, ej. `http://couchdb:5984/facturas`) mediante la replicación nativa de PouchDB (`PouchDB.sync`). El servicio opcional `filemaid server` aloja exclusivamente el escalador VLM (sin endpoints de sincronización). La UI exige elegir modo al arrancar y permite reconfigurarlo. No se añaden prompts al procesamiento batch.
 
 Exports e informes se enlazan por `scan_id`, nunca por basename ni por «última factura». El histórico previo PouchDB permanece legible. Los antiguos ficheros relacionales no se abren ni borran automáticamente; no se reconstruye evidencia que nunca se guardó. El puente finito favorece aislamiento frente a throughput masivo.
 
@@ -68,28 +68,42 @@ El reprocesado acepta `file_key` y rechaza con 409 un basename ambiguo; restaura
 
 Nunca se actualiza ni borra un documento de dominio; `_rev` no es histórico de negocio. Reprocesar crea nuevo scan y nueva decisión. Repetir un `put` del mismo `_id` y contenido es idempotente; un 409 con contenido distinto es error, nunca last-write-wins. Todos los resultados individuales se esperan; no se interpreta un `bulkDocs` HTTP exitoso como éxito de cada fila. No se ofrece edición de `_rev`, `new_edits=false`, borrado ni replicación desde la API.
 
-La vista se versiona, no se muta sobre lecturas en vuelo. Se rechazan lecturas con `_conflicts`. La sincronización soportada es el protocolo de la aplicación descrito abajo, no la replicación arbitraria con CouchDB. Compaction no elimina historia porque cada decisión es un documento independiente.
-
+La vista se versiona, no se muta sobre lecturas en vuelo. Se rechazan lecturas con `_conflicts`. La sincronización soportada es la replicación nativa PouchDB <-> CouchDB descrita abajo. Los conflictos nativos de CouchDB nunca se fusionan silenciosamente: cualquier conflicto detiene el flujo o se marca como error (fail-closed). Compaction no elimina historia porque cada decisión es un documento independiente.
 Los escalones se guardan al terminar, antes de iniciar el siguiente. Si falla una página posterior, las páginas/escalones anteriores permanecen. El original se captura antes de extracción; las imágenes se aíslan por scan. La decisión se publica después de fields/evidencia y nunca se sobrescribe. Una caída del servidor deja la evidencia local disponible para sincronizar más tarde; los errores de sincronización se muestran, no se transforman en decisiones.
 
-## Protocolo servidor
+## Sincronización nativa con CouchDB y servicio VLM
 
-`filemaid server` aloja `/sync/info`, `/sync/pull?since=N&limit=N`, `/sync/push`, `/sync/document?id=...` y `/sync/blob/<sha256>`. El cliente intercambia documentos append-only en ambas direcciones y espera todos los adjuntos/dependencias antes de publicar el documento dependiente. No instala ni requiere CouchDB. Las revisiones `_rev` son locales: igualdad de contenido es idempotente; contenido distinto con el mismo ID es conflicto explícito.
+La sincronización entre dispositivos delega en el protocolo de replicación nativo de CouchDB a través de `PouchDB.sync(remote_url)`.
 
-Checkpoints `_local/sync-<hash URL>` incluyen identidades de ambas bases; el reinicio/reemplazo remoto reinicia los cursores. `sync.lock` serializa intercambios completos por cliente; `pouchdb.lock` serializa operaciones de LevelDB. Errores de transporte no adelantan el checkpoint del lote en vuelo. `_local` y design docs se excluyen del intercambio; los tipos/campos de negocio desconocidos se conservan, incluidos adjuntos inline.
+### Requisitos y permisos de la base remota CouchDB
+1. **Base de datos remota preexistente**: La base remota en CouchDB (p. ej. `http://couchdb:5984/facturas`) debe existir previamente y ser aprovisionada por el administrador/usuario. La aplicación cliente no aprovisiona automáticamente bases en CouchDB en producción.
+2. **Permisos requeridos**: El usuario o token de replicación necesita permisos de lectura y escritura de documentos, así como gestión de checkpoints `_local/*` para mantener el estado de la replicación entre ejecuciones.
+3. **Protección del histórico remoto**: para mantener la garantía append-only también frente a escritores externos, el administrador debe restringir actualizaciones/borrados mediante permisos y una validación `validate_doc_update` apropiada. La aplicación local nunca edita decisiones; la replicación nativa sí transporta revisiones y tombstones válidos de CouchDB y no sustituye esa política remota.
+4. **Manejo de conflictos**: El protocolo nativo de replicación gestiona automáticamente árboles de revisiones (`_rev`), adjuntos y checkpoints. Los documentos `_local` se excluyen de la sincronización pública automáticamente por CouchDB, y los documentos `_design` se excluyen mediante filtros de cliente. Los conflictos detectados nunca se fusionan de forma silenciosa ni se aplica last-write-wins; la detección de conflictos opera en modo fail-closed para proteger la integridad de las decisiones.
 
-Las escrituras de artefactos rechazan chunks inválidos, referencias ausentes y ciclos directos antes de publicarse. Si se detecta corrupción externa o conflicto, la sincronización se detiene con error y no adelanta cursores: no se omite evidencia silenciosamente. La exportación JSONL de un run con varios contenidos bajo el mismo basename se rechaza por ambigua; use el export del lote concreto.
+La aplicación ejecuta intercambios finitos con `live:false`, `retry:false`, lotes de 16 y un lote en memoria. Conserva la sincronización periódica/manual y posterior a los scans. Los checkpoints y secuencias opacas son gestionados por PouchDB; no hay cursores ni protocolo de replicación propios. Errores de autorización por documento (`denied`) cancelan el intercambio y se reportan como error, permitiendo reintento tras corregir los permisos. Se comprueban conflictos locales al terminar y en las lecturas; las ramas en conflicto se conservan para resolución explícita. La replicación es atómica por documento, no por scan completo: una interrupción puede dejar evidencia parcial hasta el siguiente intento.
 
-Límites: blobs 1 MiB, respuesta/petición JSON de sync 2 MiB, paginación de hasta 32 documentos por cliente limitada también por bytes. Documentos mayores deben usar artefactos fragmentados. El escalador acepta multimodal OpenAI-compatible en `/v1/chat/completions`, cuerpo hasta 24 MiB, respuesta hasta 2 MiB, máximo cuatro peticiones upstream simultáneas y timeout de 120 s. Streaming de tokens no soportado. Upstream fijado por entorno del servidor, nunca por datos del documento. Sin upstream configurado se inicia el sidecar local con presupuesto de hilos (`FILEMAID_LLAMA_THREADS`, default 4).
+### Autenticación con CouchDB
+El acceso a la base CouchDB remota se autentica mediante:
+- Credenciales básicas vía variables de entorno: `FILEMAID_COUCHDB_USER` y `FILEMAID_COUCHDB_PASSWORD`.
+- O alternativamente cabecera Bearer con `FILEMAID_SYNC_TOKEN`.
+- No se persisten credenciales en la configuración local `_local/runtime-settings` ni en documentos sincronizados.
 
-En despliegue remoto se exige Bearer token (`FILEMAID_SERVER_TOKEN` / `FILEMAID_SYNC_TOKEN`) y se recomienda terminación TLS. No se guardan secretos en la UI ni en documentos replicados. Un endpoint VLM personalizado puede usar `FILEMAID_VLM_KEY`, nunca recibe el token de sincronización. La UI muestra errores sin cambiar el modo confirmado si falla la conexión.
-
+### Servicio VLM independiente (`server.py`)
+El servicio `filemaid server` aloja exclusivamente el escalador VLM (`/v1/chat/completions`) y carece de rutas `/sync/*`.
+Límites y operación VLM:
+- Acepta multimodal OpenAI-compatible en `/v1/chat/completions`, cuerpo hasta 24 MiB, respuesta hasta 2 MiB, máximo cuatro peticiones upstream simultáneas y timeout de 120 s. Streaming de tokens no soportado.
+- Upstream fijado por entorno del servidor (`FILEMAID_SERVER_VLM_URL`), nunca por datos del documento. Sin upstream configurado se inicia el sidecar local con presupuesto de hilos (`FILEMAID_LLAMA_THREADS`, default 4).
+- Autenticación del servidor VLM mediante `FILEMAID_SERVER_TOKEN`. Clientes con endpoint VLM dedicado usan `FILEMAID_VLM_KEY`.
+- El endpoint VLM es completamente independiente de la URL de CouchDB: en blanco utiliza el sidecar local; nunca se deduce de la URL de sincronización.
 ## Instalación y operación
 
-Desde el repositorio: `uv run -- npm ci --prefix src/filemaid/store/pouchdb`, después `uv run filemaid serve` (app) o `uv run filemaid server` (sync + VLM). Node >=20 en PATH. Estado y temporales bajo FILEMAID_DATA, nunca `/tmp`. Backup: detener escritores y copiar el directorio PouchDB completo. `clean` solo elimina workspaces descartables; no elimina la base ni la caché persistida.
+Desde el repositorio: `uv run -- npm ci --prefix src/filemaid/store/pouchdb`, después `uv run filemaid serve` (app) o `uv run filemaid server` (escalador VLM). Node >=20 en PATH. Estado y temporales bajo FILEMAID_DATA, nunca `/tmp`. Backup: detener escritores y copiar el directorio PouchDB completo. `clean` solo elimina workspaces descartables; no elimina la base ni la caché persistida.
 
-### Verificación de la migración
+### Verificación de la persistencia y replicación
 
-`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, fallo parcial y enlace exacto de informes/reprocesado. `test_sync_server.py` cubre intercambio HTTP, adjuntos, autenticación y escalador; `test_runtime_settings.py` y `test_startup_choice.py` cubren configuración local y elección de modo. Revisión adversarial adicional: conflictos de revisiones introducidos externamente, límites exactos y bloqueo entre procesos.
+`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, fallo parcial y enlace exacto de informes/reprocesado. Las pruebas de sincronización cubren la replicación nativa PouchDB <-> CouchDB, autenticación y manejo de checkpoints/conflictos; `test_runtime_settings.py` y `test_startup_choice.py` cubren configuración local y elección de modo.
 
-Referencias: [PouchDB API](https://pouchdb.com/api.html), [conflictos y append-only](https://pouchdb.com/guides/conflicts.html). Sin dependencia de un servidor CouchDB.
+Para ejecutar las pruebas contra Apache CouchDB real: configure `FILEMAID_TEST_COUCHDB_URL` con la URL raíz de un servidor de pruebas aislado, `FILEMAID_TEST_COUCHDB_USER` y `FILEMAID_TEST_COUCHDB_PASSWORD`, y ejecute `uv run pytest tests/test_couchdb_replication.py`. Cada prueba crea y elimina una base de nombre aleatorio. Sin esas variables, las pruebas de integración remota se omiten explícitamente; no se reemplaza CouchDB por un simulador ni se inicia uno en el cliente.
+
+Referencias: [PouchDB API](https://pouchdb.com/api.html), [conflictos y replicación CouchDB](https://pouchdb.com/guides/conflicts.html). El cliente no requiere instalación local de CouchDB.

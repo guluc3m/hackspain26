@@ -54,7 +54,7 @@ async function guardar() {
   successMsg.value = ''
 
   if (isServerMode.value && !syncUrl.value.trim()) {
-    error.value = 'El modo servidor requiere una URL de sincronización.'
+    error.value = 'El modo servidor requiere una URL completa de base de datos CouchDB (ej. http://couchdb:5984/facturas).'
     return
   }
 
@@ -70,7 +70,7 @@ async function guardar() {
     const saved = await api.saveConfig(payload)
     savedConfig.value = saved
     successMsg.value = mode.value === 'server'
-      ? 'Conexión con el servidor establecida y sincronizada correctamente.'
+      ? 'Configuración de sincronización CouchDB guardada correctamente.'
       : 'Modo autónomo (local) configurado correctamente.'
     emit('confirmed', saved)
   } catch (e: any) {
@@ -104,7 +104,7 @@ async function sincronizarManual() {
       <div>
         <h2>Configuración de ejecución</h2>
         <p class="muted subtitle">
-          Seleccione el modo de operación para persistencia PouchDB y escalado VLM.
+          Seleccione el modo de operación para persistencia PouchDB local y sincronización con CouchDB remoto o escalado VLM independiente.
         </p>
       </div>
       <button
@@ -138,7 +138,7 @@ async function sincronizarManual() {
             <div class="mode-info">
               <span class="mode-title">Autónomo (Standalone)</span>
               <span class="mode-desc muted">
-                Base local PouchDB independiente. Procesamiento VLM y reglas locales sin conexión a servidor central.
+                Base local PouchDB (LevelDB) independiente sin dependencias externas. Procesamiento VLM local o remoto independiente sin sincronización con CouchDB.
               </span>
             </div>
           </label>
@@ -154,7 +154,7 @@ async function sincronizarManual() {
             <div class="mode-info">
               <span class="mode-title">Conectado a Servidor (Server)</span>
               <span class="mode-desc muted">
-                Sincronización bidireccional continua con servidor filemaid central y opción de delegar VLM.
+                Replicación bidireccional nativa entre PouchDB local y base remota CouchDB. El cliente no requiere CouchDB local. VLM independiente y opcional.
               </span>
             </div>
           </label>
@@ -167,21 +167,21 @@ async function sincronizarManual() {
 
         <div class="field-group">
           <label for="input-sync-url">
-            URL Servidor de Sincronización
+            URL Base de Datos CouchDB
             <span v-if="isServerMode" class="required" aria-hidden="true">*</span>
           </label>
           <input
             id="input-sync-url"
             v-model="syncUrl"
             type="text"
-            placeholder="http://servidor:8001"
+            placeholder="http://couchdb:5984/facturas"
             :required="isServerMode"
             :disabled="saving || syncing"
             aria-describedby="sync-url-help"
             autocomplete="off"
           />
           <span id="sync-url-help" class="help-text muted">
-            URL base del servidor filemaid remoto (no añada /sync). Obligatoria en modo servidor.
+            URL HTTP(S) completa de la base de datos remota CouchDB (ej. http://couchdb:5984/facturas). Obligatoria en modo servidor.
           </span>
         </div>
 
@@ -197,7 +197,7 @@ async function sincronizarManual() {
             autocomplete="off"
           />
           <span id="vlm-url-help" class="help-text muted">
-            Base OpenAI compatible terminada en /v1. Si se deja en blanco en modo servidor, el backend deduce el endpoint.
+            Base OpenAI compatible terminada en /v1. Independiente de CouchDB (nunca se deduce de la URL de sync). En blanco usa el sidecar local.
           </span>
         </div>
 

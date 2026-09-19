@@ -115,3 +115,21 @@ def test_partial_scan_keeps_previous_rungs_and_error(cfg, tmp_path, monkeypatch)
     assert next(d for d in records if d["kind"] == "feature")["feature"]["data"] == "retained"
     assert any(d["kind"] == "event" and d["type"] == "item_error" for d in records)
     assert not any(d["kind"] == "decision" for d in records)
+
+
+def test_pouch_local_docs_cas(tmp_path):
+    store = PouchStore(tmp_path / "data")
+    assert store.local_get("test-key") is None
+
+    store.local_put("test-key", {"mode": "standalone", "val": 1})
+    val1 = store.local_get("test-key")
+    assert val1 == {"mode": "standalone", "val": 1}
+
+    # Updating with new payload preserves CAS
+    store.local_put("test-key", {"mode": "server", "sync_url": "http://127.0.0.1:8000"})
+    val2 = store.local_get("test-key")
+    assert val2 == {"mode": "server", "sync_url": "http://127.0.0.1:8000"}
+
+    with pytest.raises(RuntimeError, match="Reserved"):
+        store.local_put("test-key", {"_rev": "fake", "_id": "fake", "mode": "standalone"})
+    assert store.local_get("test-key") == val2

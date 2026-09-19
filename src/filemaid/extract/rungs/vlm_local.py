@@ -51,14 +51,9 @@ def extract(ctx: PageContext) -> ExtractionFeature:
             if vlm_base_url.endswith("/v1")
             else f"{vlm_base_url}/v1/chat/completions"
         )
-        if ctx.config.get("vlm_server_auth"):
-            token = ctx.config.get("sync_token") or os.environ.get("FILEMAID_SYNC_TOKEN", "")
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
-        else:
-            custom_key = os.environ.get("FILEMAID_VLM_KEY", "").strip()
-            if custom_key:
-                headers["Authorization"] = f"Bearer {custom_key}"
+        custom_key = os.environ.get("FILEMAID_VLM_KEY", "").strip()
+        if custom_key:
+            headers["Authorization"] = f"Bearer {custom_key}"
     else:
         from filemaid.llama_manager import get_manager
 
