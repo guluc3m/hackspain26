@@ -1,50 +1,38 @@
-"""Escalón 3: Tesseract. Confianza = media ponderada de palabras + cobertura de campos."""
+"""Escalón 3: Tesseract. Confianza = media ponderada de palabras + cobertura de campos.
+
+SIN IMPLEMENTAR: no escribe caché ni features con data vacía — un stub que
+cachease "" envenenaría la clave (page_sha, VERSION, config_version) que
+usará la implementación real. Devuelve skipped:stub y la escalera continúa.
+"""
 
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
-from typing import Any
 
 from albertitos.types import ExtractionFeature
 
-from ..cache import FeatureCache
+from .context import PageContext
 
 NAME = "tesseract"
 VERSION = "1"
 
-_MIN_WORD_CONF = 60.0
-_MIN_FIELD_COVERAGE = 0.5
 
-
-def extract(
-    pdf_path: Path,
-    page_index: int,
-    page_image_sha: str | None,
-    cache: FeatureCache,
-    config: dict[str, Any],
-) -> ExtractionFeature:
-    if page_image_sha is None:
+def extract(ctx: PageContext) -> ExtractionFeature:
+    if ctx.page_image_sha is None:
         return _skip("no-page-image")
     if shutil.which("tesseract") is None:
         return _skip("dep:tesseract")
 
-    cached = cache.get(page_image_sha, VERSION, config.get("config_version", ""))
+    cached = ctx.cache.get(ctx.page_image_sha, VERSION, ctx.config.get("config_version", ""))
     if cached is not None:
         return cached
 
-    # TODO: OCR real (psm configurable, tessdata user-space) + doble puerta:
-    #   conf_palabras >= _MIN_WORD_CONF  y  cobertura_campos >= _MIN_FIELD_COVERAGE.
-    feature = ExtractionFeature(
-        type="pdf_text",
-        extraction_method=NAME,
-        data="",
-        page=page_index,
-        sha256=page_image_sha,
-        extractor_version=VERSION,
-    )
-    cache.put(page_image_sha, feature, config.get("config_version", ""))
-    return feature
+    # Doble puerta al implementar el OCR real — lee de config:
+    #   rungs.tesseract.min_word_confidence (media ponderada de palabras, 0-100)
+    #   rungs.tesseract.min_field_coverage  (fracción de campos esperados)
+    # ambas deben pasar para detener la escalera aquí (master/extraction.yaml).
+    # Cachear SOLO tras el trabajo real (nunca resultados vacíos de stubs).
+    return _skip("stub")
 
 
 def _skip(reason: str) -> ExtractionFeature:

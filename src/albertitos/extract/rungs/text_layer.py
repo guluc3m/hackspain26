@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from albertitos.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
+from .context import PageContext
 
 NAME = "pypdf"
 VERSION = "1"
@@ -17,23 +16,28 @@ except ImportError:  # pragma: no cover
     PdfReader = None
 
 
-def extract(pdf_path: Path, page_index: int) -> ExtractionFeature:
+def extract(ctx: PageContext) -> ExtractionFeature:
     if PdfReader is None:
-        return _skipped("dep:pypdf")
+        return _skip(ctx, "dep:pypdf")
     try:
-        text = PdfReader(pdf_path).pages[page_index].extract_text() or ""
+        text = PdfReader(ctx.pdf_path).pages[ctx.page_index].extract_text() or ""
     except Exception as exc:
-        return _skipped(f"error:{exc.__class__.__name__}")
-    ok = text_is_plausible(text)
+        return _skip(ctx, f"error:{exc.__class__.__name__}")
+    ok = text_is_plausible(
+        text,
+        ctx.config.get("rungs", {}).get("text_layer", {}).get("plausibility"),
+    )
     return ExtractionFeature(
         type="pdf_text",
         extraction_method=NAME if ok else "skipped:implausible-text",
         data=text,
-        page=page_index,
+        page=ctx.page_index,
         extractor_version=VERSION,
         confidence=1.0 if ok else 0.0,
     )
 
 
-def _skipped(reason: str) -> ExtractionFeature:
-    return ExtractionFeature(type="pdf_text", extraction_method=f"skipped:{reason}", page=0, extractor_version=VERSION)
+def _skip(ctx: PageContext, reason: str) -> ExtractionFeature:
+    return ExtractionFeature(
+        type="pdf_text", extraction_method=f"skipped:{reason}", page=ctx.page_index, extractor_version=VERSION
+    )

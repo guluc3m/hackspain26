@@ -9,8 +9,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-_MIN_PRINTABLE_RATIO = 0.85
-_MIN_ALNUM_RATIO = 0.35
 _WORD_RE = re.compile(r"\b[\wáéíóúüñÁÉÍÓÚÜÑ]{2,}\b")
 _COMMON_WORDS = {
     "factura", "fecha", "total", "iva", "base", "importe", "pedido", "proveedor",
@@ -18,21 +16,31 @@ _COMMON_WORDS = {
     "el", "la", "de", "y", "con", "para", "sl", "s.l", "sa", "s.a",
 }
 
+_DEFAULTS = {
+    "min_printable_ratio": 0.85,
+    "min_alnum_ratio": 0.35,
+    "min_words": 5,
+    "min_known_words": 2,
+}
 
-def text_is_plausible(text: str) -> bool:
+
+def text_is_plausible(text: str, thresholds: dict | None = None) -> bool:
     """True si el texto parece lenguaje real y no mojibake de fuentes CID."""
+    cfg = {**_DEFAULTS, **(thresholds or {})}
     if not text or not text.strip():
         return False
     printable = sum(ch.isprintable() or ch in "\n\t" for ch in text) / len(text)
-    if printable < _MIN_PRINTABLE_RATIO:
+    if printable < cfg["min_printable_ratio"]:
         return False
     alnum = sum(ch.isalnum() or ch.isspace() for ch in text) / len(text)
-    if alnum < _MIN_ALNUM_RATIO:
+    if alnum < cfg["min_alnum_ratio"]:
         return False
     words = _WORD_RE.findall(text)
-    if len(words) < 5:
+    if len(words) < cfg["min_words"]:
         return False
     known = sum(
         unicodedata.normalize("NFKC", w).lower() in _COMMON_WORDS for w in words
     )
-    return known >= 2
+    return known >= cfg["min_known_words"]
+
+

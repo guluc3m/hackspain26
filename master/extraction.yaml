@@ -1,0 +1,45 @@
+# Umbrales de la escalera de extracción (por página, en orden).
+#
+# Semántica: si la confianza del escalón queda POR DEBAJO del umbral,
+# se baja al siguiente escalón. Cloud VLM (escalón 5) no tiene umbral de
+# parada: nunca es respuesta automática, su lectura se registra como
+# candidato más (docs/report/architecture.typ, escalera §3).
+#
+# La versión de este fichero entra en la clave de caché
+# (page_sha256, extractor_version, config_version): cambiar un umbral
+# invalida la caché de escalones 2–5 y fuerza re-extracción.
+
+extraction_version: v1
+
+rungs:
+  # Escalón 1: capa de texto (pypdf). Sin umbral numérico: se acepta por
+  # plausibilidad (mojibake de fuentes CID pasa con "confianza", así que
+  # un número no lo filtra — ver src/albertitos/extract/plausibility.py).
+  # Solo se rasteriza si el texto NO pasa este chequeo.
+  text_layer:
+    plausibility:
+      min_printable_ratio: 0.85
+      min_alnum_ratio: 0.35
+      min_words: 5
+      min_known_words: 2
+
+  # Escalón 2: rasterizado + QR (zxing).
+  # qr_only_confidence decide si la página ES solo QR(s): por encima del
+  # umbral el payload QR es EL contenido de la página y la escalera para
+  # aquí (pdf2text/OCR no aportan nada). Por debajo, se trata como
+  # página imagen+QR y se continúa con OCR — el payload se conserva
+  # siempre como feature qr_payload, nunca se descarta.
+  qr:
+    qr_only_confidence: 0.8
+    # Confianza mínima de cada payload QR para colgarlo como feature
+    # (los QRs por debajo siguen registrados, con menor confianza).
+    min_payload_confidence: 0.5
+
+  # Escalones 3–4: OCR/VLM — doble puerta (las dos deben pasar para parar).
+  tesseract:
+    min_word_confidence: 60.0    # media ponderada de palabras, escala 0-100
+    min_field_coverage: 0.5      # fracción de campos esperados encontrados
+
+  vlm_local:
+    min_word_confidence: 60.0
+    min_field_coverage: 0.5
