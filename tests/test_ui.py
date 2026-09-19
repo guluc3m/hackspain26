@@ -152,50 +152,45 @@ def test_pantallas_sin_datos_no_explotan():
 # en 500 y el lanzador decía «No arrancó en 30 s».
 
 
-def test_operaciones_sin_maestro_degrada_sin_romper(monkeypatch):
-    """Clon fresco sin maestro: `/` responde 200 con la nota, jamás 500."""
-    import albertitos.ui.app as ui_app
-
-    monkeypatch.setattr(ui_app, "_maestro_para_resumen", lambda: None)
+def test_operaciones_sin_store_degrada_sin_romper(monkeypatch):
+    """Clon fresco sin store: `/` responde 200 con la nota, jamás 500."""
     with TestClient(create_app(records=demo_records())) as c:
         r = c.get("/")
     assert r.status_code == 200
-    assert "sin maestro" in r.text  # nota llana, no traceback
     assert "Lo que te toca hoy" in r.text
 
 
-def test_pendiente_forma_completa_sin_datos(monkeypatch):
+def test_pendiente_forma_completa_sin_datos():
     """La rama sin datos devuelve la MISMA forma (claves presentes a None):
     una clave ausente sería Undefined y el guard de la plantilla fallaría."""
     import albertitos.ui.app as ui_app
 
-    monkeypatch.setattr(ui_app, "_maestro_para_resumen", lambda: None)
     d = ui_app._pendiente_alberto(Path(".sdd/pytest-tmp/no-existe"))
-    assert set(d) == {"n", "euros", "pagado_n", "pagado_total", "no_pago_n", "nota"}
-    assert d["n"] is None and d["pagado_total"] is None and d["pagado_n"] is None
+    assert set(d) == {"n", "pagado_n", "pagado_total", "no_pago_n", "nota"}
+    assert d["n"] is None and d["pagado_n"] is None
 
 
-def test_pendiente_con_maestro_y_store_sembrado(monkeypatch, tmp_path: Path):
-    """Camino con datos: tarjetas pagado/no-pago con valores medidos del
-    store×maestro (fixture xlsx comprometido — determinista en cualquier nodo)."""
-    import sqlite3
+def test_pendiente_con_store_sembrado(tmp_path: Path):
+    """Camino con datos: conteos por resultado directamente del store."""
+    from albertitos.store import Store
+    from albertitos.types import Decision, RuleVerdict
 
+    def dec(file_id: str, result: str) -> Decision:
+        return Decision(
+            invoice_id=f"inv-{file_id}", file_id=file_id, result=result,
+            rule_verdicts=[RuleVerdict(code="TOTALS_MUST_MATCH", outcome="PASS",
+                                       reason="ok", consumed={})],
+            config_snapshot={"config_version": "v-test"},
+        )
+
+    store = Store(tmp_path)
+    store.record_decision(dec("A.pdf", "PAGAR"), "s1", numero_factura="F1",
+                          pedido="P1", engine_version="ev")
+    store.record_decision(dec("B.pdf", "ESCALAR"), "s2", numero_factura="F2",
+                          pedido="P2", engine_version="ev")
     import albertitos.ui.app as ui_app
 
-    conn = sqlite3.connect(tmp_path / "store.db")
-    conn.execute(
-        "CREATE TABLE invoices (file_id TEXT PRIMARY KEY, invoice_id TEXT,"
-        " result TEXT, pedido TEXT, rule_codes TEXT)"
-    )
-    conn.execute(
-        "INSERT INTO invoices VALUES ('A.pdf', 'inv-A', 'PAGAR',"
-        " 'PO-2026-0177', 'NIF_IN_MASTER:PASS')"
-    )
-    conn.commit()
-    conn.close()
-    maestro = Path(__file__).parent / "fixtures" / "maestro_fixture.xlsx"
-    monkeypatch.setattr(ui_app, "_maestro_para_resumen", lambda: maestro)
     d = ui_app._pendiente_alberto(tmp_path)
+    assert d["n"] == {"valor": "1"}          # ESCALAR espera decisión
     assert d["pagado_n"] == {"valor": "1"}
-    assert d["pagado_total"] == {"valor": "4,635.26 EUR"}
     assert d["no_pago_n"] == {"valor": "0"}

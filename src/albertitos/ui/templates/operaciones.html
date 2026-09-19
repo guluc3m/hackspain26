@@ -11,10 +11,7 @@ derecha.</em></p>
   <div class="tarjeta">
     {% if pendiente and pendiente.n is not none %}
     <div class="num">{{ pendiente.n.valor }}</div>
-    <div>facturas esperan tu decisión
-      {% if pendiente.euros and 'PENDIENTE' not in pendiente.euros.valor %}
-      — <strong>{{ pendiente.euros.valor }}</strong> en juego
-      {% endif %}</div>
+    <div>facturas esperan tu decisión</div>
     <p><a href="/revision"><strong>Revisarlas →</strong></a> (con la foto de la página y las lecturas lado a lado)</p>
     {% else %}
     <div class="num">—</div>
@@ -22,9 +19,9 @@ derecha.</em></p>
     {% endif %}
   </div>
   {% if pendiente and pendiente.pagado_n is defined and pendiente.pagado_n is not none %}
-  <div class="tarjeta"><div class="num">{{ pendiente.pagado_total.valor }}</div>
-    <div>se pagarán por {{ pendiente.pagado_n.valor }} facturas</div>
-    <p><a href="/resumen-ejecutivo"><strong>Ver mi resumen del día</strong></a> (¿qué pago hoy y por qué?)</p></div>
+  <div class="tarjeta"><div class="num">{{ pendiente.pagado_n.valor }}</div>
+    <div>se pagan (todas las reglas en verde)</div>
+    <p><a href="/facturas?result=PAGAR">Ver las facturas a pagar</a></p></div>
   <div class="tarjeta"><div class="num">{{ pendiente.no_pago_n.valor }}</div>
     <div>no se pagan (motivo registrado)</div>
     <p><a href="/facturas?result=NO_PAGAR">Ver las facturas no pagadas</a></p></div>
