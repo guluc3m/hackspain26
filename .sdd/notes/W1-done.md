@@ -208,3 +208,19 @@
 - Symlink de staging DEFENSA creado (.sdd/lote1 → .sdd, idempotente, línea
   127 del checklist) para que las fuentes citadas existan.
 - 212 tests verde, ruff limpio.
+
+## Actualización 8: T25 · Entrega final — PDF + repo de entrega verificado
+- PDF compilado con typst (solo warnings de deprecación de la plantilla):
+  13 páginas, arquitectura + ADR-06 + 433/22/45 + 86.6 % + 471/500 +
+  provenance verificados por extracción de texto. Copiado a la raíz.
+- staging: scripts/stage_delivery.sh con el outcomes POST-fix (AVISO esperado
+  de lote 2 pendiente) → /home/deploy/delivery-repo con EXACTAMENTE
+  outcomes.jsonl + albertitos_plan.pdf; validador 500/500 OK; byte-idénticos
+  al POST-fix; grep de secretos vacío. outcomes.jsonl y albertitos_plan.pdf
+  NO se commitean en la solución (decisión en main: .gitignore los excluye;
+  el repo de entrega es el artefacto). Snapshot de evidencia en
+  .sdd/metrics/outcomes-lote1-post-fix.jsonl.
+- Comando exacto para el usuario (push + teamId) documentado en el ticket
+  cerrado: teamId en albertitos_plan.typ:13, recompilar, re-staging, y
+  git -C /home/deploy/delivery-repo remote add origin … + push HEAD:main.
+- 220 tests verde, ruff limpio.
