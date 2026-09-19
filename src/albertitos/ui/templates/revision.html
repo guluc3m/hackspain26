@@ -19,7 +19,7 @@ página {{ pagina }} de {{ n_paginas }}.
 <div class="tarjeta">
   <h2>{{ c.decision.file_id }}</h2>
   <p>Motivo: {{ c.motivo }} · Reglas dudosas:
-    {% for cod in c.codes %}<code>{{ cod }}</code> {% endfor %}
+    {% for cod in c.codes %}<code title="{{ descripciones_reglas[cod] if cod in descripciones_reglas else 'Regla del motor de pagos' }}">{{ cod }}</code> {% endfor %}
     · {{ m.etq('medido') }}</p>
   <div class="fila">
     <div>

@@ -9,7 +9,7 @@ decidieron y por qué. Los códigos exactos se ven al pasar el ratón.</em></p>
 <p>Resultado:
   <span class="{{ decision.result }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar a revisión'}.get(decision.result, decision.result) }}</span>
   &nbsp;·&nbsp; Reglas que deciden:
-  {% for c in codes %}<code>{{ c }}</code> {% endfor %}
+  {% for c in codes %}<code title="{{ descripciones_reglas[c] if c in descripciones_reglas else 'Regla del motor de pagos' }}">{{ c }}</code> {% endfor %}
   &nbsp;·&nbsp; {{ m.etq('medido') }}</p>
 {% else %}
 <p class="aviso">Esta factura aún no tiene decisión: el pipeline sigue

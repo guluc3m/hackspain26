@@ -30,7 +30,7 @@ extracción (el eslabón más débil).</p>
   <tr>
     <td>{{ f.file_id }}</td>
     <td class="{{ f.result }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar', 'EN_PROCESO': 'En proceso'}.get(f.result, f.result) }}</td>
-    <td>{% for c in f.codes %}<code>{{ c }}</code> {% else %}—{% endfor %}</td>
+    <td>{% for c in f.codes %}<code title="{{ descripciones_reglas[c] if c in descripciones_reglas else 'Regla del motor de pagos' }}">{{ c }}</code> {% else %}—{% endfor %}</td>
     <td>{% for e in f.extractores %}<code>{{ e }}</code> {% endfor %}</td>
     <td>{{ f.latencia_ms }} ms {{ m.etq('medido') }}</td>
     <td>{% if f.confianza is not none %}{{ '%.2f'|format(f.confianza) }} {{ m.etq('medido') }}{% else %}—{% endif %}</td>
