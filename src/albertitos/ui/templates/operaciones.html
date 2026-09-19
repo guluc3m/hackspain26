@@ -24,7 +24,7 @@ derecha.</em></p>
       <span class="etq sin">sin datos</span></div>
     {% endif %}
   </div>
-  {% if pendiente and pendiente.pagado_n is not none %}
+  {% if pendiente and pendiente.pagado_n is defined and pendiente.pagado_n is not none %}
   <div class="tarjeta"><div class="num">{{ pendiente.pagado_total.valor }}</div>
     <div>se pagarán por {{ pendiente.pagado_n.valor }} facturas
       <span class="etq {{ pendiente.pagado_n.etiqueta }}">{{ pendiente.pagado_n.etiqueta }}</span></div>
