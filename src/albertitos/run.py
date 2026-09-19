@@ -35,16 +35,81 @@ from albertitos.emit import emit_outcomes, list_pdf_files
 from albertitos.extract.cloud import cloud_config_from_env
 from albertitos.extract.config import ExtractionConfig
 from albertitos.extract.ladder import ExtractionLadder
+from albertitos.parse.normalizers import parse_amount_float
 from albertitos.parse.parser import parse_invoice
 from albertitos.rules import BatchContext, decide, load_config, load_master
 from albertitos.rules.config import EngineConfig
 from albertitos.rules.master import Maestro
 from albertitos.store import Store, invoice_uuid
-from albertitos.types import Decision, EvidenceRow, ExtractionFeature, RuleVerdict
+from albertitos.types import (
+    Candidate,
+    Decision,
+    EvidenceRow,
+    ExtractionFeature,
+    ExtractionField,
+    RuleVerdict,
+)
 
 ENGINE_VERSION = "runner-1.1.0"  # 1.1.0: ADR-06, selección de candidato con provenance (T18)
 STAGE_RUN = "run"
 CODE_TIMEOUT = "RUNNER_TIMEOUT"
+
+# Campos cuyo valor el motor compara como NÚMERO (los candidatos del parser
+# son float para estos tipos); un override humano llega como TEXTO de la UI.
+_CAMPOS_NUMERICOS = frozenset({"base", "iva_pct", "iva_amount", "total"})
+
+
+def aplicar_overrides(
+    fields: list[ExtractionField], overrides: list[dict]
+) -> tuple[list[ExtractionField], list[dict], list[dict]]:
+    """Inyecta overrides humanos como candidatos de extracción (T38-F6).
+
+    AGENTS.md §7: el override alimenta SOLO la extracción — un candidato
+    `extractor="humano"`, conf 1.0 y provenance `override:<cuando>` — y la
+    decisión la recalcula SIEMPRE el motor determinista. El override nunca
+    decide.
+
+    Devuelve (fields, aplicados, descartados). Los descartados (valor vacío
+    o no convertible a número en campos numéricos) NO se pierden en
+    silencio: el runner deja fila de evidencia por cada uno.
+    """
+    if not overrides:
+        return fields, [], []
+    por_tipo = {f.type: f for f in fields}
+    nuevos: dict[str, Candidate] = {}
+    aplicados: list[dict] = []
+    descartados: list[dict] = []
+    for ov in overrides:
+        campo = str(ov.get("campo") or "").strip()
+        valor = ov.get("valor")
+        if not campo or valor is None or str(valor).strip() == "":
+            descartados.append(ov)
+            continue
+        texto = str(valor).strip()
+        if campo in _CAMPOS_NUMERICOS:
+            num = parse_amount_float(texto)
+            if num is None:
+                descartados.append(ov)
+                continue
+            value: str | float = num
+        else:
+            value = texto
+        nuevos[campo] = Candidate(
+            extractor="humano",
+            value=value,
+            confidence=1.0,
+            feature_ref=f"override:{ov.get('cuando', '')}",
+        )
+        aplicados.append(ov)
+    for campo, cand in nuevos.items():  # un override por campo: el último gana
+        f = por_tipo.get(campo)
+        if f is not None:
+            f.values.append(cand)
+        else:
+            nf = ExtractionField(type=campo, timestamp=time.time(), values=[cand])
+            fields.append(nf)
+            por_tipo[campo] = nf
+    return fields, aplicados, descartados
 
 DEFAULT_FACTURAS = "caja-de-alberto/facturas"
 DEFAULT_MAESTRO = "caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"
@@ -317,6 +382,31 @@ class Runner:
             detail=",".join(sorted(f.type for f in fields)),
         ))
 
+        # Overrides humanos pendientes de este file_id → candidatos de
+        # extracción; la decisión la recalcula el motor (T38-F6, §7).
+        pendientes = [
+            o
+            for o in self.ladder.review.read_overrides_pendientes()
+            if o.get("file_id") == path.name
+        ]
+        fields, aplicados, descartados = aplicar_overrides(fields, pendientes)
+        for ov in aplicados:
+            self.store.record_evidence(EvidenceRow(
+                file_id=path.name, invoice_id=invoice_id, stage="override",
+                extractor="humano", extractor_version=ENGINE_VERSION,
+                config_version=self.ecfg.config_version, sha256=sha256,
+                latency_ms=0, confidence=1.0, outcome="aplicado",
+                detail=f"{ov.get('campo')}={ov.get('valor')}",
+            ))
+        for ov in descartados:
+            self.store.record_evidence(EvidenceRow(
+                file_id=path.name, invoice_id=invoice_id, stage="override",
+                extractor="humano", extractor_version=ENGINE_VERSION,
+                config_version=self.ecfg.config_version, sha256=sha256,
+                latency_ms=0, confidence=None, outcome="descartado",
+                detail=f"{ov.get('campo')}={ov.get('valor')}: no convertible",
+            ))
+
         textos = tuple(str(f.data) for f in features if isinstance(f.data, str))
         decision = decide(
             fields, textos, self.master, self.ecfg,
@@ -350,6 +440,11 @@ class Runner:
             prev_pedidos.add(pedido)
         if numero:
             prev_num[numero] = path.name
+        if pendientes:
+            # Marcar consumidos SOLO tras decidir: un crash antes de aquí
+            # re-inyecta el override en el re-run (misma decisión byte a
+            # byte — el motor es determinista) y vuelve a marcar.
+            self.ladder.review.marcar_consumidas(aplicados + descartados)
         return decision.result, decision.config_snapshot.get("motivo", "")
 
     def _record_timeout(self, path: Path, sha256: str, invoice_id: str) -> str:
