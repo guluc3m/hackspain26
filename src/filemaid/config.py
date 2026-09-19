@@ -30,6 +30,10 @@ class AppConfig:
         )
         self.typesafe_api_key = os.environ.get("TYPESAFE_API_KEY", "")
         self.typesafe_model = os.environ.get("TYPESAFE_MODEL", "jev-latest")
+        self.firecrawl_api_url = os.environ.get(
+            "FIRECRAWL_API_URL", "https://api.firecrawl.dev/v2/parse"
+        )
+        self.firecrawl_api_key = os.environ.get("FIRECRAWL_API_KEY", "")
     @classmethod
     def load(cls) -> AppConfig:
         root = Path(os.environ.get("FILEMAID_DATA", "data"))
@@ -45,6 +49,8 @@ class AppConfig:
             "typesafe_api_url": self.typesafe_api_url,
             "typesafe_api_key": self.typesafe_api_key,
             "typesafe_model": self.typesafe_model,
+            "firecrawl_api_url": self.firecrawl_api_url,
+            "firecrawl_api_key": self.firecrawl_api_key,
             "render_scale": 2.0,
             **raw,
         }

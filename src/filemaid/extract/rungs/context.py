@@ -25,6 +25,7 @@ class PageContext:
     config: dict[str, Any]
     pages_dir: Path | None = None  # imágenes de página para la cola de revisión
     page_image_sha: str | None = None  # lo fija el escalón rasterizador (2)
+    ocr_text: str = ""  # última lectura textual de esta página, incluso con baja confianza
 
 
 def threshold(ctx: PageContext, rung: str, key: str, default: float) -> float:

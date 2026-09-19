@@ -15,7 +15,7 @@ from filemaid.types import ExtractionFeature
 from .context import PageContext
 
 NAME = "tesseract"
-VERSION = "1"
+VERSION = "tesseract-1"
 
 
 def extract(ctx: PageContext) -> ExtractionFeature:

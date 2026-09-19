@@ -1,13 +1,13 @@
 # Umbrales de la escalera de extracción (por página, en orden).
 #
 # Semántica: si la confianza del escalón queda POR DEBAJO del umbral,
-# se baja al siguiente escalón. Cloud VLM (escalón 5) no tiene umbral de
-# parada: nunca es respuesta automática, su lectura se registra como
-# candidato más (docs/report/architecture.typ, escalera §3).
+# se baja al siguiente escalón. TypeSafe (5) solo registra juicios tipados
+# sobre texto previo y nunca para. Cloud VLM (7) tampoco tiene umbral de
+# parada: su lectura es otro candidato (docs/report/architecture.typ, escalera §3).
 #
 # La versión de este fichero entra en la clave de caché
 # (page_sha256, extractor_version, config_version): cambiar un umbral
-# invalida la caché de escalones 2–5 y fuerza re-extracción.
+# invalida la caché de escalones 2–7 y fuerza re-extracción.
 
 extraction_version: v1
 
@@ -43,15 +43,22 @@ rungs:
     min_word_confidence: 60.0
     min_field_coverage: 0.5
 
-  # Escalón 5: TypeSafe System One Jev (penúltimo escalón).
+  # Escalón 5: TypeSafe System One Jev, evidencia tipada no vinculante.
+  # Solo juzga texto previo; sin texto se omite. No genera OCR ni detiene la escalera.
   # POST https://api.typesafe.ai/v1/systemone
   typesafe_jev:
     endpoint: "https://api.typesafe.ai/v1/systemone"
     model: "jev-latest"
+    timeout: 60.0
+
+  # Escalón 6: Firecrawl document parser fallback.
+  # POST https://api.firecrawl.dev/v2/parse
+  firecrawl:
+    endpoint: "https://api.firecrawl.dev/v2/parse"
     min_confidence: 0.6
     timeout: 60.0
 
-  # Escalón 6: VLM cloud (>25B, multimodal / OpenAI-compatible endpoint).
+  # Escalón 7: VLM cloud (>25B, multimodal / OpenAI-compatible endpoint).
   # Vía de escalado final; su lectura es otro candidato, nunca respuesta automática.
   cloud_vlm:
     base_url: "https://api.openai.com/v1"

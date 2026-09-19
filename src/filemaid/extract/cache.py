@@ -1,5 +1,10 @@
 """Cache de escalones sobre (page_sha256, extractor_version, config_version).
 
+extractor_version incluye la identidad del motor y su versión (p. ej.,
+"cloud_vlm-1"): una versión numérica sola colisiona entre proveedores.
+Los escalones no consultan las claves numéricas antiguas ni las migran;
+son ambiguas y deben producir un fallo de caché con las nuevas identidades.
+
 Un re-run 24/7 nunca re-factura una llamada cloud. Estado en disco (data/cache),
 nunca en /tmp (tmpfs).
 """

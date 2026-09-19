@@ -103,7 +103,14 @@ class LlamaSidecar:
         cmd = [binary]
         if self._serve is not False:
             cmd.append("serve")  # CLI unificado de llama.app; fallback abajo
-        cmd += ["-m", str(self.model), "--mmproj", str(self.mmproj), "--temp", "0"]
+        cmd += [
+            "-m", str(self.model),
+            "--mmproj", str(self.mmproj),
+            "--temp", "0",
+            "-c", "131072",  # Contexto máximo que soporta el modelo (n_ctx_train = 131072)
+            "-ctk", "q8_0",  # KV cache quantization K = q8_0
+            "-ctv", "q8_0",  # KV cache quantization V = q8_0
+        ]
         host, _, port = self.base_url.split("//", 1)[1].partition(":")
         cmd += ["--host", host, "--port", port or "8080"]
 

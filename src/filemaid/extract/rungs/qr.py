@@ -20,7 +20,7 @@ from ..cache import sha256_bytes
 from .context import PageContext, threshold
 
 NAME = "zxing"
-VERSION = "1"
+VERSION = "zxing-1"
 
 try:
     import pypdfium2 as pdfium

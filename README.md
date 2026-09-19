@@ -18,9 +18,10 @@ src/filemaid/
   config.py         rutas de estado (data/, nunca /tmp) y config de extracción
   pipeline.py       worker: lote idempotente y resumable (clave: sha+stage+version+config)
   run.py            CLI: run | emit | serve | reprocess | clean
-  extract/          escalera de 5 escalones por página, cache y plausibilidad
+  extract/          escalera de 7 escalones por página, cache y plausibilidad
     rungs/          1 texto (pypdf) · 2 raster+QR (pypdfium2+zxing) · 3 tesseract
-                    4 VLM local (llama-server, temp 0) · 5 VLM cloud (solo candidato)
+                    4 VLM local (llama-server, temp 0) · 5 TypeSafe (solo juicios)
+                    6 Firecrawl · 7 VLM cloud (solo candidato)
   parse/            features → campos: todos los candidatos se conservan
   rules/            motor puro y determinista + 8 reglas + maestros (CSV/Excel)
   store/            SQLite (WAL) + ledger JSONL append-only
@@ -28,6 +29,18 @@ src/filemaid/
 master/             datos maestros y thresholds de reglas (versionados)
 frontend/           Svelte + Vite (TS): Operaciones, Facturas, Revisión, Reglas, Impacto, Salud
 ```
+
+TypeSafe (`jev-latest`, escalón 5) evalúa el texto disponible de la página con
+preguntas `noul`, `score` y `choice`. Conserva respuestas, modelo y uso como
+`typed_evidence`: no genera OCR, no convierte probabilidades en campos de factura,
+no autoriza pagos y nunca detiene el respaldo de Firecrawl. Sin clave o sin texto
+previo se omite explícitamente; una imagen en base64 no equivale a píxeles leídos
+por este servicio. Los indicios OCR son locales a cada página, incluso si su
+confianza es baja. El endpoint y modelo explícitos de `rungs.typesafe_jev` priman
+sobre los defaults globales. La llamada real debe verificarse con credenciales;
+esta descripción no afirma una ejecución en vivo exitosa.
+La caché identifica página, motor y configuración; si cambia el OCR previo de una
+misma página sin cambiar la configuración, el juicio cacheado puede quedar obsoleto.
 
 ## Uso
 
