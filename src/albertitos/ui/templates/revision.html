@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Revisión · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Revisión</h1>
@@ -9,8 +8,8 @@ y deja tu cambio sellado.</em></p>
 <p>Casos marcados para revisión humana. Puedes resolverlos con calma: el resto
 del lote sigue funcionando mientras tanto. Tu corrección se guarda con quién,
 cuándo y qué cambió; la decisión final la recalcula siempre el motor de reglas.</p>
-<p>En cola: <strong>{{ n_cola }}</strong> factura(s) {{ m.etq('medido') }} ·
-con imagen disponible: {{ con_imagen }} {{ m.etq('medido') }} ·
+<p>En cola: <strong>{{ n_cola }}</strong> factura(s) ·
+con imagen disponible: {{ con_imagen }} ·
 página {{ pagina }} de {{ n_paginas }}.
 {% if pagina > 1 %}<a href="/revision?pagina={{ pagina - 1 }}">← Anterior</a>{% endif %}
 {% if pagina < n_paginas %}<a href="/revision?pagina={{ pagina + 1 }}">Siguiente →</a>{% endif %}</p>
@@ -20,13 +19,13 @@ página {{ pagina }} de {{ n_paginas }}.
   <h2>{{ c.decision.file_id }}</h2>
   <p>Motivo: {{ c.motivo }} · Reglas dudosas:
     {% for cod in c.codes %}<code>{{ cod }}</code> {% endfor %}
-    · {{ m.etq('medido') }}</p>
+  </p>
   <div class="fila">
     <div>
       <h3>Imagen de la página</h3>
       {% for pag, b64 in c.imagenes | dictsort %}
         <img class="pagina" alt="Página {{ pag }}" src="data:image/png;base64,{{ b64 }}">
-        <p>Página {{ pag }} {{ m.etq('medido') }}</p>
+        <p>Página {{ pag }}</p>
       {% else %}
         <p class="aviso">Sin imagen almacenada para esta factura.</p>
       {% endfor %}

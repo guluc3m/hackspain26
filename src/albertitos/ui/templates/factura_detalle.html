@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Factura · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Factura: {{ decision.file_id if decision else invoice_id }}</h1>
@@ -10,7 +9,7 @@ decidieron y por qué. Los códigos exactos se ven al pasar el ratón.</em></p>
   <span class="{{ decision.result }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar a revisión'}.get(decision.result, decision.result) }}</span>
   &nbsp;·&nbsp; Reglas que deciden:
   {% for c in codes %}<code>{{ c }}</code> {% endfor %}
-  &nbsp;·&nbsp; {{ m.etq('medido') }}</p>
+</p>
 {% else %}
 <p class="aviso">Esta factura aún no tiene decisión: el pipeline sigue
 trabajando en ella.</p>
@@ -22,7 +21,7 @@ trabajando en ella.</p>
   <strong>{{ f.tipo }}</strong> —
   {% for c in f.candidatos %}
     <em>{{ c.extractor }}</em>: {{ c.value }}
-    (confianza {{ '%.2f'|format(c.confianza) }} {{ m.etq('medido') }})
+    (confianza {{ '%.2f'|format(c.confianza) }})
     {% if not loop.last %} · {% endif %}
   {% endfor %}
 </div>
@@ -39,7 +38,7 @@ trabajando en ella.</p>
     <td title="código técnico: {{ e.stage }}">{{ nombres_stage[e.stage] if e.stage in nombres_stage else e.stage }}</td>
     <td title="código técnico: {{ e.extractor }}">{{ nombres_extractor[e.extractor] if e.extractor in nombres_extractor else e.extractor }}</td>
     <td>{{ e.extractor_version }}</td>
-    <td>{{ e.latency_ms }} ms {{ m.etq('medido') }}</td>
+    <td>{{ e.latency_ms }} ms</td>
     <td>{% if e.confidence is not none %}{{ '%.2f'|format(e.confidence) }}{% else %}—{% endif %}</td>
     <td>{{ e.outcome }}</td>
     <td>{{ e.detail }}</td>

@@ -1,7 +1,7 @@
 """UI de operaciones — FastAPI + Jinja2 + HTMX (AGENTS.md §9).
 
 La UI es producto, no herramienta de debug: español llano, sin JSON en el
-flujo principal, y todo número etiquetado como **medido** o **estimado**.
+flujo principal, y los números se muestran a secas (sin etiquetas de origen).
 
 Reglas duras (T5):
 - La UI lee store/ledger en SOLO LECTURA y jamás decide.

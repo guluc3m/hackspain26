@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "macros.html" as m %}
 {% block titulo %}Facturas · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Facturas</h1>
@@ -19,7 +18,7 @@ extracción (el eslabón más débil).</p>
   <button type="submit">Filtrar</button>
   {% if result or q %}<a href="/facturas">Quitar filtros</a>{% endif %}
 </form>
-<p>{{ total }} factura(s) — página {{ pagina }} de {{ n_paginas }} {{ m.etq('medido') }}</p>
+<p>{{ total }} factura(s) — página {{ pagina }} de {{ n_paginas }}</p>
 
 <table>
   <tr>
@@ -32,8 +31,8 @@ extracción (el eslabón más débil).</p>
     <td class="{{ f.result }}">{{ {'PAGAR': 'Pagar', 'NO_PAGAR': 'No pagar', 'ESCALAR': 'Escalar', 'EN_PROCESO': 'En proceso'}.get(f.result, f.result) }}</td>
     <td>{% for c in f.codes %}<code>{{ c }}</code> {% else %}—{% endfor %}</td>
     <td>{% for e in f.extractores %}<code>{{ e }}</code> {% endfor %}</td>
-    <td>{{ f.latencia_ms }} ms {{ m.etq('medido') }}</td>
-    <td>{% if f.confianza is not none %}{{ '%.2f'|format(f.confianza) }} {{ m.etq('medido') }}{% else %}—{% endif %}</td>
+    <td>{{ f.latencia_ms }} ms</td>
+    <td>{% if f.confianza is not none %}{{ '%.2f'|format(f.confianza) }}{% else %}—{% endif %}</td>
     <td>{{ f.paginas | join(', ') or '—' }}</td>
     <td><a href="/facturas/{{ f.invoice_id }}">Detalle</a></td>
   </tr>

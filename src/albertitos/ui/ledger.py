@@ -101,10 +101,11 @@ def parse_rule_codes(texto: str) -> list[VerdictView]:
 
 
 def estado_runner(store_dir: Path) -> dict[str, Any] | None:
-    """Estado del runner real (`<root>/state/runner.json`) — medido por el runner.
+    """Estado del runner real (`<root>/state/runner.json`).
 
     `store_dir` apunta al ledger; el state vive en su raíz (p. ej. `.sdd/lote1`
-    → worktree de W1, SOLO LECTURA). Devuelve None si no existe.
+    → worktree de W1, SOLO LECTURA). Devuelve None si no existe. Los valores
+    se devuelven a secas (sin etiqueta de origen): la UI los muestra tal cual.
     """
     ruta = Path(store_dir).parent / "state" / "runner.json"
     if not ruta.is_file():
@@ -116,19 +117,19 @@ def estado_runner(store_dir: Path) -> dict[str, Any] | None:
     if not isinstance(data, dict):
         return None
     return {
-        "done": (str(data.get("done", "—")), "medido"),
-        "fallos": (str(data.get("fallos", "—")), "medido"),
-        "pendientes": (str(data.get("pendientes", "—")), "medido"),
-        "total": (str(data.get("total_archivos", "—")), "medido"),
-        "files_per_second": (str(data.get("files_per_second", "—")), "medido"),
+        "done": str(data.get("done", "—")),
+        "fallos": str(data.get("fallos", "—")),
+        "pendientes": str(data.get("pendientes", "—")),
+        "total": str(data.get("total_archivos", "—")),
+        "files_per_second": str(data.get("files_per_second", "—")),
         "resultados": {
-            r: (str(data.get("resultados", {}).get(r, 0)), "medido") for r in RESULTADOS
+            r: str(data.get("resultados", {}).get(r, 0)) for r in RESULTADOS
         },
-        "config_version": (str(data.get("config_version", "—")), "medido"),
-        "engine_version": (str(data.get("engine_version", "—")), "medido"),
-        "rung4_llama_server": (str(data.get("rung4_llama_server", "—")), "medido por el runner"),
-        "rung4_secuencial": (str(data.get("rung4_secuencial", "—")), "medido"),
-        "actualizado": (str(data.get("actualizado", "—")), "medido"),
+        "config_version": str(data.get("config_version", "—")),
+        "engine_version": str(data.get("engine_version", "—")),
+        "rung4_llama_server": str(data.get("rung4_llama_server", "—")),
+        "rung4_secuencial": str(data.get("rung4_secuencial", "—")),
+        "actualizado": str(data.get("actualizado", "—")),
     }
 
 
@@ -144,7 +145,7 @@ def drills_estado(metrics_dir: Path | None = None) -> dict[str, Any] | None:
         return None
     resumen = data.get("resumen", {})
     return {
-        "resumen": (f"{resumen.get('pass', 0)} pass / {resumen.get('fail', 0)} fail", "medido"),
+        "resumen": f"{resumen.get('pass', 0)} pass / {resumen.get('fail', 0)} fail",
         "por_nombre": tuple(
             (str(d.get("drill", "?")), "PASS" if d.get("pass") else "FAIL")
             for d in data.get("drills", [])
@@ -185,7 +186,6 @@ def leer_impactos(metrics_dir: Path | None = None) -> dict[str, Any] | None:
             "cambios": str(resumen.get("no_pagar_a_pagar", resumen.get("cambios", "—"))),
             "regresiones": str(resumen.get("regresiones", "—")),
             "validacion": str(data.get("validacion", "—")),
-            "etiqueta": "medido",
         }
     return None
 
@@ -291,7 +291,7 @@ def decisive_codes(d: DecisionView) -> list[str]:
 
 
 def ops_summary(vista: LedgerView) -> dict[str, Any]:
-    """Agregados de la pantalla Operaciones. Todo lo devuelto es medido."""
+    """Agregados de la pantalla Operaciones, calculados desde el ledger."""
     conteo = Counter(d.result for d in vista.decisions)
     con_evidencia = {e.invoice_id for e in vista.evidence}
     decididas = {d.invoice_id for d in vista.decisions}

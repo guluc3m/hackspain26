@@ -26,7 +26,6 @@ def test_operaciones_responde_200():
     r = cliente().get("/")
     assert r.status_code == 200
     assert "Operaciones" in r.text
-    assert "medido" in r.text  # todo número lleva su etiqueta
     assert "v4" in r.text  # versión de reglas activa
 
 
