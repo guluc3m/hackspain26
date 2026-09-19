@@ -63,7 +63,11 @@ class RunnerConfig:
     max_in_flight: int = 2
     limit: int | None = None
     only: str | None = None  # glob sobre el basename exacto
+    only_list: tuple[str, ...] | None = None  # subset exacto de file_ids (T13)
     use_rung4: bool = True  # False = tests / degradación manual (no billing)
+    force: bool = False  # T13: re-ejecutar aunque la decisión exista
+    run_id: str = "base"  # T13: run del histórico en decision_runs
+    maestro_patch: Path | None = None  # T13: parche de maestro EN MEMORIA
 
 
 @dataclass
@@ -121,6 +125,13 @@ class Runner:
             cloud=cloud,
         )
         self.rung4_disponible = cfg.use_rung4 and _vlm_up(xcfg.vlm_base_url)
+        # T13: parche de maestro en memoria (el Excel del submódulo no se toca)
+        self.patch_resumen: dict | None = None
+        if cfg.maestro_patch is not None:
+            from albertitos.reprocess import apply_master_patch, load_patch
+
+            self.master, self.patch_resumen = apply_master_patch(
+                self.master, load_patch(cfg.maestro_patch))
         # Costuras de prueba (None en producción): un hook que lanza simula
         # crash; un hook que duerme simula archivo colgado.
         self.fail_hook = None
@@ -133,6 +144,9 @@ class Runner:
         files = list_pdf_files(self.cfg.facturas_dir)
         if self.cfg.only:
             files = [p for p in files if fnmatch.fnmatch(p.name, self.cfg.only)]
+        if self.cfg.only_list is not None:
+            wanted = set(self.cfg.only_list)
+            files = [p for p in files if p.name in wanted]
         if self.cfg.limit is not None:
             files = files[: self.cfg.limit]
         return files
@@ -153,10 +167,17 @@ class Runner:
 
         # Contexto previo del lote (reanudación): determinismo por orden de
         # file_id ascendente; la DECISIÓN se toma siempre en el hilo principal.
+        # T13: si se está RE-DECIDIENDO un subset (force/only_list), sus
+        # decisiones antiguas NO cuentan como "ya vistas" (un re-run no debe
+        #convertirse en falso doble pago contra sí mismo).
+        subset = set(self.cfg.only_list) if self.cfg.only_list is not None else None
         prev_num = {d.numero_factura: d.file_id
-                    for d in self.store.all_decisions() if d.numero_factura}
+                    for d in self.store.all_decisions()
+                    if d.numero_factura
+                    and (subset is None or d.file_id not in subset)}
         prev_pedidos = {d.pedido for d in self.store.all_decisions()
-                        if d.result == "PAGAR" and d.pedido}
+                        if d.result == "PAGAR" and d.pedido
+                        and (subset is None or d.file_id not in subset)}
 
         started = time.monotonic()
         pool = ThreadPoolExecutor(max_workers=workers)
@@ -172,7 +193,7 @@ class Runner:
                 sha256 = _sha256_file(path)
                 invoice_id = invoice_uuid(sha256)
                 done = self.store.decision_for(path.name)
-                if done and done.engine_version == ENGINE_VERSION \
+                if not self.cfg.force and done and done.engine_version == ENGINE_VERSION \
                         and done.config_version == self.ecfg.config_version:
                     report.reutilizados += 1
                     report.resultados[path.name] = done.result
@@ -264,9 +285,12 @@ class Runner:
         )
         numero = _mejor_valor(fields, "numero_factura")
         pedido = _mejor_valor(fields, "pedido")
+        nif = _mejor_valor(fields, "nif")
+        iban = _mejor_valor(fields, "iban")
         self.store.record_decision(
             decision, sha256, numero_factura=numero, pedido=pedido,
-            engine_version=ENGINE_VERSION,
+            nif=nif, iban=iban,
+            engine_version=ENGINE_VERSION, run_id=self.cfg.run_id,
         )
         self.store.record_evidence(EvidenceRow(
             file_id=path.name, invoice_id=invoice_id, stage="decision",
@@ -302,7 +326,7 @@ class Runner:
         )
         self.store.record_decision(
             decision, sha256, numero_factura="", pedido="",
-            engine_version=ENGINE_VERSION,
+            engine_version=ENGINE_VERSION, run_id=self.cfg.run_id,
         )
         self.store.record_evidence(EvidenceRow(
             file_id=path.name, invoice_id=invoice_id, stage="decision",
