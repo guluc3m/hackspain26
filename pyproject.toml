@@ -19,9 +19,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# T35: ventana nativa (WebKit/WebView2/GTK) sin Node ni navegador. Extra
-# "desktop": la base no lo necesita (tests/CI degradan a navegador).
-desktop = ["pywebview>=5.4"]
+# T35: ventana nativa (pywebview) sin Node ni navegador. Extra "desktop": la
+# base no lo necesita (tests/CI degradan a navegador). Backend QT (PyQt6 +
+# WebEngine, ruedas binarias: instalable sin raíz); GTK exigiría bibliotecas
+# del sistema (PyGObject) no disponibles sin root.
+desktop = ["pywebview[qt]>=5.4"]
 
 [dependency-groups]
 dev = [
