@@ -157,6 +157,30 @@ def datos_resumen(store_root: Path | str, maestro_path: Path | str) -> dict[str,
         )
     por_revisar.sort(key=lambda x: -(x["importe_eur"] or -1))
 
+    # ---- BONUS (T30): plan de revisión por DINERO EN RIESGO.
+    # Escalados ordenados por importe desc con suma acumulada y % cubierto;
+    # aditivo, sin tocar el motor (la prioridad es presentación para Alberto).
+    con_importe = [x for x in por_revisar if x["importe_eur"] is not None]
+    sin_importe_n = len(por_revisar) - len(con_importe)
+    riesgo_total = round(sum(x["importe_eur"] for x in con_importe), 2)
+    plan: list[dict[str, Any]] = []
+    acumulado = 0.0
+    n_para_80 = None
+    umbral = 0.80 * riesgo_total if riesgo_total else None
+    for x in con_importe:
+        acumulado = round(acumulado + x["importe_eur"], 2)
+        plan.append(
+            {
+                "file_id": x["file_id"],
+                "importe_eur": x["importe_eur"],
+                "acumulado_eur": acumulado,
+                "pct_acumulado": round(100 * acumulado / riesgo_total, 1) if riesgo_total else 0.0,
+            }
+        )
+        if n_para_80 is None and umbral is not None and acumulado >= umbral:
+            n_para_80 = len(plan)
+    n_para_80 = n_para_80 if n_para_80 is not None else len(plan)
+
     duplicados = [d["file_id"] for d in decisiones if "NO_DOUBLE_PAYMENT:FAIL" in str(d.get("rule_codes", ""))]
     fantasmas = [
         d["file_id"]
@@ -198,6 +222,20 @@ def datos_resumen(store_root: Path | str, maestro_path: Path | str) -> dict[str,
             "n": {"valor": str(len(por_revisar)), "etiqueta": "medido"},
             "lista": por_revisar,
         },
+        "riesgo": {
+            "total_en_riesgo_eur": (
+                {"valor": f"{riesgo_total:,.2f} EUR", "etiqueta": "medido"}
+                if con_importe
+                else {"valor": "PENDIENTE (sin importes en el maestro)", "etiqueta": "sin datos"}
+            ),
+            "sin_importe": sin_importe_n,
+            "plan": plan,
+            "para_cubrir_80_pct": {
+                "valor": str(n_para_80) if riesgo_total else "PENDIENTE",
+                "etiqueta": "medido" if riesgo_total else "sin datos",
+                "nota": "mínimo de facturas a revisar (por importe) para cubrir el 80 % del dinero en riesgo",
+            },
+        },
         "avisos": {
             "duplicados": duplicados,
             "proveedores_fantasma": fantasmas,
@@ -231,7 +269,7 @@ def _typ(datos: dict[str, Any]) -> str:
         "Top 10 por importe:",
         "",
         "#table(",
-        "  columns: (auto, 2fr, 1fr, 1fr),",
+        "  columns: (auto, 2fr, 1fr),",
         "  table.header([Nº], [Factura · pedido], [Importe]),",
     ]
     for i, x in enumerate(datos["pago"]["top10"], start=1):
@@ -257,6 +295,23 @@ def _typ(datos: dict[str, Any]) -> str:
     for x in datos["revisar"]["lista"]:
         importe = f"{x['importe_eur']:.2f} EUR" if x["importe_eur"] is not None else "sin importe en el maestro"
         lineas.append(f"- {x['file_id']} — {importe}")
+    # BONUS T30: plan por dinero en riesgo
+    lineas += [
+        "",
+        "Plan por dinero en riesgo",
+        f"Total en juego: {datos['riesgo']['total_en_riesgo_eur']['valor']} ({datos['riesgo']['total_en_riesgo_eur']['etiqueta']})",
+        f"Las {datos['riesgo']['para_cubrir_80_pct']['valor']} primeras por importe cubren el 80 % del riesgo.",
+        "",
+        "#table(",
+        "  columns: (auto, 2fr, 1fr, 1fr, 1fr),",
+        "  table.header([Nº], [Factura], [Importe], [Acumulado], [% riesgo]),",
+    ]
+    for i, x in enumerate(datos["riesgo"]["plan"][:10], start=1):
+        lineas.append(
+            f"  [{i}], [{x['file_id']}], [{x['importe_eur']:.2f} EUR],"
+            f" [{x['acumulado_eur']:.2f} EUR], [{x['pct_acumulado']} %],"
+        )
+    lineas.append(")")
     lineas += ["", "== 4 · Avisos"]
     lineas.append(f"- Duplicados detectados (NO_DOUBLE_PAYMENT): {len(datos['avisos']['duplicados'])}")
     lineas.append(f"- Proveedores fantasma (no dados de alta, IBAN compartido): {len(datos['avisos']['proveedores_fantasma'])}")

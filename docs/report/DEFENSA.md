@@ -16,7 +16,10 @@ revisión (resumen ejecutivo al lado).» [1][14]
 
 **5. Resumen ejecutivo** (`resumen_alberto.pdf` / `.html`, T26): «¿qué pago
 hoy y por qué?» — total, top-10 por importe, motivos de NO_PAGAR en llano
-y avisos (duplicados, fantasmas). Todo con fuente: store × maestro. [1][13]
+y avisos (duplicados, fantasmas). Y el BONUS T30: los escalados priorizados
+por DINERO EN RIESGO — «revisando estas N facturas cubres el X % del dinero
+en juego» (leer el nº y el % de la pantalla, son regenerables). Todo con
+fuente: store × maestro. [1][13]
 
 **En pantalla (ui/app.py, datos reales del lote 1):**
 1. **Operaciones** — estado del runner medido: 500/500, 0 fallos, 4,162

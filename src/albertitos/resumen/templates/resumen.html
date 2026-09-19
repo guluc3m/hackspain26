@@ -84,6 +84,28 @@
     {% endfor %}
   </table>
 
+  <h3>Plan por dinero en riesgo</h3>
+  <div class="tarjeta">
+    <div class="num">{{ riesgo.total_en_riesgo_eur.valor }}</div>
+    <div>total en juego en la cola <span class="etq {{ riesgo.total_en_riesgo_eur.etiqueta }}">{{ riesgo.total_en_riesgo_eur.etiqueta }}</span>
+      {% if riesgo.sin_importe %}· {{ riesgo.sin_importe }} factura(s) sin importe conocido{% endif %}</div>
+  </div>
+  <p>Revisando las <strong>{{ riesgo.para_cubrir_80_pct.valor }}</strong> primeras
+  (por importe) cubres el <strong>80 %</strong> del dinero en riesgo
+  <span class="etq {{ riesgo.para_cubrir_80_pct.etiqueta }}">{{ riesgo.para_cubrir_80_pct.etiqueta }}</span>.</p>
+  <table>
+    <tr><th>#</th><th>Factura</th><th>Importe</th><th>Acumulado</th><th>% del riesgo</th></tr>
+    {% for x in riesgo.plan[:10] %}
+    <tr><td>{{ loop.index }}</td><td><code>{{ x.file_id }}</code></td>
+        <td>{{ '%.2f'|format(x.importe_eur) }} EUR</td>
+        <td>{{ '%.2f'|format(x.acumulado_eur) }} EUR</td>
+        <td>{{ x.pct_acumulado }} %</td></tr>
+    {% else %}
+    <tr><td colspan="5">PENDIENTE: sin importes en el maestro.</td></tr>
+    {% endfor %}
+  </table>
+  {% if riesgo.plan | length > 10 %}<p class="peq">… {{ riesgo.plan | length - 10 }} más en el PDF completo.</p>{% endif %}
+
   <h2>4 · Avisos</h2>
   <ul>
     <li>Duplicados detectados (no se paga dos veces): <strong>{{ avisos.duplicados | length }}</strong>

@@ -150,3 +150,76 @@ def test_cli_imprime_rutas(escenario: dict[str, Path], capsys):
     salida.with_suffix(".html").unlink(missing_ok=True)
     salida.with_suffix(".pdf").unlink(missing_ok=True)
     salida.with_suffix(".typ").unlink(missing_ok=True)
+
+
+# ------------------------------------------------------------- T30 · riesgo
+
+
+def test_plan_riesgo_sumas_acumuladas_exactas(escenario: dict[str, Path]):
+    """Plan por dinero en riesgo: orden desc, acumulado y % EXACTOS contra el
+    store sembrado (escaladas: G 6540.90; H sin importe)."""
+    datos = datos_resumen(escenario["store"], escenario["maestro"])
+    riesgo = datos["riesgo"]
+    assert riesgo["total_en_riesgo_eur"]["valor"] == "6,540.90 EUR"
+    assert riesgo["total_en_riesgo_eur"]["etiqueta"] == "medido"
+    assert riesgo["sin_importe"] == 1  # H: sin pedido en el maestro
+    plan = riesgo["plan"]
+    assert [p["file_id"] for p in plan] == ["G.pdf"]
+    assert plan[0]["acumulado_eur"] == 6540.90
+    assert plan[0]["pct_acumulado"] == 100.0  # única con importe ⇒ cubre el 100 %
+    # para cubrir el 80 % del riesgo basta la primera (6540.90 ≥ 0.8·6540.90)
+    assert riesgo["para_cubrir_80_pct"]["valor"] == "1"
+    assert riesgo["para_cubrir_80_pct"]["etiqueta"] == "medido"
+
+
+def test_plan_riesgo_matematica_exacta(escenario: dict[str, Path]):
+    """80 % con dos facturas: el mínimo k es 1 si la mayor ≥ 80 % del total."""
+    # ampliar el store con una segunda escalada de importe para probar el k
+    conn = sqlite3.connect(escenario["store"] / "store.db")
+    conn.execute(
+        "INSERT INTO invoices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("K.pdf", "inv-K", "0" * 64, "ESCALAR", "IVA_CONSISTENT:UNKNOWN", "FA-K",
+         "PO-2026-0177", "v3.0-test", "runner-1.0.0", "2026-09-19T00:00:00", "", ""),
+    )
+    conn.commit()
+    conn.close()
+    datos = datos_resumen(escenario["store"], escenario["maestro"])
+    plan = datos["riesgo"]["plan"]
+    # escaladas con importe: G (6540.90) y K (4635.26) → total 11176.16
+    assert datos["riesgo"]["total_en_riesgo_eur"]["valor"] == "11,176.16 EUR"
+    assert [p["file_id"] for p in plan] == ["G.pdf", "K.pdf"]
+    assert plan[0]["acumulado_eur"] == 6540.90
+    assert plan[0]["pct_acumulado"] == round(100 * 6540.90 / 11176.16, 1)
+    assert plan[1]["acumulado_eur"] == 11176.16
+    assert plan[1]["pct_acumulado"] == 100.0
+    # 6540.90 < 0.8 × 11176.16 (= 8940.93) ⇒ hacen falta las DOS
+    assert datos["riesgo"]["para_cubrir_80_pct"]["valor"] == "2"
+
+
+def test_plan_riesgo_html_y_pdf(escenario: dict[str, Path]):
+    destino = Path(".sdd/pytest-tmp/resumen_riesgo")
+    try:
+        rutas = generar_resumen(escenario["store"], escenario["maestro"], destino)
+        html = rutas["html"].read_text(encoding="utf-8")
+        assert "Plan por dinero en riesgo" in html
+        assert "6,540.90 EUR" in html  # riesgo del escenario sembrado
+        assert "80 %" in html
+        if "pdf" in rutas:
+            from pypdf import PdfReader
+
+            texto = "\n".join(p.extract_text() or "" for p in PdfReader(str(rutas["pdf"])).pages)
+            assert "Plan por dinero en riesgo" in texto
+        else:
+            pytest.skip("binario typst no disponible")
+    finally:
+        for f in ("html", "pdf", "typ"):
+            destino.with_suffix("." + f).unlink(missing_ok=True)
+
+
+def test_plan_riesgo_sin_datos_placeholder(escenario: dict[str, Path]):
+    """Sin importes ⇒ PENDIENTE honesto, jamás '0 EUR' fingido."""
+    datos = datos_resumen(Path(".sdd/pytest-tmp/resumen-vacio"), escenario["maestro"])
+    assert "PENDIENTE" in datos["riesgo"]["total_en_riesgo_eur"]["valor"]
+    assert datos["riesgo"]["total_en_riesgo_eur"]["etiqueta"] == "sin datos"
+    assert datos["riesgo"]["plan"] == []
+    assert datos["riesgo"]["para_cubrir_80_pct"]["valor"] == "PENDIENTE"
