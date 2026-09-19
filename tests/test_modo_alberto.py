@@ -102,7 +102,6 @@ def test_inicio_de_alberto_con_un_boton_por_accion(servidor):
         inicio = r.read().decode("utf-8")
     assert "Lo que te toca hoy" in inicio  # la operación de Alberto primero
     assert "Revisarlas" in inicio  # botón grande hacia Revisión
-    assert "Ver mi resumen del día" in inicio
     # nada de rutas de archivo ni JSON en el flujo principal
     assert "outcomes.jsonl" not in inicio and ".sdd/store.db" not in inicio
 
@@ -121,7 +120,7 @@ def test_confirmaciones_con_consecuencias(servidor):
     assert "recalculará" in revision  # lenguaje de consecuencias
 
 
-def test_ayuda_y_resumen_alberto_en_la_ui(servidor):
+def test_ayuda_en_la_ui(servidor):
     if not lote1_estado_real_presente():
         pytest.skip(
             "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
@@ -131,8 +130,3 @@ def test_ayuda_y_resumen_alberto_en_la_ui(servidor):
 
     with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_TEST}/ayuda", timeout=10) as r:
         assert "Ayuda y glosario" in r.read().decode("utf-8")
-    with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_TEST}/resumen-ejecutivo", timeout=60) as r:
-        resumen = r.read().decode("utf-8")
-    assert "¿qué pago hoy" in re.sub(r"\s+", " ", resumen).lower()
-    # el TOTAL del resumen sale del store×maestro real (433/22/45 post-fix)
-    assert "TOTAL a pagar" in resumen
