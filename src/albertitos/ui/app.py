@@ -31,13 +31,11 @@ from fastapi.templating import Jinja2Templates
 
 from albertitos.emit import list_pdf_files_recursivo
 from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
-from albertitos.ui.ledger import leer_impactos
 
 from .demo import demo_records
 from .ledger import (
     OverrideView,
     build_view,
-    drills_estado,
     estado_runner,
     factura_detalle,
     facturas_rows,
@@ -309,19 +307,16 @@ def create_app(
             demo = False
         destino = override_dir if override_dir is not None else _override_destino(base)
         estado = estado_runner(base)
-        drills = drills_estado()
     else:
         registros = records
         destino = override_dir
         estado = None
-        drills = None
 
     aplicacion.state.view = build_view(registros)
     aplicacion.state.registros = registros
     aplicacion.state.override_dir = destino
     aplicacion.state.demo = demo
     aplicacion.state.runner = estado
-    aplicacion.state.drills = drills
     aplicacion.state.pendiente: dict[str, Any] | None = None
     aplicacion.state.store_base = (Path(store_dir) if store_dir else Path(".sdd") / "ledger")
     # Lote elegido por el usuario en Operaciones: estado del trabajo en curso
@@ -356,7 +351,6 @@ def create_app(
         datos: dict[str, Any] = {
             "demo": demo,
             "runner": estado,
-            "drills": drills,
             "nombres_rung": NOMBRES_RUNG,
             "nombres_extractor": NOMBRES_EXTRACTOR,
             "nombres_stage": NOMBRES_STAGE,
@@ -620,7 +614,6 @@ def create_app(
                 eventos=cadena.leer()[-50:],
                 integridad=cadena.verificar(),
                 total=len(cadena.leer()),
-                impacto=leer_impactos(),
             ),
         )
 

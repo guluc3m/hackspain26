@@ -11,18 +11,6 @@ funcionando por otra vía. Un problema aquí no impide trabajar.</em></p>
   {{ runner.rung4_secuencial }} · engine {{ runner.engine_version }}
 </div>
 {% endif %}
-{% if drills %}
-<div class="tarjeta">
-  <strong>Drills de resiliencia (T12)</strong> — {{ drills.resumen }}
-  <ul>
-    {% for nombre, estado in drills.por_nombre %}
-    <li title="nombre del ensayo: {{ nombre }}">{{ nombres_drill[nombre] if nombre in nombres_drill else nombre }} — <strong>{{ estado }}</strong></li>
-    {% endfor %}
-  </ul>
-  <p>Fuente: <code>.sdd/metrics/drills.json</code>. Correr de nuevo:
-  <code>uv run python -m albertitos.drills</code>.</p>
-</div>
-{% endif %}
 <p>Estado:
   {% if estado.degradado %}
   <strong>degradado</strong> — hay fallos o extractores ausentes, pero el lote

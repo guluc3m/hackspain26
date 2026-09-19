@@ -133,63 +133,6 @@ def estado_runner(store_dir: Path) -> dict[str, Any] | None:
     }
 
 
-def drills_estado(metrics_dir: Path | None = None) -> dict[str, Any] | None:
-    """Estado de los drills de resiliencia (`.sdd/metrics/drills.json`, T12)."""
-    base = Path(metrics_dir) if metrics_dir is not None else Path(".sdd") / "metrics"
-    ruta = base / "drills.json"
-    if not ruta.is_file():
-        return None
-    try:
-        data = json.loads(ruta.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    resumen = data.get("resumen", {})
-    return {
-        "resumen": f"{resumen.get('pass', 0)} pass / {resumen.get('fail', 0)} fail",
-        "por_nombre": tuple(
-            (str(d.get("drill", "?")), "PASS" if d.get("pass") else "FAIL")
-            for d in data.get("drills", [])
-        ),
-    }
-
-
-def leer_impactos(metrics_dir: Path | None = None) -> dict[str, Any] | None:
-    """Loader unificado de diffs de reprocesado (T38-S8, W3).
-
-    Acepta los DOS schemas que existen hoy y devuelve un dict normalizado:
-      - impacto-fix-colapso.json (T18): {reprocesados, resumen{...}, validacion}
-      - impacto.json (T13): {resumen|...} — formato futuro del lote 2
-    None si no hay ninguno. Los futuros reprocesos nacen con el schema
-    correcto (la UI ya lo alimenta)."""
-    base = Path(metrics_dir) if metrics_dir is not None else Path(".sdd") / "metrics"
-    for nombre in ("impacto.json", "impacto-fix-colapso.json"):
-        data = None
-        ruta = base / nombre
-        if ruta.is_file():
-            try:
-                data = json.loads(ruta.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-        if not isinstance(data, dict):
-            continue
-        resumen = dict(data.get("resumen", {}))
-        if not resumen and "reprocesados" in data:
-            # schema T18 plano: los contadores viven al nivel raíz
-            resumen = {
-                "reprocesados": data.get("reprocesados"),
-                "no_pagar_a_pagar": data.get("no_pagar_a_pagar"),
-                "regresiones": data.get("regresiones"),
-            }
-        return {
-            "fuente": nombre,
-            "reprocesados": str(data.get("reprocesados", resumen.get("reprocesados", "—"))),
-            "cambios": str(resumen.get("no_pagar_a_pagar", resumen.get("cambios", "—"))),
-            "regresiones": str(resumen.get("regresiones", "—")),
-            "validacion": str(data.get("validacion", "—")),
-        }
-    return None
-
-
 def load_ledger(store_dir: Path) -> list[dict[str, Any]]:
     """Lee todos los *.jsonl del ledger. Tolera líneas corruptas (no bloquea)."""
     registros: list[dict[str, Any]] = []
