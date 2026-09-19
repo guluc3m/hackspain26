@@ -8,10 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import cv2
 import numpy as np
-import pytest
 from PIL import Image as PILImage
 
-from filemaid.extract.cache import FeatureCache, sha256_bytes
+from filemaid.extract.cache import FeatureCache
 from filemaid.extract.preprocess import enhance_scan_image
 from filemaid.extract.rungs import vlm_local
 from filemaid.extract.rungs.context import PageContext
@@ -94,21 +93,37 @@ def test_vlm_local_multi_pass_rescues_low_coverage(tmp_path: Path):
     # Segundo pase (con imagen realzada): texto completo con NIF, Total, IVA, Fecha
     responses = [
         # 1er llamado: texto con baja cobertura de campos
-        MagicMock(status_code=200, json=lambda: {
-            "choices": [{"message": {"content": "algun texto borroso sin campos clave"}}]
-        }, raise_for_status=lambda: None),
+        MagicMock(
+            status_code=200,
+            json=lambda: {
+                "choices": [{"message": {"content": "algun texto borroso sin campos clave"}}]
+            },
+            raise_for_status=lambda: None,
+        ),
         # 2do llamado (multi-pass con imagen preprocesada): texto rescatado
-        MagicMock(status_code=200, json=lambda: {
-            "choices": [{"message": {"content": (
-                "FACTURA 2026/0477 Fecha: 08/03/2026 Total: 1.292,88 EUR "
-                "Base imponible: 1.068,50 EUR IVA 21%: 224,38 EUR Proveedor S.L. NIF B12345678"
-            )}}]
-        }, raise_for_status=lambda: None),
+        MagicMock(
+            status_code=200,
+            json=lambda: {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "FACTURA 2026/0477 Fecha: 08/03/2026 Total: 1.292,88 EUR "
+                                "Base imponible: 1.068,50 EUR IVA 21%: 224,38 EUR Proveedor S.L. NIF B12345678"
+                            )
+                        }
+                    }
+                ]
+            },
+            raise_for_status=lambda: None,
+        ),
     ]
 
-    with patch("filemaid.llama_manager.get_manager", return_value=mock_mgr):
-        with patch("httpx.post", side_effect=responses) as mock_post:
-            feat = vlm_local.extract(ctx)
+    with (
+        patch("filemaid.llama_manager.get_manager", return_value=mock_mgr),
+        patch("httpx.post", side_effect=responses) as mock_post,
+    ):
+        feat = vlm_local.extract(ctx)
 
     assert mock_post.call_count == 2
     assert feat.extraction_method == "vlm"

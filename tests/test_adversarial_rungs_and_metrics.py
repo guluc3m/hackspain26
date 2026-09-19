@@ -9,12 +9,12 @@ import httpx
 import pytest
 
 from filemaid.config import AppConfig
-from filemaid.extract.cache import FeatureCache, sha256_bytes
-from filemaid.extract.ladder import PageExtraction, extract_file
+from filemaid.extract.cache import FeatureCache
+from filemaid.extract.ladder import PageExtraction
 from filemaid.extract.rungs import cloud_vlm, typesafe_jev
 from filemaid.extract.rungs.context import PageContext
 from filemaid.pipeline import Pipeline
-from filemaid.types import Decision, ExtractionFeature, Result
+from filemaid.types import ExtractionFeature
 
 
 def _dummy_png() -> bytes:
@@ -24,7 +24,9 @@ def _dummy_png() -> bytes:
     )
 
 
-def _setup_context(tmp_path: Path, config: dict | None = None, sha: str = "img_sha_1") -> PageContext:
+def _setup_context(
+    tmp_path: Path, config: dict | None = None, sha: str = "img_sha_1"
+) -> PageContext:
     pages_dir = tmp_path / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
     png_bytes = _dummy_png()
@@ -55,7 +57,10 @@ def test_typesafe_malformed_missing_answers(tmp_path: Path):
         return httpx.Response(200, json={"status": "success", "data": "unexpected_schema"})
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = typesafe_jev.extract(ctx)
 
     assert feat.extraction_method == "skipped:typesafe-malformed-response"
@@ -72,7 +77,10 @@ def test_typesafe_malformed_non_dict_json_array(tmp_path: Path):
         return httpx.Response(200, json=["unexpected", "list", "response"])
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = typesafe_jev.extract(ctx)
 
     # Should not crash with AttributeError, graceful skip with latency measured
@@ -92,12 +100,16 @@ def test_typesafe_invalid_probabilities_cannot_become_evidence(tmp_path: Path, b
             "is_invoice": {"type": "noul", "noul": 0.99},
             "has_fiscal_data": {"type": "noul", "noul": 0.99},
             "document_quality": {
-                "type": "score", "score": 2, "confidence": 0.99,
+                "type": "score",
+                "score": 2,
+                "confidence": 0.99,
                 "legend": {"0": "Ilegible", "1": "Parcial", "2": "Legible"},
                 "probabilities": {"0": 0.0, "1": 0.0, "2": 1.0},
             },
             "document_category": {
-                "type": "choice", "choice": "invoice", "confidence": 0.99,
+                "type": "choice",
+                "choice": "invoice",
+                "confidence": 0.99,
                 "probabilities": {"invoice": 1.0, "receipt": 0.0, "other": 0.0},
             },
         },
@@ -114,7 +126,10 @@ def test_typesafe_invalid_probabilities_cannot_become_evidence(tmp_path: Path, b
         return httpx.Response(200, text=json.dumps(payload))
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = typesafe_jev.extract(ctx)
 
     assert feat.extraction_method == "skipped:typesafe-malformed-response"
@@ -132,7 +147,10 @@ def test_typesafe_http_429_rate_limit(tmp_path: Path):
         return httpx.Response(429, text="Rate limit exceeded")
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = typesafe_jev.extract(ctx)
 
     assert feat.extraction_method == "skipped:typesafe-error:HTTPStatusError"
@@ -148,7 +166,10 @@ def test_typesafe_network_timeout(tmp_path: Path):
         raise httpx.ReadTimeout("TypeSafe API read timeout")
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = typesafe_jev.extract(ctx)
 
     assert feat.extraction_method == "skipped:typesafe-error:ReadTimeout"
@@ -168,7 +189,10 @@ def test_cloud_vlm_malformed_empty_choices(tmp_path: Path):
         return httpx.Response(200, json={"choices": []})
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-error:IndexError"
@@ -183,7 +207,10 @@ def test_cloud_vlm_malformed_missing_choices_key(tmp_path: Path):
         return httpx.Response(200, json={"id": "chat-123", "object": "chat.completion"})
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-error:KeyError"
@@ -195,10 +222,15 @@ def test_cloud_vlm_malformed_content_none_or_empty(tmp_path: Path):
     ctx = _setup_context(tmp_path, {"openai_api_key": "test_key"}, sha="cv_none_content")
 
     def mock_response(request: httpx.Request):
-        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": None}}]})
+        return httpx.Response(
+            200, json={"choices": [{"message": {"role": "assistant", "content": None}}]}
+        )
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-empty"
@@ -213,7 +245,10 @@ def test_cloud_vlm_http_500_status(tmp_path: Path):
         return httpx.Response(500, text="Internal Server Error")
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-error:HTTPStatusError"
@@ -228,7 +263,10 @@ def test_cloud_vlm_http_429_rate_limit(tmp_path: Path):
         return httpx.Response(429, text="Rate Limit Exceeded")
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-error:HTTPStatusError"
@@ -243,7 +281,10 @@ def test_cloud_vlm_network_timeout(tmp_path: Path):
         raise httpx.ConnectTimeout("OpenAI gateway connection timed out")
 
     transport = httpx.MockTransport(mock_response)
-    with patch("httpx.post", side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs)):
+    with patch(
+        "httpx.post",
+        side_effect=lambda *args, **kwargs: httpx.Client(transport=transport).post(*args, **kwargs),
+    ):
         feat = cloud_vlm.extract(ctx)
 
     assert feat.extraction_method == "skipped:cloud-vlm-error:ConnectTimeout"
@@ -401,7 +442,11 @@ def test_stage_metrics_integrity_and_tolerance(tmp_path: Path):
     )
 
     # 3. Per-rung latency recorded in timings
-    assert "skipped_p0" in decision.timings or "skipped:pypdf-no-text_p0" in decision.timings or any("p0" in k for k in decision.timings)
+    assert (
+        "skipped_p0" in decision.timings
+        or "skipped:pypdf-no-text_p0" in decision.timings
+        or any("p0" in k for k in decision.timings)
+    )
     assert decision.timings["extraction_ms"] == decision.extraction_ms
     assert decision.timings["parser_ms"] == decision.parser_ms
     assert decision.timings["evaluation_ms"] == decision.evaluation_ms
@@ -433,8 +478,6 @@ def test_stage_metrics_integrity_and_tolerance(tmp_path: Path):
 # ==============================================================================
 
 
-
-
 def test_pipeline_zero_ms_boundary_integrity(tmp_path: Path):
     """Verify that when extraction, parser, or evaluation take 0ms (due to high speed or resolution),
     the stage metrics remain non-negative, integer, and respect extraction + parser + eval <= total + tolerance."""
@@ -460,4 +503,7 @@ def test_pipeline_zero_ms_boundary_integrity(tmp_path: Path):
     assert decision.parser_ms >= 0
     assert decision.evaluation_ms >= 0
     assert decision.total_ms >= 0
-    assert decision.extraction_ms + decision.parser_ms + decision.evaluation_ms <= decision.total_ms + 10
+    assert (
+        decision.extraction_ms + decision.parser_ms + decision.evaluation_ms
+        <= decision.total_ms + 10
+    )

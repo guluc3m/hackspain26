@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from filemaid.types import Decision
+
 from .config import AppConfig
 from .extract.cache import FeatureCache, sha256_file
 from .extract.ladder import IMAGE_SUFFIXES as EXTRACT_IMAGE_SUFFIXES
@@ -69,18 +70,22 @@ class Pipeline:
         existing = self.store.invoice_by_sha(sha)
         if existing is None:
             self.store.upsert_invoice(invoice_id, pdf_path.name, sha)
-        self.ledger.append("invoice_seen", {"invoice_id": invoice_id, "file_id": pdf_path.name, "sha256": sha})
+        self.ledger.append(
+            "invoice_seen", {"invoice_id": invoice_id, "file_id": pdf_path.name, "sha256": sha}
+        )
 
         # Extracción (escalera por página, con cache e idempotencia)
         t_extract_0 = time.perf_counter()
         pages = extract_file(pdf_path, self.cache, self.cfg.extraction_config(), self.cfg.pages_dir)
-        extraction_ms = int(round((time.perf_counter() - t_extract_0) * 1000))
+        extraction_ms = round((time.perf_counter() - t_extract_0) * 1000)
 
         rung_latencies: dict[str, int] = {}
         for page in pages:
             for feat in page.features:
                 stage_name = feat.extraction_method.split(":")[0]
-                rung_latencies[f"{stage_name}_p{feat.page if feat.page is not None else 0}"] = feat.latency_ms
+                rung_latencies[f"{stage_name}_p{feat.page if feat.page is not None else 0}"] = (
+                    feat.latency_ms
+                )
                 detail = {"type": feat.type}
                 if isinstance(feat.data, (dict, list)):
                     detail["data"] = feat.data
@@ -100,13 +105,16 @@ class Pipeline:
         # Parser: todos los candidatos se conservan
         t_parse_0 = time.perf_counter()
         fields = parse_fields(pages)
-        parser_ms = int(round((time.perf_counter() - t_parse_0) * 1000))
+        parser_ms = round((time.perf_counter() - t_parse_0) * 1000)
 
         for f in fields:
             self.store.add_field(
                 invoice_id,
                 f.type,
-                [{"extractor": c.extractor, "value": c.value, "confidence": c.confidence} for c in f.values],
+                [
+                    {"extractor": c.extractor, "value": c.value, "confidence": c.confidence}
+                    for c in f.values
+                ],
             )
 
         # Decisión (motor puro) + evidencia
@@ -119,8 +127,8 @@ class Pipeline:
             pdf_path.name,
             extractor_versions=self._extractor_versions(pages),
         )
-        evaluation_ms = int(round((time.perf_counter() - t_eval_0) * 1000))
-        total_ms = int(round((time.perf_counter() - t_start) * 1000))
+        evaluation_ms = round((time.perf_counter() - t_eval_0) * 1000)
+        total_ms = round((time.perf_counter() - t_start) * 1000)
 
         stage_timings: dict[str, int] = {
             "extraction_ms": extraction_ms,
@@ -135,11 +143,14 @@ class Pipeline:
         decision.total_ms = total_ms
         decision.timings = stage_timings
 
-        self.store.save_config_snapshot(decision.config_snapshot.config_version, asdict(decision.config_snapshot))
+        self.store.save_config_snapshot(
+            decision.config_snapshot.config_version, asdict(decision.config_snapshot)
+        )
         run_id = config_version
         self.store.start_run(run_id, config_version, self.master.sha256)
         self.store.add_rule_evaluations(
-            invoice_id, run_id,
+            invoice_id,
+            run_id,
             [{**asdict(e), "verdict": e.verdict.value} for e in decision.rule_evaluations],
         )
         self.store.save_decision(
@@ -169,6 +180,7 @@ class Pipeline:
             },
         )
         return decision
+
     def reprocess(self, invoice_id: str, pdf_path: Path) -> Decision:
         """Reprocesado tras un override: la decisión se recalcula de forma determinista."""
         return self.process_pdf(pdf_path)

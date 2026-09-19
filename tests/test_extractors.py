@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from filemaid.parse.extractors import (
-    all_extractors,
     _base,
     _fecha,
     _iban,
@@ -12,6 +11,7 @@ from filemaid.parse.extractors import (
     _nif,
     _pedido,
     _total,
+    all_extractors,
 )
 from filemaid.rules.escoger import FORMAT_TESTS
 
@@ -128,6 +128,7 @@ class TestIvaExtractors:
         assert val is None and conf == 0.0
         val, conf = _iva_amount("Factura sin cuota")
         assert val is None and conf == 0.0
+
     @pytest.mark.parametrize(
         ("text", "expected_rate", "expected_amount"),
         [
@@ -151,7 +152,6 @@ class TestIvaExtractors:
         assert rate_conf > 0.0
         assert amt_val == expected_amount
         assert amt_conf > 0.0
-
 
 
 class TestIbanExtractor:
@@ -252,6 +252,7 @@ class TestNifExtractor:
         val, conf = _nif(text_a58)
         assert val == "J40112358"
         assert conf > 0.0
+
 
 class TestPedidoExtractor:
     @pytest.mark.parametrize(
@@ -384,5 +385,5 @@ class TestAllExtractorsRegistry:
         }
         for field_type, name, fn in registry:
             assert callable(fn)
-            val, conf = fn("")
+            _val, conf = fn("")
             assert isinstance(conf, float)

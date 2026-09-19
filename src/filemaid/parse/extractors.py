@@ -76,83 +76,374 @@ _FALLBACK_PEDIDO_RE = re.compile(r"\b([A-Z]{1,2}[-/\s]\d{4}[-/\s]\d{3,4})\b", re
 
 _MESES: dict[str, int] = {
     # Español
-    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
     # Inglés
-    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "sept": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
     # Francés
-    "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
-    "juillet": 7, "août": 8, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+    "janvier": 1,
+    "février": 2,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "août": 8,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "décembre": 12,
+    "decembre": 12,
     # Alemán
-    "januar": 1, "februar": 2, "märz": 3, "maerz": 3, "marz": 3, "april": 4, "mai": 5, "juni": 6,
-    "juli": 7, "august": 8, "september": 9, "oktober": 10, "november": 11, "dezember": 12,
+    "januar": 1,
+    "februar": 2,
+    "märz": 3,
+    "maerz": 3,
+    "marz": 3,
+    "juni": 6,
+    "juli": 7,
+    "oktober": 10,
+    "dezember": 12,
     # Italiano
-    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5, "giugno": 6,
-    "luglio": 7, "agosto": 8, "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+    "gennaio": 1,
+    "febbraio": 2,
+    "aprile": 4,
+    "maggio": 5,
+    "giugno": 6,
+    "luglio": 7,
+    "settembre": 9,
+    "ottobre": 10,
+    "dicembre": 12,
     # Catalán
-    "gener": 1, "febrer": 2, "març": 3, "marc": 3, "abril": 4, "maig": 5, "juny": 6,
-    "juliol": 7, "agost": 8, "setembre": 9, "octubre": 10, "novembre": 11, "desembre": 12,
+    "gener": 1,
+    "febrer": 2,
+    "març": 3,
+    "marc": 3,
+    "maig": 5,
+    "juny": 6,
+    "juliol": 7,
+    "agost": 8,
+    "setembre": 9,
+    "desembre": 12,
     # Portugués
-    "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4, "maio": 5, "junho": 6,
-    "julho": 7, "agosto": 8, "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12,
+    "janeiro": 1,
+    "fevereiro": 2,
+    "março": 3,
+    "marco": 3,
+    "maio": 5,
+    "junho": 6,
+    "julho": 7,
+    "setembro": 9,
+    "outubro": 10,
+    "novembro": 11,
+    "dezembro": 12,
 }
 
 _DIAS_PALABRAS: dict[str, int] = {
     # Español
-    "un": 1, "uno": 1, "primero": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10,
-    "once": 11, "doce": 12, "trece": 13, "catorce": 14, "quince": 15, "dieciséis": 16, "dieciseis": 16,
-    "diecisiete": 17, "dieciocho": 18, "diecinueve": 19, "veinte": 20, "veintiuno": 21, "veintidós": 22,
-    "veintidos": 22, "veintitrés": 23, "veintitres": 23, "veinticuatro": 24, "veinticinco": 25,
-    "veintiséis": 26, "veintiseis": 26, "veintisiete": 27, "veintiocho": 28, "veintinueve": 29,
-    "treinta": 30, "treinta y uno": 31,
+    "un": 1,
+    "uno": 1,
+    "primero": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
+    "trece": 13,
+    "catorce": 14,
+    "quince": 15,
+    "dieciséis": 16,
+    "dieciseis": 16,
+    "diecisiete": 17,
+    "dieciocho": 18,
+    "diecinueve": 19,
+    "veinte": 20,
+    "veintiuno": 21,
+    "veintidós": 22,
+    "veintidos": 22,
+    "veintitrés": 23,
+    "veintitres": 23,
+    "veinticuatro": 24,
+    "veinticinco": 25,
+    "veintiséis": 26,
+    "veintiseis": 26,
+    "veintisiete": 27,
+    "veintiocho": 28,
+    "veintinueve": 29,
+    "treinta": 30,
+    "treinta y uno": 31,
     # Inglés
-    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
-    "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14, "fifteenth": 15, "sixteenth": 16, "seventeenth": 17,
-    "eighteenth": 18, "nineteenth": 19, "twentieth": 20, "twenty-first": 21, "twenty-second": 22, "twenty-third": 23,
-    "twenty-fourth": 24, "twenty-fifth": 25, "twenty-sixth": 26, "twenty-seventh": 27, "twenty-eighth": 28, "twenty-ninth": 29,
-    "thirtieth": 30, "thirty-first": 31, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+    "twenty-first": 21,
+    "twenty-second": 22,
+    "twenty-third": 23,
+    "twenty-fourth": 24,
+    "twenty-fifth": 25,
+    "twenty-sixth": 26,
+    "twenty-seventh": 27,
+    "twenty-eighth": 28,
+    "twenty-ninth": 29,
+    "thirtieth": 30,
+    "thirty-first": 31,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
     # Francés
-    "premier": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9, "dix": 10,
-    "onze": 11, "douze": 12, "treize": 13, "quatorze": 14, "quinze": 15, "seize": 16, "dix-sept": 17, "dix-huit": 18, "dix-neuf": 19,
-    "vingt": 20, "vingt et un": 21, "vingt-deux": 22, "vingt-trois": 23, "vingt-quatre": 24, "vingt-cinq": 25,
-    "vingt-six": 26, "vingt-sept": 27, "vingt-huit": 28, "vingt-neuf": 29, "trente": 30, "trente et un": 31,
+    "premier": 1,
+    "deux": 2,
+    "trois": 3,
+    "quatre": 4,
+    "cinq": 5,
+    "sept": 7,
+    "huit": 8,
+    "neuf": 9,
+    "dix": 10,
+    "onze": 11,
+    "douze": 12,
+    "treize": 13,
+    "quatorze": 14,
+    "quinze": 15,
+    "seize": 16,
+    "dix-sept": 17,
+    "dix-huit": 18,
+    "dix-neuf": 19,
+    "vingt": 20,
+    "vingt et un": 21,
+    "vingt-deux": 22,
+    "vingt-trois": 23,
+    "vingt-quatre": 24,
+    "vingt-cinq": 25,
+    "vingt-six": 26,
+    "vingt-sept": 27,
+    "vingt-huit": 28,
+    "vingt-neuf": 29,
+    "trente": 30,
+    "trente et un": 31,
     # Alemán
-    "ersten": 1, "zweiten": 2, "dritten": 3, "vierten": 4, "fünften": 5, "fuenften": 5, "sechsten": 6, "siebten": 7,
-    "achten": 8, "neunten": 9, "zehnten": 10, "elften": 11, "zwölften": 12, "zwoelften": 12, "dreizehnten": 13,
-    "vierzehnten": 14, "fünfzehnten": 15, "fuenfzehnten": 15, "sechzehnten": 16, "siebzehnten": 17, "achtzehnten": 18,
-    "neunzehnten": 19, "zwanzigsten": 20, "einundzwanzigsten": 21, "zweiundzwanzigsten": 22, "dreiundzwanzigsten": 23,
-    "vierundzwanzigsten": 24, "fünfundzwanzigsten": 25, "sechsundzwanzigsten": 26, "siebenundzwanzigsten": 27,
-    "achtundzwanzigsten": 28, "neunundzwanzigsten": 29, "dreißigsten": 30, "dreissigsten": 30, "einunddreißigsten": 31,
-    "erste": 1, "zweite": 2, "dritte": 3, "vierte": 4, "fünfte": 5, "sechste": 6, "siebte": 7, "achte": 8, "neunte": 9, "zehnte": 10,
+    "ersten": 1,
+    "zweiten": 2,
+    "dritten": 3,
+    "vierten": 4,
+    "fünften": 5,
+    "fuenften": 5,
+    "sechsten": 6,
+    "siebten": 7,
+    "achten": 8,
+    "neunten": 9,
+    "zehnten": 10,
+    "elften": 11,
+    "zwölften": 12,
+    "zwoelften": 12,
+    "dreizehnten": 13,
+    "vierzehnten": 14,
+    "fünfzehnten": 15,
+    "fuenfzehnten": 15,
+    "sechzehnten": 16,
+    "siebzehnten": 17,
+    "achtzehnten": 18,
+    "neunzehnten": 19,
+    "zwanzigsten": 20,
+    "einundzwanzigsten": 21,
+    "zweiundzwanzigsten": 22,
+    "dreiundzwanzigsten": 23,
+    "vierundzwanzigsten": 24,
+    "fünfundzwanzigsten": 25,
+    "sechsundzwanzigsten": 26,
+    "siebenundzwanzigsten": 27,
+    "achtundzwanzigsten": 28,
+    "neunundzwanzigsten": 29,
+    "dreißigsten": 30,
+    "dreissigsten": 30,
+    "einunddreißigsten": 31,
+    "erste": 1,
+    "zweite": 2,
+    "dritte": 3,
+    "vierte": 4,
+    "fünfte": 5,
+    "sechste": 6,
+    "siebte": 7,
+    "achte": 8,
+    "neunte": 9,
+    "zehnte": 10,
     # Italiano
-    "primo": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5, "sei": 6, "sette": 7, "otto": 8, "nove": 9, "dieci": 10,
-    "undici": 11, "dodici": 12, "tredici": 13, "quattordici": 14, "quindici": 15, "sedici": 16, "diciassette": 17,
-    "diciotto": 18, "diciannove": 19, "venti": 20, "ventuno": 21, "ventidue": 22, "ventitre": 23, "ventitré": 23,
-    "ventiquattro": 24, "venticinque": 25, "ventisei": 26, "ventisette": 27, "ventotto": 28, "ventinove": 29, "trenta": 30, "trentuno": 31,
+    "primo": 1,
+    "due": 2,
+    "tre": 3,
+    "quattro": 4,
+    "cinque": 5,
+    "sei": 6,
+    "sette": 7,
+    "otto": 8,
+    "nove": 9,
+    "dieci": 10,
+    "undici": 11,
+    "dodici": 12,
+    "tredici": 13,
+    "quattordici": 14,
+    "quindici": 15,
+    "sedici": 16,
+    "diciassette": 17,
+    "diciotto": 18,
+    "diciannove": 19,
+    "venti": 20,
+    "ventuno": 21,
+    "ventidue": 22,
+    "ventitre": 23,
+    "ventitré": 23,
+    "ventiquattro": 24,
+    "venticinque": 25,
+    "ventisei": 26,
+    "ventisette": 27,
+    "ventotto": 28,
+    "ventinove": 29,
+    "trenta": 30,
+    "trentuno": 31,
     # Catalán
-    "u": 1, "dos": 2, "tres": 3, "quatre": 4, "cinc": 5, "sis": 6, "set": 7, "vuit": 8, "nou": 9, "deu": 10,
-    "onze": 11, "dotze": 12, "tretze": 13, "catorze": 14, "quinze": 15, "setze": 16, "disset": 17, "divuit": 18, "dinou": 19,
-    "vint": 20, "vintiú": 21, "vint-i-un": 21, "vint-i-dos": 22, "vint-i-tres": 23, "vint-i-quatre": 24, "vint-i-cinc": 25,
-    "vint-i-sis": 26, "vint-i-set": 27, "vint-i-vuit": 28, "vint-i-nou": 29, "trenta": 30, "trenta-un": 31,
+    "u": 1,
+    "cinc": 5,
+    "sis": 6,
+    "set": 7,
+    "vuit": 8,
+    "nou": 9,
+    "deu": 10,
+    "dotze": 12,
+    "tretze": 13,
+    "catorze": 14,
+    "setze": 16,
+    "disset": 17,
+    "divuit": 18,
+    "dinou": 19,
+    "vint": 20,
+    "vintiú": 21,
+    "vint-i-un": 21,
+    "vint-i-dos": 22,
+    "vint-i-tres": 23,
+    "vint-i-quatre": 24,
+    "vint-i-cinc": 25,
+    "vint-i-sis": 26,
+    "vint-i-set": 27,
+    "vint-i-vuit": 28,
+    "vint-i-nou": 29,
+    "trenta-un": 31,
     # Portugués
-    "um": 1, "primeiro": 1, "dois": 2, "três": 3, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
-    "onze": 11, "doze": 12, "treze": 13, "catorze": 14, "quatorze": 14, "quinze": 15, "dezesseis": 16, "dezessete": 17,
-    "dezoito": 18, "dezenove": 19, "vinte": 20, "vinte e um": 21, "vinte e dois": 22, "vinte e três": 23, "vinte e quatro": 24,
-    "vinte e cinco": 25, "vinte e seis": 26, "vinte e sete": 27, "vinte e oito": 28, "vinte e nove": 29, "trinta": 30, "trinta e um": 31,
+    "um": 1,
+    "primeiro": 1,
+    "dois": 2,
+    "três": 3,
+    "quatro": 4,
+    "sete": 7,
+    "oito": 8,
+    "dez": 10,
+    "doze": 12,
+    "treze": 13,
+    "dezesseis": 16,
+    "dezessete": 17,
+    "dezoito": 18,
+    "dezenove": 19,
+    "vinte": 20,
+    "vinte e um": 21,
+    "vinte e dois": 22,
+    "vinte e três": 23,
+    "vinte e quatro": 24,
+    "vinte e cinco": 25,
+    "vinte e seis": 26,
+    "vinte e sete": 27,
+    "vinte e oito": 28,
+    "vinte e nove": 29,
+    "trinta": 30,
+    "trinta e um": 31,
 }
 
 _ANOS_PALABRAS: dict[str, int] = {
-    "dos mil veintiséis": 2026, "dos mil veintiseis": 2026, "dos mil veinticinco": 2025, "dos mil veinticuatro": 2024,
-    "two thousand twenty-six": 2026, "two thousand and twenty-six": 2026,
-    "two thousand twenty-five": 2025, "two thousand and twenty-five": 2025,
-    "two thousand twenty four": 2024, "two thousand twenty-four": 2024,
-    "deux mille vingt-six": 2026, "deux mille vingt six": 2026, "deux mille vingt-cinq": 2025,
-    "zweitausendsechsundzwanzig": 2026, "zweitausendfünfundzwanzig": 2025, "zweitausendfuenfundzwanzig": 2025,
-    "duemilaventisei": 2026, "duemilaventicinque": 2025,
-    "dos mil vint-i-sis": 2026, "dos mil vint-i-cinc": 2025,
+    "dos mil veintiséis": 2026,
+    "dos mil veintiseis": 2026,
+    "dos mil veinticinco": 2025,
+    "dos mil veinticuatro": 2024,
+    "two thousand twenty-six": 2026,
+    "two thousand and twenty-six": 2026,
+    "two thousand twenty-five": 2025,
+    "two thousand and twenty-five": 2025,
+    "two thousand twenty four": 2024,
+    "two thousand twenty-four": 2024,
+    "deux mille vingt-six": 2026,
+    "deux mille vingt six": 2026,
+    "deux mille vingt-cinq": 2025,
+    "zweitausendsechsundzwanzig": 2026,
+    "zweitausendfünfundzwanzig": 2025,
+    "zweitausendfuenfundzwanzig": 2025,
+    "duemilaventisei": 2026,
+    "duemilaventicinque": 2025,
+    "dos mil vint-i-sis": 2026,
+    "dos mil vint-i-cinc": 2025,
 }
+
 
 def _parse_written_date(text: str) -> str | None:
     t = text.lower()
@@ -199,6 +490,7 @@ def _parse_written_date(text: str) -> str | None:
 
     return None
 
+
 def _clean_text(text: str) -> str:
     text = _CLEAN_ZW_RE.sub("", text)
     lines = text.split("\n")
@@ -209,8 +501,20 @@ def _clean_text(text: str) -> str:
         s = "".join(chars)
         s = re.sub(r":([a-zA-Z0-9])", r": \1", s)
         keywords = [
-            "NIF", "CIF", "cuenta", "Factura", "Fecha", "pedido", "para", "Cliente",
-            "Servicio", "base", "IVA", "TOTAL", "Gracias", "Importe"
+            "NIF",
+            "CIF",
+            "cuenta",
+            "Factura",
+            "Fecha",
+            "pedido",
+            "para",
+            "Cliente",
+            "Servicio",
+            "base",
+            "IVA",
+            "TOTAL",
+            "Gracias",
+            "Importe",
         ]
         kw_re = r"(?<!\s)(?<!^)(?<!\b)(" + "|".join(keywords) + r")"
         s = re.sub(kw_re, r" \1", s, flags=re.IGNORECASE)
@@ -249,7 +553,7 @@ def _nif(text: str) -> tuple[Any, float]:
         raw_val = m.group(1)
         norm_val = normalizers.normalize_nif(raw_val)
         start_pos = m.start()
-        preceding = text[max(0, start_pos - 40):start_pos].lower()
+        preceding = text[max(0, start_pos - 40) : start_pos].lower()
         is_client = "cliente" in preceding or "clernie" in preceding or "cilemar" in preceding
         is_known_client = norm_val in _KNOWN_CLIENT_CIFS
 
@@ -279,6 +583,7 @@ def _iban(text: str) -> tuple[Any, float]:
     if m_slash:
         return (normalizers.normalize_iban(m_slash.group(1)), 0.9)
     return (None, 0.0)
+
 
 def _total(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
@@ -311,6 +616,7 @@ def _iva_lines(text: str) -> list[str]:
             rest = re.split(rf"(?<![A-Za-z0-9_-])\b{_TOTAL_LABELS}\b", rest, flags=re.IGNORECASE)[0]
             lines.append(rest)
     return lines
+
 
 def _line_numbers(line: str) -> list[str]:
     """Números de la línea tras quitar relleno (puntos de guía, EUR...)."""
@@ -354,7 +660,6 @@ def _iva_amount(text: str) -> tuple[Any, float]:
     return (None, 0.0)
 
 
-
 def _fecha(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
     # 1. Buscar en líneas con etiqueta de fecha si no es placeholder
@@ -376,9 +681,16 @@ def _fecha(text: str) -> tuple[Any, float]:
 
     # 3. Fecha numérica en líneas que no sean de condiciones de pago ni placeholders
     for line in text.splitlines():
-        if re.search(r"[_\s]{4,}", line) and any(k in line.lower() for k in ["fecha", "date", "datum", "data"]):
+        if re.search(r"[_\s]{4,}", line) and any(
+            k in line.lower() for k in ["fecha", "date", "datum", "data"]
+        ):
             continue
-        if "condic" in line.lower() or "termi" in line.lower() or "zahlung" in line.lower() or "payment" in line.lower():
+        if (
+            "condic" in line.lower()
+            or "termi" in line.lower()
+            or "zahlung" in line.lower()
+            or "payment" in line.lower()
+        ):
             continue
         m_num = _FECHA_NUM_RE.search(line)
         if m_num:
@@ -392,14 +704,15 @@ def _fecha(text: str) -> tuple[Any, float]:
     return (None, 0.0)
 
 
-
 def _pedido(text: str) -> tuple[Any, float]:
     text = _clean_text(text)
     m = _PEDIDO_RE.search(text)
     if m:
         raw_match = m.group(1).strip()
         # Normalize PO 2026/0478 or PO 2026-0478 or PO-2026-0478 or PO/2026/0478
-        m_sub = re.search(r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_match, re.IGNORECASE)
+        m_sub = re.search(
+            r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_match, re.IGNORECASE
+        )
         if m_sub:
             norm_val = f"{m_sub.group(1).upper()}-{m_sub.group(2)}-{m_sub.group(3)}"
             return (norm_val, 0.7)
@@ -410,7 +723,9 @@ def _pedido(text: str) -> tuple[Any, float]:
     m_fall = _FALLBACK_PEDIDO_RE.search(text)
     if m_fall:
         raw_fall = m_fall.group(1).strip()
-        m_sub = re.search(r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_fall, re.IGNORECASE)
+        m_sub = re.search(
+            r"\b([A-Z]{1,2})[\s/-]+(\d{4})[\s/-]+(\d{3,4})\b", raw_fall, re.IGNORECASE
+        )
         if m_sub:
             return (f"{m_sub.group(1).upper()}-{m_sub.group(2)}-{m_sub.group(3)}", 0.7)
         return (raw_fall.upper(), 0.7)

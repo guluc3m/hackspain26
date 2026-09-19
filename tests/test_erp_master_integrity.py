@@ -7,8 +7,6 @@ import re
 import zlib
 from pathlib import Path
 
-import pytest
-
 from filemaid.rules.config import RuleConfig
 from filemaid.rules.engine import evaluate
 from filemaid.rules.master import load_master
@@ -22,13 +20,9 @@ MASTER_DIR = REPO_ROOT / "master"
 def _extract_embedded_erp_records() -> list[dict[str, str]]:
     """Decode base64 + zlib data block from caja-de-alberto/alberto_erp.py."""
     content = ERP_SCRIPT_PATH.read_text(encoding="utf-8")
-    m = re.search(r'_DATOS_ERP\s*=\s*\((.*?)\n\)', content, re.DOTALL)
+    m = re.search(r"_DATOS_ERP\s*=\s*\((.*?)\n\)", content, re.DOTALL)
     assert m is not None, "Could not find _DATOS_ERP block in alberto_erp.py"
-    raw_b64 = "".join(
-        line.strip().strip('"')
-        for line in m.group(1).splitlines()
-        if line.strip()
-    )
+    raw_b64 = "".join(line.strip().strip('"') for line in m.group(1).splitlines() if line.strip())
     decompressed = zlib.decompress(base64.b64decode(raw_b64)).decode("utf-8")
     return list(csv.DictReader(io.StringIO(decompressed)))
 
@@ -101,7 +95,9 @@ def test_erp_pagada_orders_synchronized_and_prevent_double_payment():
     for num in all_pagada_ids:
         order = master.pedidos[num]
         assert order.pagado is True, f"Order {num} is PAGADA but pagado is False in master"
-        assert order.estado == "PAGADA", f"Order {num} is PAGADA but estado is {order.estado} in master"
+        assert order.estado == "PAGADA", (
+            f"Order {num} is PAGADA but estado is {order.estado} in master"
+        )
 
         # Mock an incoming invoice attempting to pay for this already paid order
         supplier = master.proveedores.get(order.nif_proveedor)
@@ -148,7 +144,9 @@ def test_adversarial_tampered_amount_and_unpaid_invariants():
     for r in unpaid_in_erp:
         num = r["pedido"]
         order = master.pedidos[num]
-        assert order.pagado is False, f"Order {num} is PENDIENTE in ERP but pagado is True in master"
+        assert order.pagado is False, (
+            f"Order {num} is PENDIENTE in ERP but pagado is True in master"
+        )
         assert order.estado == "PENDIENTE", f"Order {num} state mismatch: {order.estado}"
 
     # Adversarial test: tampered amount on an unpaid order must fail ORDER_BELONGS_TO_SUPPLIER

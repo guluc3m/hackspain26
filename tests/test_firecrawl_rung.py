@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-import pytest
+
 import httpx
 
 from filemaid.extract.cache import FeatureCache, sha256_bytes
@@ -16,16 +16,19 @@ def _dummy_png() -> bytes:
     return base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     )
+
+
 def _create_valid_pdf(num_pages: int = 1) -> bytes:
-    from pypdf import PdfWriter
     import io
+
+    from pypdf import PdfWriter
+
     writer = PdfWriter()
     for _ in range(num_pages):
         writer.add_blank_page(width=100, height=100)
     buf = io.BytesIO()
     writer.write(buf)
     return buf.getvalue()
-
 
 
 def test_firecrawl_skip_no_page_image(tmp_path: Path):
@@ -93,11 +96,13 @@ def test_firecrawl_successful_extraction_pdf_and_cache(tmp_path: Path, monkeypat
     requested_calls = []
 
     def mock_post(url, headers, files, timeout):
-        requested_calls.append({
-            "url": str(url),
-            "headers": headers,
-            "files": files,
-        })
+        requested_calls.append(
+            {
+                "url": str(url),
+                "headers": headers,
+                "files": files,
+            }
+        )
         assert headers["Authorization"] == "Bearer fc-mock-key"
         assert "file" in files
         assert files["file"][0] == "page_0.pdf"
@@ -234,7 +239,10 @@ def test_firecrawl_empty_markdown_returns_skip(tmp_path: Path, monkeypatch):
     assert feat.extractor_version == firecrawl.VERSION
     assert feat.latency_ms >= 0
 
-def test_firecrawl_invalid_page_index_skips_without_uploading_whole_file(tmp_path: Path, monkeypatch):
+
+def test_firecrawl_invalid_page_index_skips_without_uploading_whole_file(
+    tmp_path: Path, monkeypatch
+):
     pdf_file = tmp_path / "two_pages.pdf"
     pdf_file.write_bytes(_create_valid_pdf(2))
 
@@ -253,6 +261,7 @@ def test_firecrawl_invalid_page_index_skips_without_uploading_whole_file(tmp_pat
     )
 
     called = False
+
     def mock_post(url, headers, files, timeout):
         nonlocal called
         called = True
@@ -289,11 +298,17 @@ def test_firecrawl_nested_rung_endpoint_overrides_top_level_config(tmp_path: Pat
     )
 
     requested_urls = []
+
     def mock_post(url, headers, files, timeout):
         requested_urls.append(str(url))
         assert headers["Authorization"] == "Bearer custom-key"
         req = httpx.Request("POST", str(url), headers=headers)
-        return httpx.Response(200, json={"markdown": "Factura NIF: B12345678 Total: 100 EUR Fecha: 2026-01-01"}, request=req)
+        return httpx.Response(
+            200,
+            json={"markdown": "Factura NIF: B12345678 Total: 100 EUR Fecha: 2026-01-01"},
+            request=req,
+        )
+
     monkeypatch.setattr(httpx, "post", mock_post)
     feat = firecrawl.extract(ctx)
     assert feat.extraction_method == "firecrawl"

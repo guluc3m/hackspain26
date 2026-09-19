@@ -14,7 +14,7 @@ def test_texto_bueno_pasa():
 
 
 def test_mojibake_cid_rechazado():
-    mojibake = "ÿþ\x00\uFFFD\uFFFD\uFFFD ()### <<< \x01\x02\x03 ||| ‰‰‰ >>> ((("
+    mojibake = "ÿþ\x00\ufffd\ufffd\ufffd ()### <<< \x01\x02\x03 ||| ‰‰‰ >>> ((("
     assert not text_is_plausible(mojibake)
 
 
@@ -26,8 +26,12 @@ def test_texto_vacio_rechazado():
 def test_cache_feature_roundtrip(tmp_path):
     cache = FeatureCache(tmp_path)
     feat = ExtractionFeature(
-        type="pdf_text", extraction_method="tesseract", data="hola",
-        page=0, sha256=sha256_bytes(b"img"), extractor_version="1",
+        type="pdf_text",
+        extraction_method="tesseract",
+        data="hola",
+        page=0,
+        sha256=sha256_bytes(b"img"),
+        extractor_version="1",
     )
     cache.put(sha256_bytes(b"img"), feat, "cfg-1")
     got = cache.get(sha256_bytes(b"img"), "1", "cfg-1")
@@ -39,6 +43,7 @@ def test_cache_feature_roundtrip(tmp_path):
 
 def test_ladder_architecture_seven_rungs():
     from filemaid.extract.ladder import _RUNGS
+
     rung_names = [name for name, _, _, _ in _RUNGS]
     assert rung_names == [
         "pypdf",
@@ -50,15 +55,18 @@ def test_ladder_architecture_seven_rungs():
         "cloud_vlm",
     ]
 
+
 def test_ladder_execution_fallback_all_rungs(tmp_path):
     from filemaid.extract.ladder import ExtractionLadder
-    from filemaid.extract.rungs.context import PageContext
+
     cache = FeatureCache(tmp_path / "cache")
     ladder = ExtractionLadder(cache=cache, config={}, pages_dir=tmp_path / "pages")
 
     # Create a valid 1x1 PNG using PIL to exercise extract_page_any (start=1)
-    from PIL import Image as PILImage
     import io
+
+    from PIL import Image as PILImage
+
     im = PILImage.new("RGB", (10, 10), color="white")
     buf = io.BytesIO()
     im.save(buf, format="PNG")
@@ -99,12 +107,16 @@ def test_typesafe_evidence_cannot_stop_firecrawl_or_supply_invoice_fields(tmp_pa
             "is_invoice": {"type": "noul", "noul": 1.0},
             "has_fiscal_data": {"type": "noul", "noul": 1.0},
             "document_quality": {
-                "type": "score", "score": 2, "confidence": 1.0,
+                "type": "score",
+                "score": 2,
+                "confidence": 1.0,
                 "legend": {"0": "Ilegible", "1": "Parcial", "2": "Legible"},
                 "probabilities": {"0": 0.0, "1": 0.0, "2": 1.0},
             },
             "document_category": {
-                "type": "choice", "choice": "invoice", "confidence": 1.0,
+                "type": "choice",
+                "choice": "invoice",
+                "confidence": 1.0,
                 "probabilities": {"invoice": 1.0, "receipt": 0.0, "other": 0.0},
             },
         },
@@ -118,8 +130,10 @@ def test_typesafe_evidence_cannot_stop_firecrawl_or_supply_invoice_fields(tmp_pa
     def prior_reading(ctx):
         ctx.page_image_sha = f"sha-{ctx.page_index}"
         return ExtractionFeature(
-            type="pdf_text", extraction_method="skipped:low-confidence-0.20",
-            data=prior_text if ctx.page_index == 0 else "", confidence=0.2,
+            type="pdf_text",
+            extraction_method="skipped:low-confidence-0.20",
+            data=prior_text if ctx.page_index == 0 else "",
+            confidence=0.2,
         )
 
     def skipped(ctx):
@@ -172,21 +186,32 @@ def test_typesafe_evidence_preserves_prior_page_content_when_fallbacks_skip(tmp_
 
     def evidence(ctx):
         return ExtractionFeature(
-            type="typed_evidence", extraction_method="typesafe_jev",
-            data={"answers": {"is_invoice": {"type": "noul", "noul": 1.0}}}, confidence=1.0,
+            type="typed_evidence",
+            extraction_method="typesafe_jev",
+            data={"answers": {"is_invoice": {"type": "noul", "noul": 1.0}}},
+            confidence=1.0,
         )
 
     def prior(ctx):
-        return ExtractionFeature(type="pdf_text", extraction_method="skipped:low-confidence", data=prior_text)
+        return ExtractionFeature(
+            type="pdf_text", extraction_method="skipped:low-confidence", data=prior_text
+        )
 
     def skipped(ctx):
         return ExtractionFeature(type="pdf_text", extraction_method="skipped:unavailable")
 
     rungs = [
-        (name, evidence if name == "typesafe_jev" else prior if name == "tesseract" else skipped, auto_stop, adapter)
+        (
+            name,
+            evidence if name == "typesafe_jev" else prior if name == "tesseract" else skipped,
+            auto_stop,
+            adapter,
+        )
         for name, _, auto_stop, adapter in ladder_module._RUNGS
     ]
     monkeypatch.setattr(ladder_module, "_RUNGS", rungs)
-    page = ExtractionLadder(FeatureCache(tmp_path / "cache"), {}).extract_page(tmp_path / "doc.pdf", 0)
+    page = ExtractionLadder(FeatureCache(tmp_path / "cache"), {}).extract_page(
+        tmp_path / "doc.pdf", 0
+    )
     assert page.content == prior_text
     assert page.stopped_at is None

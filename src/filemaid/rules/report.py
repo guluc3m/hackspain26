@@ -125,12 +125,23 @@ def collect_invoice(
     ).fetchone()
     result = row["result"]
     snapshot = json.loads(row["config_snapshot"])
-    extraction_ms = int(row["extraction_ms"]) if "extraction_ms" in row.keys() and row["extraction_ms"] is not None else 0
-    parser_ms = int(row["parser_ms"]) if "parser_ms" in row.keys() and row["parser_ms"] is not None else 0
-    evaluation_ms = int(row["evaluation_ms"]) if "evaluation_ms" in row.keys() and row["evaluation_ms"] is not None else 0
-    total_ms = int(row["total_ms"]) if "total_ms" in row.keys() and row["total_ms"] is not None else 0
+    row_keys = set(row.keys())
+    extraction_ms = (
+        int(row["extraction_ms"])
+        if "extraction_ms" in row_keys and row["extraction_ms"] is not None
+        else 0
+    )
+    parser_ms = (
+        int(row["parser_ms"]) if "parser_ms" in row_keys and row["parser_ms"] is not None else 0
+    )
+    evaluation_ms = (
+        int(row["evaluation_ms"])
+        if "evaluation_ms" in row_keys and row["evaluation_ms"] is not None
+        else 0
+    )
+    total_ms = int(row["total_ms"]) if "total_ms" in row_keys and row["total_ms"] is not None else 0
     try:
-        timings = json.loads(row["timings"]) if "timings" in row.keys() and row["timings"] else {}
+        timings = json.loads(row["timings"]) if "timings" in row_keys and row["timings"] else {}
     except Exception:
         timings = {}
     evals = []

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from filemaid.parse.normalizers import normalize_iban, normalize_nif, parse_amount
 
+
 @dataclass(slots=True)
 class Proveedor:
     nif: str

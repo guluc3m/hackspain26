@@ -17,28 +17,28 @@ Simulates gpt-6 astra independent verification across:
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 from filemaid.extract.cache import FeatureCache
 from filemaid.extract.ladder import extract_file
-from filemaid.parse.parser import parse_fields
 from filemaid.parse.extractors import (
+    _base,
     _clean_text,
     _fecha,
     _iban,
+    _iva_amount,
+    _iva_rate,
     _nif,
     _pedido,
-    _base,
     _total,
-    _iva_rate,
-    _iva_amount,
 )
+from filemaid.parse.parser import parse_fields
 from filemaid.rules.config import RuleConfig
 from filemaid.rules.engine import evaluate
-from filemaid.rules.escoger import field_selection, escoger, FORMAT_TESTS
+from filemaid.rules.escoger import FORMAT_TESTS, escoger, field_selection
 from filemaid.rules.master import load_master
-from filemaid.types import ExtractionField, Candidate, Result, RuleVerdict
-
+from filemaid.types import Candidate, ExtractionField, Result, RuleVerdict
 
 REQUIRED_FIELDS = {"nif", "iban", "total", "base", "iva_rate", "iva_amount", "fecha", "pedido"}
 
@@ -106,7 +106,9 @@ def rule_config() -> RuleConfig:
 
 
 @pytest.fixture(scope="module")
-def evaluated_facturas(facturas_primin_dir: Path, master_data, rule_config, tmp_path_factory) -> dict:
+def evaluated_facturas(
+    facturas_primin_dir: Path, master_data, rule_config, tmp_path_factory
+) -> dict:
     cache_dir = tmp_path_factory.mktemp("cache")
     pages_dir = tmp_path_factory.mktemp("pages")
     cache = FeatureCache(cache_dir)
@@ -179,7 +181,9 @@ class TestAstraVerificationAll40Invoices:
         assert data["decision"].result == Result.NO_PAGAR
 
         failed_rule_codes = {
-            r.code: r.reason for r in data["decision"].rule_evaluations if r.verdict != RuleVerdict.PASS
+            r.code: r.reason
+            for r in data["decision"].rule_evaluations
+            if r.verdict != RuleVerdict.PASS
         }
         assert "NO_DOUBLE_PAYMENT" in failed_rule_codes
         assert "ORDER_PENDING" in failed_rule_codes
@@ -236,19 +240,46 @@ class TestAstraContraEjemplosAttacks:
         # An IBAN not in master (such as an unknown country code or fake account)
         # is blocked from payment: it causes IBAN_MATCHES_MASTER to fail/escalate.
         fields = {
-            "nif": ExtractionField(type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]),
-            "iban": ExtractionField(type="iban", values=[Candidate(extractor="test", value="ZZ99123456789012", confidence=0.95)]),
-            "total": ExtractionField(type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]),
-            "base": ExtractionField(type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]),
-            "iva_rate": ExtractionField(type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]),
-            "iva_amount": ExtractionField(type="iva_amount", values=[Candidate(extractor="test", value=260.40, confidence=0.95)]),
-            "fecha": ExtractionField(type="fecha", values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)]),
-            "pedido": ExtractionField(type="pedido", values=[Candidate(extractor="test", value="PO-2026-1301", confidence=0.95)]),
+            "nif": ExtractionField(
+                type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]
+            ),
+            "iban": ExtractionField(
+                type="iban",
+                values=[Candidate(extractor="test", value="ZZ99123456789012", confidence=0.95)],
+            ),
+            "total": ExtractionField(
+                type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]
+            ),
+            "base": ExtractionField(
+                type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]
+            ),
+            "iva_rate": ExtractionField(
+                type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]
+            ),
+            "iva_amount": ExtractionField(
+                type="iva_amount",
+                values=[Candidate(extractor="test", value=260.40, confidence=0.95)],
+            ),
+            "fecha": ExtractionField(
+                type="fecha",
+                values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)],
+            ),
+            "pedido": ExtractionField(
+                type="pedido",
+                values=[Candidate(extractor="test", value="PO-2026-1301", confidence=0.95)],
+            ),
         }
-        decision = evaluate(fields, master_data, rule_config, invoice_id="contra_fake_iban", file_id="contra_fake_iban.pdf")
+        decision = evaluate(
+            fields,
+            master_data,
+            rule_config,
+            invoice_id="contra_fake_iban",
+            file_id="contra_fake_iban.pdf",
+        )
         assert decision.result in {Result.ESCALAR, Result.NO_PAGAR}
         failed_rules = {r.code for r in decision.rule_evaluations if r.verdict != RuleVerdict.PASS}
         assert "IBAN_MATCHES_MASTER" in failed_rules
+
     @pytest.mark.parametrize(
         ("raw_text", "expected_date"),
         [
@@ -310,16 +341,57 @@ class TestAstraContraEjemplosAttacks:
     @pytest.mark.parametrize(
         ("text", "expected_base", "expected_total", "expected_iva_rate", "expected_iva_amount"),
         [
-            ("Subtotal: $ 2,450.00 | VAT (21%): $ 0.00 | TOTAL: $ 2,450.00 USD", 2450.0, 2450.0, 21, 0.0),
-            ("Base imponible: ¥ 773,000 | IVA (21%): ¥ 77,000 | Total: ¥ 850,000", 773000.0, 850000.0, 21, 77000.0),
-            ("Zwischensumme: Fr 5.400,00 | MwSt. (21%): Fr 0,00 | Total: Fr 5.400,00", 5400.0, 5400.0, 21, 0.0),
-            ("Valor base: R$ 15.500,00 | IVA (21%): R$ 0,00 | Total: R$ 15.500,00", 15500.0, 15500.0, 21, 0.0),
-            ("Base imponible: MX$ 45.800,00 | IVA (21%): MX$ 9.160,00 | Total: MX$ 48.800,00", 45800.0, 48800.0, 21, 9160.0),
-            ("Sous-total: £ 2,900.00 | IVA (21%): £ 0.00 | Total: £ 2,900.00 GBP", 2900.0, 2900.0, 21, 0.0),
+            (
+                "Subtotal: $ 2,450.00 | VAT (21%): $ 0.00 | TOTAL: $ 2,450.00 USD",
+                2450.0,
+                2450.0,
+                21,
+                0.0,
+            ),
+            (
+                "Base imponible: ¥ 773,000 | IVA (21%): ¥ 77,000 | Total: ¥ 850,000",
+                773000.0,
+                850000.0,
+                21,
+                77000.0,
+            ),
+            (
+                "Zwischensumme: Fr 5.400,00 | MwSt. (21%): Fr 0,00 | Total: Fr 5.400,00",
+                5400.0,
+                5400.0,
+                21,
+                0.0,
+            ),
+            (
+                "Valor base: R$ 15.500,00 | IVA (21%): R$ 0,00 | Total: R$ 15.500,00",
+                15500.0,
+                15500.0,
+                21,
+                0.0,
+            ),
+            (
+                "Base imponible: MX$ 45.800,00 | IVA (21%): MX$ 9.160,00 | Total: MX$ 48.800,00",
+                45800.0,
+                48800.0,
+                21,
+                9160.0,
+            ),
+            (
+                "Sous-total: £ 2,900.00 | IVA (21%): £ 0.00 | Total: £ 2,900.00 GBP",
+                2900.0,
+                2900.0,
+                21,
+                0.0,
+            ),
         ],
     )
     def test_foreign_currency_symbols_resilience(
-        self, text: str, expected_base: float, expected_total: float, expected_iva_rate: int, expected_iva_amount: float
+        self,
+        text: str,
+        expected_base: float,
+        expected_total: float,
+        expected_iva_rate: int,
+        expected_iva_amount: float,
     ):
         b_val, b_conf = _base(text)
         t_val, t_conf = _total(text)
@@ -334,17 +406,41 @@ class TestAstraContraEjemplosAttacks:
     def test_contra_ejemplo_double_payment_rule_evaluation(self, master_data, rule_config):
         """Simulates adversarial invoice re-submitting an already paid order PO-2026-0071."""
         fields = {
-            "nif": ExtractionField(type="nif", values=[Candidate(extractor="test", value="B98455101", confidence=0.95)]),
-            "iban": ExtractionField(type="iban", values=[Candidate(extractor="test", value="ES7101821200561099887766", confidence=0.95)]),
-            "total": ExtractionField(type="total", values=[Candidate(extractor="test", value=951.89, confidence=0.95)]),
-            "base": ExtractionField(type="base", values=[Candidate(extractor="test", value=786.69, confidence=0.95)]),
-            "iva_rate": ExtractionField(type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]),
-            "iva_amount": ExtractionField(type="iva_amount", values=[Candidate(extractor="test", value=165.20, confidence=0.95)]),
-            "fecha": ExtractionField(type="fecha", values=[Candidate(extractor="test", value="22/08/2026", confidence=0.95)]),
-            "pedido": ExtractionField(type="pedido", values=[Candidate(extractor="test", value="PO-2026-0071", confidence=0.95)]),
+            "nif": ExtractionField(
+                type="nif", values=[Candidate(extractor="test", value="B98455101", confidence=0.95)]
+            ),
+            "iban": ExtractionField(
+                type="iban",
+                values=[
+                    Candidate(extractor="test", value="ES7101821200561099887766", confidence=0.95)
+                ],
+            ),
+            "total": ExtractionField(
+                type="total", values=[Candidate(extractor="test", value=951.89, confidence=0.95)]
+            ),
+            "base": ExtractionField(
+                type="base", values=[Candidate(extractor="test", value=786.69, confidence=0.95)]
+            ),
+            "iva_rate": ExtractionField(
+                type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]
+            ),
+            "iva_amount": ExtractionField(
+                type="iva_amount",
+                values=[Candidate(extractor="test", value=165.20, confidence=0.95)],
+            ),
+            "fecha": ExtractionField(
+                type="fecha",
+                values=[Candidate(extractor="test", value="22/08/2026", confidence=0.95)],
+            ),
+            "pedido": ExtractionField(
+                type="pedido",
+                values=[Candidate(extractor="test", value="PO-2026-0071", confidence=0.95)],
+            ),
         }
 
-        decision = evaluate(fields, master_data, rule_config, invoice_id="contra_0071", file_id="contra_0071.pdf")
+        decision = evaluate(
+            fields, master_data, rule_config, invoice_id="contra_0071", file_id="contra_0071.pdf"
+        )
         assert decision.result == Result.NO_PAGAR
 
         failed_rules = {r.code for r in decision.rule_evaluations if r.verdict == RuleVerdict.FAIL}
@@ -354,17 +450,45 @@ class TestAstraContraEjemplosAttacks:
     def test_contra_ejemplo_po_impersonation_attack(self, master_data, rule_config):
         """Simulates adversarial invoice where supplier B90233808 attempts to invoice order belonging to B98120774."""
         fields = {
-            "nif": ExtractionField(type="nif", values=[Candidate(extractor="test", value="B90233808", confidence=0.95)]),
-            "iban": ExtractionField(type="iban", values=[Candidate(extractor="test", value="ES4414650100951704302211", confidence=0.95)]),
-            "total": ExtractionField(type="total", values=[Candidate(extractor="test", value=6778.69, confidence=0.95)]),
-            "base": ExtractionField(type="base", values=[Candidate(extractor="test", value=5602.22, confidence=0.95)]),
-            "iva_rate": ExtractionField(type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]),
-            "iva_amount": ExtractionField(type="iva_amount", values=[Candidate(extractor="test", value=1176.47, confidence=0.95)]),
-            "fecha": ExtractionField(type="fecha", values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)]),
-            "pedido": ExtractionField(type="pedido", values=[Candidate(extractor="test", value="PO-2026-1305", confidence=0.95)]),
+            "nif": ExtractionField(
+                type="nif", values=[Candidate(extractor="test", value="B90233808", confidence=0.95)]
+            ),
+            "iban": ExtractionField(
+                type="iban",
+                values=[
+                    Candidate(extractor="test", value="ES4414650100951704302211", confidence=0.95)
+                ],
+            ),
+            "total": ExtractionField(
+                type="total", values=[Candidate(extractor="test", value=6778.69, confidence=0.95)]
+            ),
+            "base": ExtractionField(
+                type="base", values=[Candidate(extractor="test", value=5602.22, confidence=0.95)]
+            ),
+            "iva_rate": ExtractionField(
+                type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]
+            ),
+            "iva_amount": ExtractionField(
+                type="iva_amount",
+                values=[Candidate(extractor="test", value=1176.47, confidence=0.95)],
+            ),
+            "fecha": ExtractionField(
+                type="fecha",
+                values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)],
+            ),
+            "pedido": ExtractionField(
+                type="pedido",
+                values=[Candidate(extractor="test", value="PO-2026-1305", confidence=0.95)],
+            ),
         }
 
-        decision = evaluate(fields, master_data, rule_config, invoice_id="contra_impersonate", file_id="contra_impersonate.pdf")
+        decision = evaluate(
+            fields,
+            master_data,
+            rule_config,
+            invoice_id="contra_impersonate",
+            file_id="contra_impersonate.pdf",
+        )
         assert decision.result == Result.NO_PAGAR
 
         failed_rules = {r.code for r in decision.rule_evaluations if r.verdict == RuleVerdict.FAIL}
@@ -373,17 +497,45 @@ class TestAstraContraEjemplosAttacks:
     def test_contra_ejemplo_fake_nonexistent_po(self, master_data, rule_config):
         """Simulates adversarial invoice with a fake or non-existent PO (e.g. PO-2026-9999)."""
         fields = {
-            "nif": ExtractionField(type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]),
-            "iban": ExtractionField(type="iban", values=[Candidate(extractor="test", value="ES9121000418450200051332", confidence=0.95)]),
-            "total": ExtractionField(type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]),
-            "base": ExtractionField(type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]),
-            "iva_rate": ExtractionField(type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]),
-            "iva_amount": ExtractionField(type="iva_amount", values=[Candidate(extractor="test", value=260.40, confidence=0.95)]),
-            "fecha": ExtractionField(type="fecha", values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)]),
-            "pedido": ExtractionField(type="pedido", values=[Candidate(extractor="test", value="PO-2026-9999", confidence=0.95)]),
+            "nif": ExtractionField(
+                type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]
+            ),
+            "iban": ExtractionField(
+                type="iban",
+                values=[
+                    Candidate(extractor="test", value="ES9121000418450200051332", confidence=0.95)
+                ],
+            ),
+            "total": ExtractionField(
+                type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]
+            ),
+            "base": ExtractionField(
+                type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]
+            ),
+            "iva_rate": ExtractionField(
+                type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]
+            ),
+            "iva_amount": ExtractionField(
+                type="iva_amount",
+                values=[Candidate(extractor="test", value=260.40, confidence=0.95)],
+            ),
+            "fecha": ExtractionField(
+                type="fecha",
+                values=[Candidate(extractor="test", value="15/07/2026", confidence=0.95)],
+            ),
+            "pedido": ExtractionField(
+                type="pedido",
+                values=[Candidate(extractor="test", value="PO-2026-9999", confidence=0.95)],
+            ),
         }
 
-        decision = evaluate(fields, master_data, rule_config, invoice_id="contra_fake_po", file_id="contra_fake_po.pdf")
+        decision = evaluate(
+            fields,
+            master_data,
+            rule_config,
+            invoice_id="contra_fake_po",
+            file_id="contra_fake_po.pdf",
+        )
         assert decision.result == Result.NO_PAGAR
         failed_rules = {r.code for r in decision.rule_evaluations if r.verdict == RuleVerdict.FAIL}
         assert "ORDER_BELONGS_TO_SUPPLIER" in failed_rules
@@ -391,17 +543,45 @@ class TestAstraContraEjemplosAttacks:
     def test_contra_ejemplo_future_date_fails_date_valid_not_future(self, master_data, rule_config):
         """Simulates adversarial invoice with a future date (e.g. 2099-12-31)."""
         fields = {
-            "nif": ExtractionField(type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]),
-            "iban": ExtractionField(type="iban", values=[Candidate(extractor="test", value="ES9121000418450200051332", confidence=0.95)]),
-            "total": ExtractionField(type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]),
-            "base": ExtractionField(type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]),
-            "iva_rate": ExtractionField(type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]),
-            "iva_amount": ExtractionField(type="iva_amount", values=[Candidate(extractor="test", value=260.40, confidence=0.95)]),
-            "fecha": ExtractionField(type="fecha", values=[Candidate(extractor="test", value="31/12/2099", confidence=0.95)]),
-            "pedido": ExtractionField(type="pedido", values=[Candidate(extractor="test", value="PO-2026-1301", confidence=0.95)]),
+            "nif": ExtractionField(
+                type="nif", values=[Candidate(extractor="test", value="B46102331", confidence=0.95)]
+            ),
+            "iban": ExtractionField(
+                type="iban",
+                values=[
+                    Candidate(extractor="test", value="ES9121000418450200051332", confidence=0.95)
+                ],
+            ),
+            "total": ExtractionField(
+                type="total", values=[Candidate(extractor="test", value=1500.40, confidence=0.95)]
+            ),
+            "base": ExtractionField(
+                type="base", values=[Candidate(extractor="test", value=1240.00, confidence=0.95)]
+            ),
+            "iva_rate": ExtractionField(
+                type="iva_rate", values=[Candidate(extractor="test", value=21, confidence=0.95)]
+            ),
+            "iva_amount": ExtractionField(
+                type="iva_amount",
+                values=[Candidate(extractor="test", value=260.40, confidence=0.95)],
+            ),
+            "fecha": ExtractionField(
+                type="fecha",
+                values=[Candidate(extractor="test", value="31/12/2099", confidence=0.95)],
+            ),
+            "pedido": ExtractionField(
+                type="pedido",
+                values=[Candidate(extractor="test", value="PO-2026-1301", confidence=0.95)],
+            ),
         }
 
-        decision = evaluate(fields, master_data, rule_config, invoice_id="contra_future_date", file_id="contra_future_date.pdf")
+        decision = evaluate(
+            fields,
+            master_data,
+            rule_config,
+            invoice_id="contra_future_date",
+            file_id="contra_future_date.pdf",
+        )
         assert decision.result == Result.NO_PAGAR
         failed_rules = {r.code for r in decision.rule_evaluations if r.verdict == RuleVerdict.FAIL}
         assert "DATE_VALID_NOT_FUTURE" in failed_rules

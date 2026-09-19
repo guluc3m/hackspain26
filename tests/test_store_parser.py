@@ -11,6 +11,7 @@ from filemaid.store.db import Store
 from filemaid.store.ledger import Ledger
 from filemaid.types import ExtractionFeature, Result
 
+
 def _feature(texto: str, method: str) -> ExtractionFeature:
     return ExtractionFeature(
         type="pdf_text", extraction_method=method, data=texto, page=0, extractor_version="1"
@@ -123,6 +124,7 @@ def test_store_backfill_reason_code_de_filas_legacy(cfg):
     row = reopened.rule_evaluations_for("inv-1", "run-1")[0]
     assert row["reason_code"] == "SIN_CAMPO"
 
+
 def test_store_guarda_stage_timings(store):
     store.upsert_invoice("inv-1", "f.pdf", "sha-1")
     store.save_decision(
@@ -159,6 +161,7 @@ def test_store_backfill_decisions_timings_legacy(cfg):
     assert row["extraction_ms"] == 0
     assert row["total_ms"] == 0
     assert json.loads(row["timings"]) == {}
+
 
 def test_pipeline_records_stage_timings(cfg, tmp_path):
     pdf_path = tmp_path / "factura_test.pdf"

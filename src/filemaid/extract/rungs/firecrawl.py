@@ -19,7 +19,6 @@ from typing import Any
 
 import httpx
 
-
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
@@ -162,7 +161,9 @@ def extract(ctx: PageContext) -> ExtractionFeature:
 
     feat = ExtractionFeature(
         type="pdf_text",
-        extraction_method=NAME if confidence >= min_confidence else f"skipped:low-confidence-{confidence:.2f}",
+        extraction_method=NAME
+        if confidence >= min_confidence
+        else f"skipped:low-confidence-{confidence:.2f}",
         data=markdown_text,
         page=ctx.page_index,
         sha256=ctx.page_image_sha or "",

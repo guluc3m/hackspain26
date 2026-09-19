@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
 import pytest
 
 from filemaid.rules.config import RuleConfig
@@ -92,10 +93,10 @@ class TestIbanAdversarialAttacks:
     @pytest.mark.parametrize(
         ("digit_idx", "replacement"),
         [
-            (0, "F"),   # Country code ES -> FS
-            (2, "0"),   # Check digit 9 -> 0
-            (3, "0"),   # Check digit 1 -> 0
-            (4, "1"),   # Bank code 2 -> 1
+            (0, "F"),  # Country code ES -> FS
+            (2, "0"),  # Check digit 9 -> 0
+            (3, "0"),  # Check digit 1 -> 0
+            (4, "1"),  # Bank code 2 -> 1
             (10, "9"),  # Branch code
             (15, "0"),  # Account number
             (23, "0"),  # Last digit 2 -> 0
@@ -105,7 +106,7 @@ class TestIbanAdversarialAttacks:
         self, real_master, real_rules_config, digit_idx: int, replacement: str
     ):
         clean_iban = "ES9121000418450200051332"
-        mutated_iban = clean_iban[:digit_idx] + replacement + clean_iban[digit_idx + 1:]
+        mutated_iban = clean_iban[:digit_idx] + replacement + clean_iban[digit_idx + 1 :]
         assert mutated_iban != clean_iban
 
         fields = _valid_invoice_fields(iban=mutated_iban)
@@ -180,7 +181,9 @@ class TestAmountHallucinationAttacks:
         decision = evaluate(fields, real_master, real_rules_config, "test-off-by-cent", "f.pdf")
 
         assert decision.result is Result.NO_PAGAR
-        order_eval = next(e for e in decision.rule_evaluations if e.code == "ORDER_BELONGS_TO_SUPPLIER")
+        order_eval = next(
+            e for e in decision.rule_evaluations if e.code == "ORDER_BELONGS_TO_SUPPLIER"
+        )
         assert order_eval.verdict is RuleVerdict.FAIL
 
     def test_internally_consistent_hallucination_blocked_by_erp_order(
@@ -197,7 +200,9 @@ class TestAmountHallucinationAttacks:
         decision = evaluate(fields, real_master, real_rules_config, "test-order-diff", "f.pdf")
 
         assert decision.result is Result.NO_PAGAR
-        order_eval = next(e for e in decision.rule_evaluations if e.code == "ORDER_BELONGS_TO_SUPPLIER")
+        order_eval = next(
+            e for e in decision.rule_evaluations if e.code == "ORDER_BELONGS_TO_SUPPLIER"
+        )
         assert order_eval.verdict is RuleVerdict.FAIL
         assert "Importe factura 1210.0 ≠ importe pedido 121.0" in order_eval.reason
 
@@ -227,7 +232,9 @@ class TestClientCifVsVendorNifAttacks:
         assert other_vendor_cif in real_master.proveedores
 
         fields = _valid_invoice_fields(nif=other_vendor_cif)
-        decision = evaluate(fields, real_master, real_rules_config, "test-other-vendor-cif", "f.pdf")
+        decision = evaluate(
+            fields, real_master, real_rules_config, "test-other-vendor-cif", "f.pdf"
+        )
 
         assert decision.result is Result.NO_PAGAR
         fails = {e.code: e for e in decision.rule_evaluations if e.verdict is RuleVerdict.FAIL}
@@ -251,9 +258,7 @@ class TestDegradedScanCorpusSafety:
 
         for scan_id in ("scan_027.pdf", "scan_028.pdf"):
             item = by_file[scan_id]
-            fields = {
-                k: _field(k, v) for k, v in item["extracted"].items()
-            }
+            fields = {k: _field(k, v) for k, v in item["extracted"].items()}
             dec = evaluate(fields, real_master, real_rules_config, scan_id, scan_id)
             assert dec.result is Result.PAGAR
 
@@ -272,9 +277,7 @@ class TestDegradedScanCorpusSafety:
             if fname in ("scan_027.pdf", "scan_028.pdf"):
                 continue  # Clean verified scans
 
-            fields = {
-                k: _field(k, v) for k, v in item["extracted"].items()
-            }
+            fields = {k: _field(k, v) for k, v in item["extracted"].items()}
             dec = evaluate(fields, real_master, real_rules_config, fname, fname)
 
             assert dec.result in (Result.ESCALAR, Result.NO_PAGAR), (
@@ -286,11 +289,11 @@ class TestDegradedScanCorpusSafety:
         "corrupt_field,corrupt_value,expected_result",
         [
             ("iban", "ES5531590012348765123408", Result.ESCALAR),  # Misread IBAN
-            ("total", 477.98, Result.NO_PAGAR),                     # Tampered total
-            ("base", 395.05, Result.NO_PAGAR),                      # Tampered base
-            ("iva_amount", 82.00, Result.NO_PAGAR),                 # Tampered IVA
-            ("nif", "A58231074", Result.NO_PAGAR),                  # Client CIF as vendor
-            ("pedido", "PO-2026-9999", Result.NO_PAGAR),            # Non-existent PO
+            ("total", 477.98, Result.NO_PAGAR),  # Tampered total
+            ("base", 395.05, Result.NO_PAGAR),  # Tampered base
+            ("iva_amount", 82.00, Result.NO_PAGAR),  # Tampered IVA
+            ("nif", "A58231074", Result.NO_PAGAR),  # Client CIF as vendor
+            ("pedido", "PO-2026-9999", Result.NO_PAGAR),  # Non-existent PO
         ],
     )
     def test_adversarial_tampering_of_genuine_scan_fails_safely(
@@ -309,7 +312,10 @@ class TestDegradedScanCorpusSafety:
         }
         # Verify baseline passes
         fields_clean = {k: _field(k, v) for k, v in clean_extracted.items()}
-        assert evaluate(fields_clean, real_master, real_rules_config, "27", "27").result is Result.PAGAR
+        assert (
+            evaluate(fields_clean, real_master, real_rules_config, "27", "27").result
+            is Result.PAGAR
+        )
 
         # Inject adversarial tampering
         tampered_extracted = dict(clean_extracted, **{corrupt_field: corrupt_value})
