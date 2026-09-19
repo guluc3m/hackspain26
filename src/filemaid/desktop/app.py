@@ -13,6 +13,7 @@ sigue consumiendo la referencia sintética (frontend/src/mock/data.ts, targets
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from filemaid.engines import DecisionEngine, ExtractionEngine
@@ -70,6 +71,22 @@ def ui_destino() -> str:
     )
 
 
+def _gui_backend() -> str | None:
+    """Backend explícito si QT está disponible en Linux.
+
+    Con gui='qt' pywebview no sondea GTK: evita el ruido
+    '[pywebview] GTK cannot be loaded' en cada arranque. En otras
+    plataformas se deja la selección automática (backends nativos).
+    """
+    if sys.platform != "linux":
+        return None
+    try:
+        import qtpy  # noqa: F401
+    except ImportError:
+        return None
+    return "qt"
+
+
 def main() -> int:
     try:
         import webview
@@ -84,7 +101,7 @@ def main() -> int:
         height=860,
     )
     try:
-        webview.start()
+        webview.start(gui=_gui_backend())
     except Exception as exc:
         # sin GTK/QT con extensiones Python en el sistema (p.ej. entorno sin
         # raíz), la ventana nativa no puede abrirse

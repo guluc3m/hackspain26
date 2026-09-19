@@ -74,6 +74,11 @@ engines.decision), aún **sin definir**: propagan NotImplementedError. La UI
 sigue consumiendo la referencia sintética. En dev, con `dev_syncth` corriendo:
 `ALBERTITOS_UI_URL=http://127.0.0.1:5173 uv run albertitos-desktop`.
 
+El lanzador fuerza el backend QT cuando está disponible (sin sondeo GTK).
+Según la máquina, el arranque puede imprimir unas líneas de sondeo del sistema
+(Vulkan «Failed to detect any valid GPUs», libva): son inofensivas y no
+afectan al funcionamiento.
+
 La UI consume los datos de la base de datos (sqlite) que expone el backend.
 Mientras esa conexión no existe, los targets `*_syncth` ejecutan la interfaz
 con una referencia sintética de esa base (`src/mock/data.ts`): decisiones con

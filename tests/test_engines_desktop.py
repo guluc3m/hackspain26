@@ -6,9 +6,11 @@ La ventana nativa no se abre en tests (degrada a navegador, extra desktop).
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
-from filemaid.desktop.app import Api, ui_destino
+from filemaid.desktop.app import Api, _gui_backend, ui_destino
 from filemaid.engines import DecisionEngine, ExtractionEngine
 from filemaid.types import ExtractionField
 
@@ -35,6 +37,19 @@ def test_api_extraer_propaga_llamada_sin_definir():
 def test_api_decidir_propaga_llamada_sin_definir():
     with pytest.raises(NotImplementedError):
         Api().decidir("inv-1")
+
+
+def test_gui_backend_qt_en_linux_y_auto_en_otras(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setitem(sys.modules, "qtpy", object())
+    assert _gui_backend() == "qt"
+
+    monkeypatch.setitem(sys.modules, "qtpy", None)
+    assert _gui_backend() is None
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "qtpy", object())
+    assert _gui_backend() is None
 
 
 def test_ui_destino_url_de_dev_tiene_prioridad(monkeypatch, tmp_path):
