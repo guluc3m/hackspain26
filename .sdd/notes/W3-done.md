@@ -148,3 +148,14 @@
 - El eslabón importe: el ledger real no guarda importes; el join honesto es
   vía pedido (store.db) × maestro. Las PAGAR sin pedido/entrada se listan
   como aviso y no se suman.
+
+## Sesión 10 — T28 cerrado (commit d59a605)
+
+- Simulacro de defensa (`albertitos.simulacro`, 15/15 PASS): el guion
+  contrastado contra la medición ACTUAL + demo preparada (5 pantallas 200
+  in-process, resumen ejecutivo regenerado, store SOLO LECTURA).
+- Capturó 3 desincronizaciones reales en el primer intento (outcomes
+  pre-fix, p95 desactualizado, resumen ausente) — el guion se actualizó con
+  la medición actual, jamás al revés.
+- Para la defensa: `uv run python -m albertitos.simulacro` antes de cada
+  ensayo; si algo sale ROJO, se actualiza el guion con la medición nueva.
