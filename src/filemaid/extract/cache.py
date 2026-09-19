@@ -54,7 +54,9 @@ class FeatureCache:
         raw = f"{page_sha256}|{extractor_version}|{config_version}"
         return sha256_bytes(raw.encode())
 
-    def get(self, page_sha256: str, extractor_version: str, config_version: str) -> ExtractionFeature | None:
+    def get(
+        self, page_sha256: str, extractor_version: str, config_version: str
+    ) -> ExtractionFeature | None:
         doc_id = f"cache:{self.key(page_sha256, extractor_version, config_version)}"
         doc = self.store.get(doc_id)
         if doc is None:
@@ -84,7 +86,9 @@ class FeatureCache:
 
         if len(raw_json.encode("utf-8")) > INLINE_LIMIT:
             identity = {"scan_id": f"cache-{k}"}
-            ref = self.store.artifact(identity, "cache", f"cache_{k}.json", raw_json.encode("utf-8"), "application/json")
+            ref = self.store.artifact(
+                identity, "cache", f"cache_{k}.json", raw_json.encode("utf-8"), "application/json"
+            )
             payload = {"payload_ref": ref, "encoding": "json"}
 
         doc = {

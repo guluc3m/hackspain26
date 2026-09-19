@@ -21,6 +21,19 @@ async function immutable(doc) {
   if (doc.kind === 'decision' && !['PAGAR', 'NO_PAGAR', 'ESCALAR'].includes(doc.decision?.result ?? doc.result)) {
     fail('Invalid decision result');
   }
+  const refs = [];
+  if (doc.kind === 'artifact') {
+    if (!Array.isArray(doc.chunks) || doc.chunks.some(id => typeof id !== 'string' || !id.startsWith('blob:'))) fail('Invalid artifact chunks');
+    refs.push(...doc.chunks);
+  }
+  if (doc.payload_ref !== undefined) {
+    if (typeof doc.payload_ref !== 'string' || !doc.payload_ref.startsWith('artifact:')) fail('Invalid payload reference');
+    refs.push(doc.payload_ref);
+  }
+  for (const id of refs) {
+    if (id === doc._id) fail('Cyclic dependency');
+    checked(await db.get(id, { conflicts: true }));
+  }
   try {
     return await db.put(doc);
   } catch (error) {
@@ -165,9 +178,6 @@ try {
   } else if (request.op === 'sync_put') {
     if (typeof request.doc?._id !== 'string' || request.doc._id.startsWith('_')) fail('Reserved sync document ID');
     if (Object.keys(request.doc).some(k => k.startsWith('_') && !['_id', '_attachments'].includes(k))) fail('Reserved sync document key');
-    const dependencies = request.doc.kind === 'artifact' ? [...(request.doc.chunks || [])] : [];
-    if (request.doc.payload_ref) dependencies.push(request.doc.payload_ref);
-    for (const id of dependencies) checked(await db.get(id, { conflicts: true }));
     result = await immutable(request.doc);
   } else {
     fail('Unknown operation');

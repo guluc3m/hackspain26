@@ -1,4 +1,5 @@
 """Device-local runtime configuration, stored only in PouchDB _local documents."""
+
 from __future__ import annotations
 
 import os
@@ -44,8 +45,12 @@ class RuntimeSettings:
         vlm_url = endpoint(values.get("vlm_url", ""), "Endpoint VLM")
         if mode == "server" and not sync_url:
             raise ValueError("El modo servidor requiere una URL de sincronización")
-        return {"mode": mode, "sync_url": sync_url, "vlm_url": vlm_url,
-                "vlm_model": values.get("vlm_model", "").strip()}
+        return {
+            "mode": mode,
+            "sync_url": sync_url,
+            "vlm_url": vlm_url,
+            "vlm_model": values.get("vlm_model", "").strip(),
+        }
 
     def save(self, values: dict) -> dict:
         settings = self.validate(values)

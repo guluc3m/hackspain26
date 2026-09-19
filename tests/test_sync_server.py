@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
-import os
 import threading
 import time
 from pathlib import Path
@@ -13,7 +11,6 @@ import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from filemaid.server import create_server
 from filemaid.store.pouch import PouchStore
@@ -215,6 +212,7 @@ def test_vlm_forwarding_and_error_scrubbing(tmp_path, monkeypatch):
         if auth != "Bearer secret-upstream-key":
             raise HTTPException(status_code=401, detail="Unauthorized upstream")
         data = await request.json()
+        assert data["messages"][0]["content"] == "OCR:"
         return {
             "choices": [
                 {
@@ -270,6 +268,7 @@ def test_vlm_forwarding_and_error_scrubbing(tmp_path, monkeypatch):
     finally:
         server_obj.should_exit = True
 
+
 def test_sync_document_endpoint_with_attachments(tmp_path, monkeypatch):
     monkeypatch.setenv("FILEMAID_SERVER_TOKEN", "test-token")
     server_dir = tmp_path / "server_data"
@@ -278,17 +277,19 @@ def test_sync_document_endpoint_with_attachments(tmp_path, monkeypatch):
     # Create document with embedded attachment
     att_data = b"Inline attachment payload"
     doc_id = "doc:with:att"
-    server_store.put({
-        "_id": doc_id,
-        "kind": "custom_record",
-        "title": "Embedded test",
-        "_attachments": {
-            "report.txt": {
-                "content_type": "text/plain",
-                "data": base64.b64encode(att_data).decode("ascii"),
-            }
-        },
-    })
+    server_store.put(
+        {
+            "_id": doc_id,
+            "kind": "custom_record",
+            "title": "Embedded test",
+            "_attachments": {
+                "report.txt": {
+                    "content_type": "text/plain",
+                    "data": base64.b64encode(att_data).decode("ascii"),
+                }
+            },
+        }
+    )
 
     server_cfg = DummyConfig(server_dir)
     app = create_server(server_cfg)

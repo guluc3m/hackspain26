@@ -7,8 +7,8 @@ import base64
 import hashlib
 import hmac
 import ipaddress
-import os
 import json
+import os
 import re
 from typing import Any
 
@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from .llama_manager import get_manager
+from .runtime import endpoint
 from .store.pouch import PouchStore
 
 MAX_VLM_BODY_SIZE = 24 * 1024 * 1024
@@ -52,20 +53,41 @@ async def _read_bounded_body(request: Request, max_size: int) -> bytes:
     async for chunk in request.stream():
         total += len(chunk)
         if total > max_size:
-            raise HTTPException(status_code=413, detail=f"Request body exceeds {max_size} bytes limit")
+            raise HTTPException(
+                status_code=413, detail=f"Request body exceeds {max_size} bytes limit"
+            )
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+async def _forward_vlm(url: str, body: dict, key: str = "") -> Response:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    try:
+        async with (
+            httpx.AsyncClient(timeout=VLM_TIMEOUT, follow_redirects=False) as client,
+            client.stream("POST", url, json=body, headers=headers) as response,
+        ):
+            if response.status_code >= 400:
+                raise HTTPException(response.status_code, "VLM upstream rejected request")
+            chunks = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > MAX_JSON_BODY_SIZE:
+                    raise HTTPException(502, "VLM response exceeds size limit")
+                chunks.append(chunk)
+            return Response(b"".join(chunks), media_type="application/json")
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "VLM upstream unavailable") from exc
 
 
 def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
     """Create FastAPI application hosting PouchDB synchronization and VLM escalation."""
     token = (
-        server_token
-        if server_token is not None
-        else os.environ.get("FILEMAID_SERVER_TOKEN", "")
+        server_token if server_token is not None else os.environ.get("FILEMAID_SERVER_TOKEN", "")
     ).strip()
 
-    upstream_vlm_url = os.environ.get("FILEMAID_SERVER_VLM_URL", "").strip().rstrip("/")
+    upstream_vlm_url = endpoint(os.environ.get("FILEMAID_SERVER_VLM_URL", ""), "VLM upstream")
     upstream_vlm_key = os.environ.get("FILEMAID_SERVER_VLM_KEY", "").strip()
 
     vlm_semaphore = asyncio.Semaphore(MAX_CONCURRENT_VLM)
@@ -122,7 +144,11 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
         try:
             payload = json.loads(body_bytes)
             docs = payload["docs"]
-            if not isinstance(docs, list) or not 1 <= len(docs) <= 32 or any(not isinstance(d, dict) for d in docs):
+            if (
+                not isinstance(docs, list)
+                or not 1 <= len(docs) <= 32
+                or any(not isinstance(d, dict) for d in docs)
+            ):
                 raise ValueError("invalid document list")
         except (ValueError, KeyError, TypeError):
             raise HTTPException(status_code=400, detail="Invalid JSON payload") from None
@@ -189,6 +215,7 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
     async def get_blob(sha256: str) -> Response:
         if not re.fullmatch(r"[0-9a-f]{64}", sha256):
             raise HTTPException(400, "Invalid blob hash")
+
         def _do_get():
             store = _get_store()
             doc_id = f"blob:{sha256}"
@@ -236,7 +263,7 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
         try:
             body = json.loads(body_bytes)
             if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
-                raise ValueError("missing messages")
+                raise TypeError("missing messages")
             if body.get("stream"):
                 raise HTTPException(400, "Streaming is not supported by the escalator")
         except (ValueError, TypeError):
@@ -249,25 +276,7 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
                     if upstream_vlm_url.endswith("/v1")
                     else f"{upstream_vlm_url}/v1/chat/completions"
                 )
-                headers = {"Content-Type": "application/json"}
-                if upstream_vlm_key:
-                    headers["Authorization"] = f"Bearer {upstream_vlm_key}"
-
-                try:
-                    async with httpx.AsyncClient(timeout=VLM_TIMEOUT) as client:
-                        upstream_resp = await client.post(
-                            upstream_endpoint,
-                            json=body,
-                            headers=headers,
-                        )
-                    return Response(
-                        content=upstream_resp.content,
-                        status_code=upstream_resp.status_code,
-                        media_type="application/json",
-                    )
-                except httpx.HTTPError as exc:
-                    detail = _scrub_secrets(str(exc))
-                    raise HTTPException(status_code=502, detail=f"Upstream VLM error: {detail}") from exc
+                return await _forward_vlm(upstream_endpoint, body, upstream_vlm_key)
             else:
                 # Local llama-server manager fallback run via to_thread
                 def _prepare_local_llama():
@@ -282,19 +291,6 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
                     raise HTTPException(status_code=503, detail="Local llama sidecar unavailable")
 
                 local_endpoint = f"{base_url}/v1/chat/completions"
-                try:
-                    async with httpx.AsyncClient(timeout=VLM_TIMEOUT) as client:
-                        local_resp = await client.post(
-                            local_endpoint,
-                            json=body,
-                        )
-                    return Response(
-                        content=local_resp.content,
-                        status_code=local_resp.status_code,
-                        media_type="application/json",
-                    )
-                except httpx.HTTPError as exc:
-                    detail = _scrub_secrets(str(exc))
-                    raise HTTPException(status_code=502, detail=f"Local VLM error: {detail}") from exc
+                return await _forward_vlm(local_endpoint, body)
 
     return app

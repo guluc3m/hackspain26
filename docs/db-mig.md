@@ -68,9 +68,21 @@ El reprocesado acepta `file_key` y rechaza con 409 un basename ambiguo; restaura
 
 Nunca se actualiza ni borra un documento de dominio; `_rev` no es histórico de negocio. Reprocesar crea nuevo scan y nueva decisión. Repetir un `put` del mismo `_id` y contenido es idempotente; un 409 con contenido distinto es error, nunca last-write-wins. Todos los resultados individuales se esperan; no se interpreta un `bulkDocs` HTTP exitoso como éxito de cada fila. No se ofrece edición de `_rev`, `new_edits=false`, borrado ni replicación desde la API.
 
-La vista se versiona, no se muta sobre lecturas en vuelo. Se rechazan lecturas con `_conflicts`; replicación externa/manual no está soportada y requiere reconciliación explícita sin borrar decisiones. Compaction no elimina historia porque cada decisión es un documento independiente.
+La vista se versiona, no se muta sobre lecturas en vuelo. Se rechazan lecturas con `_conflicts`. La sincronización soportada es el protocolo de la aplicación descrito abajo, no la replicación arbitraria con CouchDB. Compaction no elimina historia porque cada decisión es un documento independiente.
 
 Los escalones se guardan al terminar, antes de iniciar el siguiente. Si falla una página posterior, las páginas/escalones anteriores permanecen. El original se captura antes de extracción; las imágenes se aíslan por scan. La decisión se publica después de fields/evidencia y nunca se sobrescribe. Una caída del servidor deja la evidencia local disponible para sincronizar más tarde; los errores de sincronización se muestran, no se transforman en decisiones.
+
+## Protocolo servidor
+
+`filemaid server` aloja `/sync/info`, `/sync/pull?since=N&limit=N`, `/sync/push`, `/sync/document?id=...` y `/sync/blob/<sha256>`. El cliente intercambia documentos append-only en ambas direcciones y espera todos los adjuntos/dependencias antes de publicar el documento dependiente. No instala ni requiere CouchDB. Las revisiones `_rev` son locales: igualdad de contenido es idempotente; contenido distinto con el mismo ID es conflicto explícito.
+
+Checkpoints `_local/sync-<hash URL>` incluyen identidades de ambas bases; el reinicio/reemplazo remoto reinicia los cursores. `sync.lock` serializa intercambios completos por cliente; `pouchdb.lock` serializa operaciones de LevelDB. Errores de transporte no adelantan el checkpoint del lote en vuelo. `_local` y design docs se excluyen del intercambio; los tipos/campos de negocio desconocidos se conservan, incluidos adjuntos inline.
+
+Las escrituras de artefactos rechazan chunks inválidos, referencias ausentes y ciclos directos antes de publicarse. Si se detecta corrupción externa o conflicto, la sincronización se detiene con error y no adelanta cursores: no se omite evidencia silenciosamente. La exportación JSONL de un run con varios contenidos bajo el mismo basename se rechaza por ambigua; use el export del lote concreto.
+
+Límites: blobs 1 MiB, respuesta/petición JSON de sync 2 MiB, paginación de hasta 32 documentos por cliente limitada también por bytes. Documentos mayores deben usar artefactos fragmentados. El escalador acepta multimodal OpenAI-compatible en `/v1/chat/completions`, cuerpo hasta 24 MiB, respuesta hasta 2 MiB, máximo cuatro peticiones upstream simultáneas y timeout de 120 s. Streaming de tokens no soportado. Upstream fijado por entorno del servidor, nunca por datos del documento. Sin upstream configurado se inicia el sidecar local con presupuesto de hilos (`FILEMAID_LLAMA_THREADS`, default 4).
+
+En despliegue remoto se exige Bearer token (`FILEMAID_SERVER_TOKEN` / `FILEMAID_SYNC_TOKEN`) y se recomienda terminación TLS. No se guardan secretos en la UI ni en documentos replicados. Un endpoint VLM personalizado puede usar `FILEMAID_VLM_KEY`, nunca recibe el token de sincronización. La UI muestra errores sin cambiar el modo confirmado si falla la conexión.
 
 ## Instalación y operación
 
@@ -78,6 +90,6 @@ Desde el repositorio: `uv run -- npm ci --prefix src/filemaid/store/pouchdb`, de
 
 ### Verificación de la migración
 
-`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, degradación explícita, fallo parcial y enlace exacto de informes/reprocesado. Revisión adversarial adicional: conflictos de revisiones introducidos externamente, límites exactos y bloqueo entre procesos. No se promete replicación externa automática.
+`tests/test_pouch_persistence.py`, `test_pouch_boundaries.py`, `test_pouch_identity.py` ejercitan el motor JS real: aliases, recuperación sin fichero original, fragmentación concurrente, colisiones, payloads grandes, fallo parcial y enlace exacto de informes/reprocesado. `test_sync_server.py` cubre intercambio HTTP, adjuntos, autenticación y escalador; `test_runtime_settings.py` y `test_startup_choice.py` cubren configuración local y elección de modo. Revisión adversarial adicional: conflictos de revisiones introducidos externamente, límites exactos y bloqueo entre procesos.
 
 Referencias: [PouchDB API](https://pouchdb.com/api.html), [conflictos y append-only](https://pouchdb.com/guides/conflicts.html). Sin dependencia de un servidor CouchDB.

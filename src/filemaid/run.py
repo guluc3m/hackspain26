@@ -12,6 +12,7 @@ from pathlib import Path
 from .config import AppConfig
 from .pipeline import Pipeline, outcomes_from_store
 from .rules.report import write_report
+from .runtime import RuntimeSettings
 from .store.pouch import PouchStore
 from .store.queries import archive_output
 
@@ -57,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     p_rep.add_argument("--invoice-id", required=True)
     p_rep.add_argument("--pdf", type=Path, required=True)
 
-    p_clean = sub.add_parser("clean", help="borra los espacios de trabajo temporales (páginas rasterizadas)")
+    p_clean = sub.add_parser(
+        "clean", help="borra los espacios de trabajo temporales (páginas rasterizadas)"
+    )
     p_clean.add_argument("--pages", action="store_true", help="borra las páginas rasterizadas")
     p_clean.add_argument("--yes", "-y", action="store_true", help="no pide confirmación")
 
@@ -89,14 +92,20 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_report and decisions:
             out = write_report(pipeline.store, cfg, pipeline.rule_config.version, args.report_dir)
             print(f"informe: {out / 'index.html'}")
+            if cfg.runtime_settings()["mode"] == "server":
+                RuntimeSettings(cfg).sync()
         return 0
 
     if args.command == "report":
         store = PouchStore(cfg.root)
         run_id = args.run_id or _latest_run_id(store)
         out = write_report(store, cfg, run_id, args.out)
-        decisions_in_run = [d for d in store.list("decision:") if store.hydrate(d).get("run_id") == run_id]
+        decisions_in_run = [
+            d for d in store.list("decision:") if store.hydrate(d).get("run_id") == run_id
+        ]
         print(f"{len(decisions_in_run)} facturas -> {out / 'index.html'}")
+        if cfg.runtime_settings()["mode"] == "server":
+            RuntimeSettings(cfg).sync()
         return 0
 
     if args.command == "emit":
@@ -112,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
             if d.get("run_id") == run_id and d.get("scan_id"):
                 archive_output(cfg.root, d["scan_id"], args.out, "application/x-ndjson")
         print(f"{len(rows)} outcomes -> {args.out}")
+        if cfg.runtime_settings()["mode"] == "server":
+            RuntimeSettings(cfg).sync()
         return 0
 
     if args.command == "serve":

@@ -31,6 +31,7 @@ class AppConfig:
             "FIRECRAWL_API_URL", "https://api.firecrawl.dev/v2/parse"
         )
         self.firecrawl_api_key = os.environ.get("FIRECRAWL_API_KEY", "")
+
     @classmethod
     def load(cls) -> AppConfig:
         root = Path(os.environ.get("FILEMAID_DATA", "data"))
@@ -48,7 +49,8 @@ class AppConfig:
         if settings["mode"] == "server" and not vlm_url:
             vlm_url = settings["sync_url"] + "/v1"
         config = {
-            "config_version": self.extraction_config_path.stem + ":"
+            "config_version": self.extraction_config_path.stem
+            + ":"
             + hashlib.sha256(
                 self.extraction_config_path.read_bytes()
                 + repr((vlm_url, settings["vlm_model"])).encode()

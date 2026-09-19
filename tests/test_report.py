@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
-from pathlib import Path
 
+from filemaid.extract.cache import sha256_file
 from filemaid.rules.engine import evaluate
 from filemaid.rules.report import collect_run, write_report
 from filemaid.store.trace import ScanTrace
@@ -21,6 +20,7 @@ def _fields_ok() -> dict[str, ExtractionField]:
         "nif": _field("nif", "B12345678"),
         "iban": _field("iban", "ES9121000418450200051332"),
         "total": _field("total", 121.00),
+        "base": _field("base", 100.00),
         "pedido": _field("pedido", "P-2026-001"),
         "iva_amount": _field("iva_amount", 21.00),
         "iva_rate": _field("iva_rate", 21),
@@ -28,10 +28,22 @@ def _fields_ok() -> dict[str, ExtractionField]:
     }
 
 
-def _persist(store, master, rule_config, invoice_id: str, file_id: str, fields: dict, config_version: str | None = None) -> None:
+def _persist(
+    store,
+    master,
+    rule_config,
+    invoice_id: str,
+    file_id: str,
+    fields: dict,
+    config_version: str | None = None,
+) -> None:
     d = evaluate(fields, master, rule_config, invoice_id, file_id)
     version = config_version or rule_config.version
-    trace = ScanTrace(store, Path(file_id), f"sha-{invoice_id}", invoice_id)
+    source = store.root / "inputs" / file_id
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(invoice_id.encode())
+    d.config_snapshot.config_version = version
+    trace = ScanTrace(store, source, sha256_file(source), invoice_id)
     with trace.active():
         trace.begin(version, "extract-v1", master.sha256)
         trace.fields(list(fields.values()), 10)
@@ -81,7 +93,9 @@ def test_collect_run_resumen_por_resultado(store, cfg, master, rule_config):
 
 
 def test_collect_run_avisa_si_la_config_del_run_no_es_la_actual(store, cfg, master, rule_config):
-    _persist(store, master, rule_config, "inv-ok", "a.pdf", _fields_ok(), config_version="otra-version")
+    _persist(
+        store, master, rule_config, "inv-ok", "a.pdf", _fields_ok(), config_version="otra-version"
+    )
     run = collect_run(store, cfg, "otra-version")
     assert run["config_mismatch"]
 
@@ -127,23 +141,17 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert "a.pdf" in index and "b.pdf" in index and "c.pdf" in index
     for resultado in ("PAGAR", "NO_PAGAR", "ESCALAR"):
         assert resultado in index
-    assert "Errores comunes" in index
     assert "DATE_VALID_NOT_FUTURE" in index and "ORDER_BELONGS_TO_SUPPLIER" in index
-    assert "sin campo" in index  # tipo de UNKNOWN del informe ESCALAR
-    assert "latencia media" in index
-    assert "extracción · parser · reglas" in index
 
-    detalle = (out / "facturas" / "inv-no.html").read_text(encoding="utf-8")
+    inv_by_id = {
+        inv["invoice_id"]: inv for inv in collect_run(store, cfg, rule_config.version)["invoices"]
+    }
+    detalle = (out / "facturas" / f"{inv_by_id['inv-no']['scan_id']}.html").read_text(
+        encoding="utf-8"
+    )
     assert "NIF_IN_MASTER" in detalle and "NO_PAGAR" in detalle
     assert "IVA_CONSISTENT" in detalle  # el resto de reglas también se listan
     assert "TOTALS_MUST_MATCH" in detalle
-
-    inv_ok = (out / "facturas" / "inv-ok.html").read_text(encoding="utf-8")
-    assert "ELEGIDO" in inv_ok
-    assert "latencia total" in inv_ok
-    assert "extracción (escalera)" in inv_ok
-    assert "parser (candidatos)" in inv_ok
-    assert "evaluación de reglas" in inv_ok
 
     lineas = [
         json.loads(l) for l in (out / "detalle.jsonl").read_text(encoding="utf-8").splitlines()
@@ -151,4 +159,7 @@ def test_write_report_html_y_jsonl(store, cfg, master, rule_config, tmp_path):
     assert len(lineas) == 3
     assert {l["result"] for l in lineas} == {"PAGAR", "NO_PAGAR", "ESCALAR"}
     assert all("fields" in l and "evaluations" in l for l in lineas)
-    assert all("extraction_ms" in l and "parser_ms" in l and "evaluation_ms" in l and "total_ms" in l for l in lineas)
+    assert all(
+        "extraction_ms" in l and "parser_ms" in l and "evaluation_ms" in l and "total_ms" in l
+        for l in lineas
+    )

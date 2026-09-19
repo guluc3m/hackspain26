@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

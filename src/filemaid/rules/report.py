@@ -184,7 +184,9 @@ def collect_invoice(
                 "verdict_class": _VEREDICTO_CLASE.get(verdict, "muted"),
                 "reason": r.get("reason", ""),
                 "reason_code": r.get("reason_code", ""),
-                "reason_label": _categoria(r.get("reason_code", "")) if verdict == "UNKNOWN" else "",
+                "reason_label": _categoria(r.get("reason_code", ""))
+                if verdict == "UNKNOWN"
+                else "",
                 "consumed": consumed,
                 "consumed_pairs": [(k, _display(v)) for k, v in sorted(consumed.items())],
             }
@@ -220,7 +222,11 @@ def collect_invoice(
             f_type = f.get("type", "")
             cands = f.get("values", [])
             fields_dict[f_type] = [
-                {"extractor": c.get("extractor", ""), "value": c.get("value"), "confidence": c.get("confidence", 0.0)}
+                {
+                    "extractor": c.get("extractor", ""),
+                    "value": c.get("value"),
+                    "confidence": c.get("confidence", 0.0),
+                }
                 for c in cands
             ]
     fields = _field_breadcrumbs_all(fields_dict, seleccion)
@@ -306,10 +312,7 @@ def collect_run(store: PouchStore, cfg: AppConfig, run_id: str) -> dict[str, Any
     decisions = list(latest_by_file.values())
     decisions.sort(key=lambda d: d.get("file_id", ""))
 
-    invoices = [
-        collect_invoice(store, d, rc.seleccion)
-        for d in decisions
-    ]
+    invoices = [collect_invoice(store, d, rc.seleccion) for d in decisions]
 
     run_config_version = ""
     run_master_sha = ""
@@ -583,9 +586,13 @@ def write_report(store: PouchStore, cfg: AppConfig, run_id: str, out_dir: Path) 
             (facturas_dir / f"{inv['scan_id']}.html").write_text(page, encoding="utf-8")
             f.write(json.dumps(inv, ensure_ascii=False, sort_keys=True) + "\n")
             if inv.get("scan_id"):
-                archive_output(cfg.root, inv["scan_id"], facturas_dir / f"{inv['scan_id']}.html", "text/html")
+                archive_output(
+                    cfg.root, inv["scan_id"], facturas_dir / f"{inv['scan_id']}.html", "text/html"
+                )
     for inv in report["invoices"]:
         if inv.get("scan_id"):
             archive_output(cfg.root, inv["scan_id"], out_dir / "index.html", "text/html")
-            archive_output(cfg.root, inv["scan_id"], out_dir / "detalle.jsonl", "application/x-ndjson")
+            archive_output(
+                cfg.root, inv["scan_id"], out_dir / "detalle.jsonl", "application/x-ndjson"
+            )
     return out_dir

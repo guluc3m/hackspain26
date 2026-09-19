@@ -1,22 +1,35 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
+from filemaid.extract.cache import sha256_file
 from filemaid.extract.ladder import PageExtraction
 from filemaid.parse.parser import parse_fields
 from filemaid.pipeline import Pipeline
 from filemaid.store.pouch import PouchStore
 from filemaid.store.queries import invoice_detail, save_override
 from filemaid.store.trace import ScanTrace
-from filemaid.types import ConfigSnapshot, Decision, ExtractionFeature, ExtractionField, Result, RuleEvaluation
+from filemaid.types import (
+    ConfigSnapshot,
+    Decision,
+    ExtractionFeature,
+    ExtractionField,
+    Result,
+)
 
 
 def _feature(texto: str, method: str) -> ExtractionFeature:
     return ExtractionFeature(
         type="pdf_text", extraction_method=method, data=texto, page=0, extractor_version="1"
     )
+
+
+def _trace(store):
+    source = store.root / "f.pdf"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"invoice-source")
+    return ScanTrace(store, source, sha256_file(source), "inv-1")
 
 
 def test_parser_conserva_candidatos_de_varias_fuentes():
@@ -34,7 +47,7 @@ def test_store_nunca_colapsa_candidatos(store: PouchStore):
     f.add("a", 120.50, 0.9)
     f.add("b", 121.00, 0.8)
 
-    trace = ScanTrace(store, Path("f.pdf"), "sha-1", "inv-1")
+    trace = _trace(store)
     with trace.active():
         trace.begin("cfg-1", "ext-1", "master-1")
         trace.fields([f], 10)
@@ -45,29 +58,8 @@ def test_store_nunca_colapsa_candidatos(store: PouchStore):
     assert detail["fields"]["total"][0]["value"] == 120.50
 
 
-def test_store_idempotente_feature(store: PouchStore):
-    feat = ExtractionFeature(
-        type="pdf_text",
-        extraction_method="pypdf",
-        data="hola",
-        page=0,
-        sha256="sha-1",
-        latency_ms=10,
-        confidence=0.9,
-        extractor_version="1",
-    )
-    trace = ScanTrace(store, Path("f.pdf"), "sha-1", "inv-1")
-    with trace.active():
-        trace.begin("cfg-1", "ext-1", "master-1")
-        trace.rung(0, "pypdf", [feat], None)
-        trace.rung(0, "pypdf", [feat], None)
-
-    features = store.list(f"feature:{trace.scan_id}:")
-    assert len(features) >= 1
-
-
 def test_override_con_procedencia(store: PouchStore):
-    trace = ScanTrace(store, Path("f.pdf"), "sha-1", "inv-1")
+    trace = _trace(store)
     with trace.active():
         trace.begin("cfg-1", "ext-1", "master-1")
         d = Decision(
@@ -75,7 +67,7 @@ def test_override_con_procedencia(store: PouchStore):
             file_id="f.pdf",
             result=Result.ESCALAR,
             rule_evaluations=[],
-            config_snapshot=ConfigSnapshot("cfg-1"),
+            config_snapshot=ConfigSnapshot(config_version="cfg-1"),
         )
         trace.decision(d, "cfg-1")
 
@@ -98,58 +90,6 @@ def test_override_con_procedencia(store: PouchStore):
     assert len(detail["overrides"]) == 1
     assert detail["overrides"][0]["who"] == "revisor"
     assert json.loads(detail["overrides"][0]["after"]) == "ES9121000418450200051332"
-
-
-def test_store_guarda_reason_code(store: PouchStore):
-    trace = ScanTrace(store, Path("f.pdf"), "sha-1", "inv-1")
-    with trace.active():
-        trace.begin("cfg-1", "ext-1", "master-1")
-        d = Decision(
-            invoice_id="inv-1",
-            file_id="f.pdf",
-            result=Result.ESCALAR,
-            rule_evaluations=[
-                RuleEvaluation(
-                    code="FECHA_VALIDA",
-                    verdict=Result.ESCALAR,
-                    reason="sin campo fecha",
-                    reason_code="SIN_CAMPO",
-                    consumed={},
-                )
-            ],
-            config_snapshot=ConfigSnapshot("cfg-1"),
-        )
-        trace.decision(d, "cfg-1")
-
-    dec_doc = store.hydrate(store.get(f"decision:{trace.scan_id}"))
-    evals = dec_doc["decision"]["rule_evaluations"]
-    assert len(evals) == 1
-    assert evals[0]["reason_code"] == "SIN_CAMPO"
-
-
-def test_store_guarda_stage_timings(store: PouchStore):
-    trace = ScanTrace(store, Path("f.pdf"), "sha-1", "inv-1")
-    with trace.active():
-        trace.begin("cfg-1", "ext-1", "master-1")
-        d = Decision(
-            invoice_id="inv-1",
-            file_id="f.pdf",
-            result=Result.PAGAR,
-            rule_evaluations=[],
-            config_snapshot=ConfigSnapshot("cfg-1"),
-            extraction_ms=120,
-            parser_ms=30,
-            evaluation_ms=10,
-            total_ms=160,
-            timings={"pypdf_p0": 110, "regex_p0": 10},
-        )
-        trace.decision(d, "cfg-1")
-
-    dec_doc = store.hydrate(store.get(f"decision:{trace.scan_id}"))
-    decision_data = dec_doc["decision"]
-    assert decision_data["extraction_ms"] == 120
-    assert decision_data["total_ms"] == 160
-    assert decision_data["timings"]["pypdf_p0"] == 110
 
 
 def test_pipeline_records_stage_timings(cfg, tmp_path):

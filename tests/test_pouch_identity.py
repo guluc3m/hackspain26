@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from filemaid.api.app import create_app
-from filemaid.pipeline import Pipeline
+from filemaid.pipeline import Pipeline, outcomes_from_store
 from filemaid.rules.report import write_report
 from filemaid.store.pouch import PouchStore
 from filemaid.store.queries import invoice_rows
@@ -24,6 +25,8 @@ def test_same_basename_reprocess_and_report_use_exact_scan(cfg, tmp_path):
     store = PouchStore(cfg.root)
     rows = invoice_rows(store)
     assert len(rows) == 2
+    with pytest.raises(ValueError, match="Ambiguous filename"):
+        outcomes_from_store(store, pipe.rule_config.version)
     first_key = next(
         r["file_key"] for r in store.list("file:") if r["invoice_id"] == first.invoice_id
     )
@@ -38,7 +41,10 @@ def test_same_basename_reprocess_and_report_use_exact_scan(cfg, tmp_path):
     assert response.json()["result"] == first.result
     assert len(store.list(f"scan:{first_key}:")) == 2
     report = write_report(pipe.store, cfg, pipe.rule_config.version, tmp_path / "reports")
-    decisions = [store.hydrate(d) for d in store.list("decision:") if store.hydrate(d).get("run_id") == pipe.rule_config.version]
+    latest = {}
+    for doc in sorted(store.list("decision:"), key=lambda d: d["timestamp"]):
+        latest[doc["file_key"]] = doc
+    decisions = latest.values()
     for row in decisions:
         artifacts = [
             d
@@ -48,7 +54,7 @@ def test_same_basename_reprocess_and_report_use_exact_scan(cfg, tmp_path):
         assert {d["name"] for d in artifacts} == {
             "index.html",
             "detalle.jsonl",
-            f"{row['invoice_id']}.html",
+            f"{row['scan_id']}.html",
         }
         detail = next(d for d in artifacts if d["name"] == "detalle.jsonl")
         assert (

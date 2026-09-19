@@ -1,4 +1,5 @@
 """Append-only PouchDB exchange over the filemaid HTTP service, not CouchDB."""
+
 from __future__ import annotations
 
 import base64
@@ -35,11 +36,18 @@ def dependencies(doc: dict) -> list[str]:
     if isinstance(doc.get("payload_ref"), str):
         refs.append(doc["payload_ref"])
     if doc.get("kind") == "artifact":
-        refs.extend(doc.get("chunks", []))
+        chunks = doc.get("chunks")
+        if not isinstance(chunks, list) or any(
+            not isinstance(c, str) or not c.startswith("blob:") for c in chunks
+        ):
+            raise RuntimeError("Invalid artifact chunks")
+        refs.extend(chunks)
     return list(dict.fromkeys(refs))
 
 
-def _response(client: httpx.Client, method: str, url: str, *, max_bytes=MAX_DOCUMENT_BYTES, **kwargs) -> bytes:
+def _response(
+    client: httpx.Client, method: str, url: str, *, max_bytes=MAX_DOCUMENT_BYTES, **kwargs
+) -> bytes:
     with client.stream(method, url, **kwargs) as response:
         if response.status_code >= 400:
             # Remote error bodies may echo credentials; never surface them.
@@ -58,7 +66,14 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
     import json
 
     url = urlsplit(remote_url)
-    if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
+    if (
+        url.scheme not in {"http", "https"}
+        or not url.hostname
+        or url.username
+        or url.password
+        or url.query
+        or url.fragment
+    ):
         raise ValueError("Sync endpoint must be an HTTP(S) URL without credentials")
     base = remote_url.rstrip("/") + "/"
     store.root.mkdir(parents=True, exist_ok=True)
@@ -66,7 +81,10 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
     with (store.root / "sync.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         headers = {"Authorization": f"Bearer {token}"} if token else {}
-        with httpx.Client(base_url=base, headers=headers, timeout=60, follow_redirects=False) as client:
+        with httpx.Client(
+            base_url=base, headers=headers, timeout=60, follow_redirects=False
+        ) as client:
+
             def remote_json(method, path, **kwargs):
                 return json.loads(_response(client, method, path, **kwargs))
 
@@ -94,16 +112,27 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
                 for dep in dependencies(doc):
                     push(dep, visiting)
                 if doc_id.startswith("blob:"):
-                    data = base64.b64decode(store.request(op="attachment", id=doc_id), validate=True)
+                    data = base64.b64decode(
+                        store.request(op="attachment", id=doc_id), validate=True
+                    )
                     _response(client, "POST", "sync/blob/" + doc_id[5:], content=data)
                 else:
                     clean = clean_document(doc)
                     payload = canonical({"docs": [clean]})
                     if len(payload) > MAX_DOCUMENT_BYTES:
-                        raise RuntimeError("Document exceeds sync limit; store large payloads as artifacts")
-                    reply = remote_json("POST", "sync/push", content=payload, headers={"Content-Type": "application/json"})
+                        raise RuntimeError(
+                            "Document exceeds sync limit; store large payloads as artifacts"
+                        )
+                    reply = remote_json(
+                        "POST",
+                        "sync/push",
+                        content=payload,
+                        headers={"Content-Type": "application/json"},
+                    )
                     if not reply.get("ok") or reply.get("errors"):
-                        raise RuntimeError("Immutable synchronization collision or rejected document")
+                        raise RuntimeError(
+                            "Immutable synchronization collision or rejected document"
+                        )
                 visiting.remove(doc_id)
                 pushed.add(doc_id)
                 counts["pushed"] += 1
@@ -121,7 +150,9 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
                         pull(dep_doc, visiting)
                 if doc_id.startswith("blob:"):
                     data = _response(client, "GET", "sync/blob/" + doc_id[5:], max_bytes=CHUNK_SIZE)
-                    store.request(op="blob", sha256=doc_id[5:], data=base64.b64encode(data).decode())
+                    store.request(
+                        op="blob", sha256=doc_id[5:], data=base64.b64encode(data).decode()
+                    )
                 else:
                     store.request(op="sync_put", doc=clean_document(doc))
                 visiting.remove(doc_id)
@@ -134,7 +165,9 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
                     if direction == "push":
                         page = store.request(op="changes", since=since, limit=PAGE_LIMIT)
                     else:
-                        page = remote_json("GET", "sync/pull", params={"since": since, "limit": PAGE_LIMIT})
+                        page = remote_json(
+                            "GET", "sync/pull", params={"since": since, "limit": PAGE_LIMIT}
+                        )
                     last = page.get("last_seq")
                     if not isinstance(last, int) or last < since:
                         raise RuntimeError("Invalid synchronization sequence")
@@ -147,4 +180,9 @@ def sync_store(store: PouchStore, remote_url: str, token: str = "") -> dict:
                     store.local_put(checkpoint_id, checkpoint)
                     if last == since:
                         break
-            return {"ok": True, **counts, "local_seq": checkpoint["push"], "remote_seq": checkpoint["pull"]}
+            return {
+                "ok": True,
+                **counts,
+                "local_seq": checkpoint["push"],
+                "remote_seq": checkpoint["pull"],
+            }

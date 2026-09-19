@@ -1,4 +1,5 @@
 """Local application API: PouchDB evidence, runtime selection and synchronization."""
+
 from __future__ import annotations
 
 import asyncio
@@ -142,14 +143,21 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             try:
                 synchronize()
             except Exception as exc:
-                raise HTTPException(502, f"Override guardado localmente; sincronización pendiente: {exc}") from exc
+                raise HTTPException(
+                    502, f"Override guardado localmente; sincronización pendiente: {exc}"
+                ) from exc
         return {"ok": True}
 
     @app.get("/api/reglas")
     def reglas() -> dict:
         rc = RuleConfig.load(cfg.rules_config_path)
-        return {"config_version": rc.version, "rule_set_version": rc.version,
-                "enabled": rc.enabled_codes, "thresholds": rc.thresholds, "outcomes": rc.outcomes}
+        return {
+            "config_version": rc.version,
+            "rule_set_version": rc.version,
+            "enabled": rc.enabled_codes,
+            "thresholds": rc.thresholds,
+            "outcomes": rc.outcomes,
+        }
 
     @app.get("/api/salud")
     def salud() -> dict:
@@ -160,10 +168,13 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             storage = "ok"
         except RuntimeError:
             storage = "error"
-        return {"tesseract": "ok" if shutil.which("tesseract") else "ausente",
-                "llama-server": "remoto" if settings.get()["mode"] == "server" else "local",
-                "cloud_vlm": "ok" if cfg.cloud_api_key else "sin-clave",
-                "store": storage, "sync": dict(status)}
+        return {
+            "tesseract": "ok" if shutil.which("tesseract") else "ausente",
+            "llama-server": "remoto" if settings.get()["mode"] == "server" else "local",
+            "cloud_vlm": "ok" if cfg.cloud_api_key else "sin-clave",
+            "store": storage,
+            "sync": dict(status),
+        }
 
     @app.post("/api/reprocesar/{file_id}")
     def reprocesar(file_id: str, file_key: str = "") -> dict:
@@ -178,8 +189,15 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             raise HTTPException(404, "factura no encontrada")
         scans.sort(key=lambda s: (s["timestamp"], s["_id"]), reverse=True)
         artifacts = pouch.for_file(file_id, "artifact")
-        original = next((a for s in scans for a in artifacts
-                         if a["scan_id"] == s["scan_id"] and a["stage"] == "input"), None)
+        original = next(
+            (
+                a
+                for s in scans
+                for a in artifacts
+                if a["scan_id"] == s["scan_id"] and a["stage"] == "input"
+            ),
+            None,
+        )
         if original is None:
             raise HTTPException(404, "artefacto de entrada no encontrado")
         work = cfg.root / "work"
@@ -193,7 +211,9 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
         return {"file_id": decision.file_id, "result": decision.result.value}
 
     @app.get("/api/logs")
-    def logs(invoice: str = "", q: str = "", event_type: str = "", limit: int = 200, offset: int = 0) -> dict:
+    def logs(
+        invoice: str = "", q: str = "", event_type: str = "", limit: int = 200, offset: int = 0
+    ) -> dict:
         return queries.logs(pouch, invoice, q, event_type, max(1, min(limit, 500)), max(0, offset))
 
     @app.get("/api/trazas")
@@ -205,8 +225,11 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
         doc = pouch.get(artifact_id)
         if doc is None or doc.get("kind") != "artifact":
             raise HTTPException(404, "artefacto no encontrado")
-        return StreamingResponse(pouch.read_artifact(artifact_id), media_type=doc["media_type"],
-                                 headers={"Content-Disposition": "attachment", "X-Content-Type-Options": "nosniff"})
+        return StreamingResponse(
+            pouch.read_artifact(artifact_id),
+            media_type=doc["media_type"],
+            headers={"Content-Disposition": "attachment", "X-Content-Type-Options": "nosniff"},
+        )
 
     dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
     if dist.is_dir():

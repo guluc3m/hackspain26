@@ -89,7 +89,7 @@ def invoice_detail(store: PouchStore, key: str) -> dict | None:
     scan = next((s for s in scans if latest and s["scan_id"] == latest["scan_id"]), scans[-1])
     fields_doc = store.get(f"fields:{scan['scan_id']}")
     fields_raw = store.hydrate(fields_doc)["fields"] if fields_doc else []
-    
+
     # Project to Record<string, Candidate[]> expected by UI
     fields_map: dict[str, list[dict]] = {}
     for f in fields_raw:
@@ -103,7 +103,11 @@ def invoice_detail(store: PouchStore, key: str) -> dict | None:
     ]
 
     first_seen = scans[0]["timestamp"] if scans and "timestamp" in scans[0] else None
-    last_seen = latest["timestamp"] if latest else (scans[-1]["timestamp"] if scans and "timestamp" in scans[-1] else None)
+    last_seen = (
+        latest["timestamp"]
+        if latest
+        else (scans[-1]["timestamp"] if scans and "timestamp" in scans[-1] else None)
+    )
 
     rule_evaluations = []
     if latest and "decision" in latest:

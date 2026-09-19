@@ -9,10 +9,10 @@ lote. Una caída a mitad de lote pierde como mucho el item en vuelo.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -64,8 +64,8 @@ class Pipeline:
         for pdf in pdfs:
             try:
                 decisions.append(self.process_pdf(pdf))
-            except Exception:  # process_pdf records a durable error before raising
-                continue
+            except Exception:
+                logging.getLogger(__name__).exception("No se pudo procesar %s", pdf.name)
         emit_outcomes(decisions, outcomes_path)
         for decision in decisions:
             scan_identity = self._batch_scans.get(id(decision))
@@ -88,12 +88,19 @@ class Pipeline:
             sha = sha256_file(pdf_path)
         except OSError as exc:
             scan_id = str(uuid.uuid4())
-            self.store.put({
-                "_id": f"event:{scan_id}:{uuid.uuid4()}", "kind": "event",
-                "scan_id": scan_id, "file_id": pdf_path.name, "file_key": None,
-                "invoice_id": None, "timestamp": time.time(), "type": "item_error",
-                "payload": {"file_id": pdf_path.name, "error": f"{type(exc).__name__}: {exc}"},
-            })
+            self.store.put(
+                {
+                    "_id": f"event:{scan_id}:{uuid.uuid4()}",
+                    "kind": "event",
+                    "scan_id": scan_id,
+                    "file_id": pdf_path.name,
+                    "file_key": None,
+                    "invoice_id": None,
+                    "timestamp": time.time(),
+                    "type": "item_error",
+                    "payload": {"file_id": pdf_path.name, "error": f"{type(exc).__name__}: {exc}"},
+                }
+            )
             raise
         trace = ScanTrace(self.store, pdf_path, sha, invoice_id_for(sha))
         with trace.active():
@@ -105,7 +112,11 @@ class Pipeline:
                 )
                 trace.event(
                     "invoice_seen",
-                    {"invoice_id": trace.identity["invoice_id"], "file_id": pdf_path.name, "sha256": sha},
+                    {
+                        "invoice_id": trace.identity["invoice_id"],
+                        "file_id": pdf_path.name,
+                        "sha256": sha,
+                    },
                 )
                 decision = self._process_pdf(source)
                 if self._batch_scans is not None:
@@ -229,7 +240,16 @@ def outcomes_from_store(store: PouchStore, run_id: str) -> list[dict[str, Any]]:
             matching_decisions.append(d)
     matching_decisions.sort(key=lambda d: (d.get("file_id", ""), d.get("timestamp", 0)))
     latest_by_file: dict[str, dict] = {}
+    identities: dict[str, str] = {}
     for d in matching_decisions:
+        name = d["file_id"]
+        key = d["file_key"]
+        if name in identities and identities[name] != key:
+            raise ValueError(f"Ambiguous filename in run: {name}; export the individual batch")
+        identities[name] = key
         latest_by_file[d.get("file_id", "")] = d
     sorted_items = sorted(latest_by_file.values(), key=lambda d: d.get("file_id", ""))
-    return [{"file_id": d.get("file_id", ""), "result": d.get("decision", {}).get("result", "")} for d in sorted_items]
+    return [
+        {"file_id": d.get("file_id", ""), "result": d.get("decision", {}).get("result", "")}
+        for d in sorted_items
+    ]
