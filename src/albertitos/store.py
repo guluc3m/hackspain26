@@ -276,6 +276,7 @@ class Store:
                 numero_factura=r["numero_factura"] or "",
                 pedido=r["pedido"] or "",
                 config_version=r["config_version"], engine_version=r["engine_version"],
+                nif=_row_val(r, "nif"), iban=_row_val(r, "iban"),
             )
             for r in rows
         ]
@@ -315,6 +316,7 @@ class Store:
                 numero_factura=r["numero_factura"] or "",
                 pedido=r["pedido"] or "",
                 config_version=r["config_version"], engine_version=r["engine_version"],
+                nif=_row_val(r, "nif"), iban=_row_val(r, "iban"),
             )
             for r in rows
         ]

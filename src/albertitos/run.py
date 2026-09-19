@@ -67,6 +67,7 @@ class RunnerConfig:
     use_rung4: bool = True  # False = tests / degradación manual (no billing)
     force: bool = False  # T13: re-ejecutar aunque la decisión exista
     run_id: str = "base"  # T13: run del histórico en decision_runs
+    emit_scope: str = "todo"  # "todo" (lote 1) | "lote" (lote 2: solo sus file_id)
     maestro_patch: Path | None = None  # T13: parche de maestro EN MEMORIA
 
 
@@ -167,17 +168,21 @@ class Runner:
 
         # Contexto previo del lote (reanudación): determinismo por orden de
         # file_id ascendente; la DECISIÓN se toma siempre en el hilo principal.
-        # T13: si se está RE-DECIDIENDO un subset (force/only_list), sus
+        # T13/T21: si se está RE-DECIDIENDO un subset (force/only_list), sus
         # decisiones antiguas NO cuentan como "ya vistas" (un re-run no debe
-        #convertirse en falso doble pago contra sí mismo).
-        subset = set(self.cfg.only_list) if self.cfg.only_list is not None else None
+        # convertirse en falso doble pago contra sí mismo).
+        if self.cfg.force:
+            excl = {p.name for p in files}
+        else:
+            excl = (set(self.cfg.only_list)
+                    if self.cfg.only_list is not None else None)
         prev_num = {d.numero_factura: d.file_id
                     for d in self.store.all_decisions()
                     if d.numero_factura
-                    and (subset is None or d.file_id not in subset)}
+                    and (excl is None or d.file_id not in excl)}
         prev_pedidos = {d.pedido for d in self.store.all_decisions()
                         if d.result == "PAGAR" and d.pedido
-                        and (subset is None or d.file_id not in subset)}
+                        and (excl is None or d.file_id not in excl)}
 
         started = time.monotonic()
         pool = ThreadPoolExecutor(max_workers=workers)
@@ -421,9 +426,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="fecha contra la que se juzga 'futura' (motor puro)")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--only", default=None, help="glob sobre el basename")
+    parser.add_argument("--run-id", default="base",
+                        help="run del histórico (lote 2 ⇒ lote2)")
     parser.add_argument("--timeout", type=float, default=120.0,
                         help="timeout por archivo en segundos")
     parser.add_argument("--max-in-flight", type=int, default=2)
+    parser.add_argument("--emit-scope", default="todo", choices=["todo", "lote"],
+                        help="emisión: 'todo' el store (lote 1) o solo este "
+                             "lote (lote 2 → outcomes_lote2.jsonl)")
     args = parser.parse_args(argv)
 
     cfg = RunnerConfig(
@@ -437,12 +447,17 @@ def main(argv: list[str] | None = None) -> int:
         max_in_flight=args.max_in_flight,
         limit=args.limit,
         only=args.only,
+        run_id=args.run_id,
+        emit_scope=args.emit_scope,
     )
     runner = Runner(cfg)
     report = runner.run()
 
-    # Emisión final + validador de contrato (T9) en verde.
-    emit_outcomes(runner.store, cfg.outcomes_path)
+    # Emisión final + validador de contrato (T9) en verde. Con scope 'lote'
+    # el JSONL queda limitado a los file_id de ESTE directorio (lote 2).
+    scope = ({p.name for p in runner.files()}
+             if args.emit_scope == "lote" else None)
+    emit_outcomes(runner.store, cfg.outcomes_path, only_files=scope)
     lote_completo = report.total == len(list_pdf_files(cfg.facturas_dir))
     validacion = None
     if lote_completo:

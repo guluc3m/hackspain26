@@ -40,3 +40,9 @@ dist/
 # runtime pesado regenerable (W1): imágenes de revisión, tessdata, workdir drills
 .sdd/tessdata/
 .sdd/drills/
+.sdd/metrics
+
+# T21: sandbox de la simulación del lote 2 y tmp de tests (estado, no código)
+.sdd/lote2-sim/
+.sdd/pytest-tmp/
+>>>>>>> worker/w2
