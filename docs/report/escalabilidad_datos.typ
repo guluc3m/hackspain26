@@ -39,5 +39,5 @@
 )
 // — T13/T14: pendientes de corrida
 #let impactoReprocesado = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
-#let resultadosLote1 = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
-#let exactitudLote1 = ("PENDIENTE-MEDICIÓN(T14)", "sin datos")
+#let resultadosLote1 = ("433 PAGAR / 22 NO_PAGAR / 45 ESCALAR (500 archivos)", "medido")
+#let exactitudLote1 = ("86.6 % PAGAR automático", "medido")
