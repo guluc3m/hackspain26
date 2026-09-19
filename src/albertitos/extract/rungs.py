@@ -227,7 +227,7 @@ def run_tesseract(ctx: RungContext) -> RungOutcome:
     assert png_path is not None
     try:
         proc = subprocess.run(
-            [bin_path, str(png_path), "stdout", "--psm", "6", "tsv"],
+            [bin_path, str(png_path), "stdout", "--psm", str(ctx.cfg.tesseract_psm), "tsv"],
             capture_output=True,
             text=True,
             timeout=ctx.cfg.vlm_timeout_s,
