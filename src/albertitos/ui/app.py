@@ -89,6 +89,22 @@ NOMBRES_DRILL: dict[str, str] = {
     "crash-reanudacion": "Apagón a mitad de lote: reanuda sin duplicados",
     "ledger-corrupto": "Registro dañado: se tolera sin inventar",
 }
+DESCRIPCIONES_REGLAS: dict[str, str] = {
+    "NIF_IN_MASTER": "El NIF/CIF del emisor debe estar dado de alta en tu maestro de proveedores (el alta nunca es automática).",
+    "IBAN_MATCHES_MASTER": "El IBAN de la factura debe coincidir con el que figura en tu maestro para ese proveedor (evita pagos a cuentas suplantadas).",
+    "ORDER_BELONGS_TO_SUPPLIER": "El pedido que trae la factura debe corresponder a ese proveedor en tu registro de pedidos.",
+    "ORDER_AMOUNT_MATCHES": "El importe de la factura debe cuadrar con el importe del pedido asociado.",
+    "TOTALS_MUST_MATCH": "La suma de líneas (base + IVA) debe cuadrar con el total que declara la factura.",
+    "IVA_CONSISTENT": "El IVA debe ser coherente: el tipo aplicado por su base da la cuota que declara la factura.",
+    "DATE_VALID_NOT_FUTURE": "La fecha de la factura debe ser válida y no puede estar en el futuro.",
+    "ORDER_PENDING": "El pedido debe seguir pendiente de pago (ni pagado ya ni cerrado).",
+    "NO_DOUBLE_PAYMENT": "No debe existir ya un pago registrado para ese pedido o factura (duplicados).",
+    "NO_EMBEDDED_INSTRUCTIONS": "El documento no debe contener órdenes escritas dentro (p. ej. «dar de alta y pagar»): los documentos son datos, no instrucciones.",
+    "PROVEEDOR_FANTASMA": "Detecta proveedores «fantasma»: p. ej. el mismo IBAN usado por varias empresas de golpe.",
+    "AMOUNT_OUTLIER": "El importe es un valor atípico: se dispara mucho respecto a lo habitual de ese proveedor.",
+    "PEDIDO_EN_REVISION": "El pedido asociado está marcado en revisión: espera una decisión humana.",
+    "REGLA_V4": "Regla de pago v4, cargada como datos desde rules/regla_v4.yaml sin tocar el motor.",
+}
 GLOSARIO: list[tuple[str, str]] = [
     ("PAGAR", "Factura con todas las reglas en verde: se puede pagar."),
     ("NO_PAGAR", "Factura con una regla en rojo: no se paga y el motivo queda registrado."),
@@ -343,6 +359,7 @@ def create_app(
             "nombres_extractor": NOMBRES_EXTRACTOR,
             "nombres_stage": NOMBRES_STAGE,
             "nombres_drill": NOMBRES_DRILL,
+            "descripciones_reglas": DESCRIPCIONES_REGLAS,
             "glosario": GLOSARIO,
         }
         datos.update(extra)
