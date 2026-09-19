@@ -11,7 +11,12 @@
 **Frase de apertura**: «Alberto recibe 500 facturas en PDF y tiene que decidir
 cuáles pagar. Nuestro sistema las lee, las decide con reglas deterministas y
 le deja las dudosas en una cola de revisión — con la evidencia al lado. Hoy
-las 500 están decididas: 347 PAGAR, 108 NO_PAGAR, 45 para revisión.» [1]
+las 500 están decididas: 433 PAGAR por 2 331 130,43 €, 22 NO_PAGAR y 45 para
+revisión (resumen ejecutivo al lado).» [1][14]
+
+**5. Resumen ejecutivo** (`resumen_alberto.pdf` / `.html`, T26): «¿qué pago
+hoy y por qué?» — total, top-10 por importe, motivos de NO_PAGAR en llano
+y avisos (duplicados, fantasmas). Todo con fuente: store × maestro. [1][13]
 
 **En pantalla (ui/app.py, datos reales del lote 1):**
 1. **Operaciones** — estado del runner medido: 500/500, 0 fallos, 4,162
@@ -96,6 +101,10 @@ Distribución final: 433/22/45. [13]
 - Coste cloud del lote 1: **0,00 € medido** — 0 lecturas facturables (5
   intentos con 404 no facturan; credenciales cloud aún no inyectadas). [7]
 - Electricity: CPU local — estimado 0,1 kW × 0,25 €/kWh. [9]
+- Régimen completo MEDIDO (perfil de carga, T23): UI + 2 runners
+  concurrentes + llama-server en la misma caja — la UI responde con peor p95
+  < 12 ms (medido 7,7 ms con 500 facturas cargadas), 108–110 archivos/s por runner, RSS
+  96/38 MB, 8 GB RAM libres, 0 ROJOS. [14]
 - Escalabilidad de FORMATOS: emails/imágenes/Excel entran como nuevas fuentes
   de _features_ y reglas (T18/T13) — sin tocar el motor de reglas. [11]
 
@@ -144,7 +153,16 @@ cd docs/report && ~/.local/bin/typst compile --font-path fonts albertitos_plan.t
 # 5. Drills si hay tiempo (2 min, sin red):
 uv run python -m albertitos.drills
 
-# 6. Validador del entregable (si preguntan por el contrato):
+# 6. Resumen ejecutivo para Alberto (PDF + HTML del paso 5):
+uv run python -m albertitos.resumen \
+    --store-root .sdd/lote1 \
+    --maestro /home/deploy/hackspain26/caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx \
+    --salida resumen_alberto
+
+# 7. Simulacro de defensa (verifica el guion contra el estado real):
+uv run python -m albertitos.simulacro
+
+# 8. Validador del entregable (si preguntan por el contrato):
 uv run python -m albertitos.validate --outcomes .sdd/metrics/outcomes-lote1.jsonl \
     --facturas caja-de-alberto/facturas
 ```
@@ -198,6 +216,9 @@ página en Facturas → Detalle.
 - [11] `.sdd/backlog/closed/` (T13/T18): nuevas fuentes de datos y reglas
   como datos v3→v4 sin tocar el motor.
 - [12] `.sdd/metrics/drills.json` (T12): 4/4 PASS con mediciones por drill.
+- [14] `.sdd/metrics/perfil-carga.json` (T23): p95 por pantalla (peor 11,9 ms),
+  108,7–110,0 archivos/s por runner, RSS ui 96 MB / runners 38 MB, RAM 12 GB
+  total / 8 GB disponibles, 0 ROJOS.
 - [13] `.sdd/metrics/impacto-fix-colapso.json` (T18): 500 archivos, 108 reprocesados, 86 NO_PAGAR→PAGAR, 0 regresiones, validación OK.
 
 **Pendientes declarados**: exactitud contra referencia privada y reprocesado
