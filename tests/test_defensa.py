@@ -48,14 +48,28 @@ def test_numeros_estrella_estan_en_los_json_medidos():
     assert dry["rutas"]["rung2_qr_only"] == 0
 
     lote = json.loads((REPO / ".sdd/metrics/lote1.json").read_text(encoding="utf-8"))
-    assert lote["n_archivos"] == 500
-    # sin fallos: o la clave antigua, o el validador del store (esquema evoluciona)
-    assert lote.get("fallos", 0) == 0 or lote.get("validador") == "OK"
-    # la distribución suma el lote y usa solo resultados de contrato
-    assert sum(lote["distribucion"].values()) == 500
-    assert set(lote["distribucion"]) <= {"PAGAR", "NO_PAGAR", "ESCALAR"}
-    # files_per_s evolucionó de float a dict con nota — solo exigir que exista
-    assert lote.get("files_per_s")
+    # corrida original (T14) y distribución FINAL tras el reprocesado del fix T18
+    assert lote["corrida_original"]["n_archivos"] == 500
+    assert lote.get("fallos", 0) == 0  # fallos 0 medido en ambos niveles
+    assert lote["corrida_original"]["files_per_s"] == 4.162
+    assert lote["distribucion_final"] == {"PAGAR": 433, "NO_PAGAR": 22, "ESCALAR": 45}
+    assert lote["reproceso_t18"]["reprocesados"] == 108
+    r4 = lote["rung4_vlm_local"]
+    assert r4["latencia_max_ms"] > 0 and r4["n_invocaciones"] > 0  # medido
+
+    # reprocesado medido (impacto del fix, T18): 86 NO_PAGAR→PAGAR, 0 regresiones
+    impacto = json.loads(
+        (REPO / ".sdd/metrics/impacto-fix-colapso.json").read_text(encoding="utf-8")
+    )
+    assert impacto["reprocesados"] == 108
+    assert impacto["resumen"]["no_pagar_a_pagar"] == 86
+    assert impacto["resumen"]["regresiones"] == 0
+
+    # el guion cita la MISMA medición que el JSON actual (sin números congelados)
+    guion = DEFENSA.read_text(encoding="utf-8")
+    r4 = lote["rung4_vlm_local"]
+    max_s = f"{r4['latencia_max_ms'] / 1000:.1f}".replace(".", ",")
+    assert f"máx {max_s} s" in guion, f"el guion debe citar la medición actual: máx {max_s} s"
 
     drills = json.loads((REPO / ".sdd/metrics/drills.json").read_text(encoding="utf-8"))
     assert drills["resumen"] == {"pass": 4, "fail": 0}

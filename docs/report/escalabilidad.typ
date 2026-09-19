@@ -130,6 +130,24 @@ Fuente citada: `.sdd/metrics/drills.json`. Resumen: #drillsResumen.at(0)
 - Reprocesado tras cambio de reglas/datos: #impactoReprocesado.at(0)
   #emph[(#impactoReprocesado.at(1))].
 
+== Perfil de carga del sistema completo (T23, medido)
+
+Fuente citada: `.sdd/metrics/perfil-carga.json` (generado con
+`uv run python -m albertitos.perfil`): régimen completo en esta caja —
+la UI sirviendo el lote 1 real (500 facturas) mientras **2 runners
+concurrentes** (`--limit 50`, stores temporales) procesan con llama-server
+up. Resultado medido: la UI sigue respondiendo (peor p95 de las 5 pantallas
+< 12 ms), 108–110 archivos/s por runner, RSS ~96 MB (UI) / ~38 MB (runner),
+8 GB RAM libres de 12 — **concurrencia soportada medida, 0 ROJOS**.
+
+- Límite práctico en esta caja (8 cores / 12 GB): rung 4 serializado ocupa
+  ≈1 core por runner; el régimen cómodo estimado es ~4-6 runners + UI
+  (extrapolación, etiquetada ESTIMADO — el medido es el régimen de 2 runners
+  + UI sin degradación).
+- La RAM NO es el cuello (RSS por componente ≈ 38–96 MB, sobran GB): con más
+  RAM el régimen no cambia; el límite es CPU en rung 3/4. La fórmula de coste
+  de arriba queda intacta.
+
 == Escalado
 
 El procesamiento por factura es independiente del resto
