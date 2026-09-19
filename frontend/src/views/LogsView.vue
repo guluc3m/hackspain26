@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api, fmtHora, fmtValor, type LogEvent, type LogsResponse } from '../api'
+import { api, fmtHora, type LogsResponse } from '../api'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 
 const q = ref('')
@@ -24,22 +24,9 @@ async function load() {
 }
 onMounted(load)
 
-function resumen(e: LogEvent): string {
-  switch (e.type) {
-    case 'invoice_seen':
-      return `${String(e.file_id)} visto · sha ${String(e.sha256 ?? '').slice(0, 12)}…`
-    case 'decision':
-      return `${String(e.file_id)} → ${String(e.result)} (run ${String(e.run_id)})`
-    case 'override':
-      return `${String(e.field_type)}: ${fmtValor(e.before)} → ${fmtValor(e.after)} · ${String(e.who)}/${String(e.rung)}${e.reason ? ` · ${String(e.reason)}` : ''}`
-    case 'item_error':
-      return `${String(e.file_id)}: ${String(e.error)}`
-    default:
-      return JSON.stringify({ ...e, seq: undefined, ts: undefined, type: undefined })
-  }
-}
-
-function bruto(e: LogEvent): string {
+// las entradas son referencias mínimas; `resumen` viene resuelto contra la
+// base de datos, y el json crudo muestra la entrada tal cual está guardada
+function bruto(e: unknown): string {
   return JSON.stringify(e, null, 2)
 }
 </script>
@@ -47,14 +34,14 @@ function bruto(e: LogEvent): string {
 <template>
   <h2>Logs</h2>
   <p class="muted">
-    Ledger append-only (data/ledger.jsonl): cada transición de estado, en orden.
-    Busca por texto libre o filtra por tipo; «ver» abre la traza completa de la factura.
+    Cada entrada del log es una referencia mínima (tipo + IDs): las reglas y el
+    resto del detalle viven en la base de datos y se abren con «ver».
   </p>
 
   <div class="toolbar">
     <input
       v-model="q"
-      placeholder="buscar (texto libre sobre el evento)…"
+      placeholder="buscar (texto libre sobre la entrada)…"
       @keyup.enter="load"
     />
     <select v-model="eventType">
@@ -72,7 +59,7 @@ function bruto(e: LogEvent): string {
   <p v-if="error" class="error">{{ error }}</p>
 
   <p v-if="data" class="muted contador">
-    {{ data.total }} eventos coinciden · mostrando los {{ data.items.length }} más recientes
+    {{ data.total }} entradas coinciden · mostrando las {{ data.items.length }} más recientes
   </p>
 
   <div class="panel lista">
@@ -80,14 +67,14 @@ function bruto(e: LogEvent): string {
       <span class="mono seq">#{{ e.seq }}</span>
       <span class="mono hora">{{ fmtHora(e.ts) }}</span>
       <span class="badge tipo">{{ e.type }}</span>
-      <span class="resumen mono">{{ resumen(e) }}</span>
-      <button v-if="e.invoice_id" class="link" @click="drawerId = String(e.invoice_id)">ver</button>
+      <span class="resumen mono">{{ e.resumen }}</span>
+      <button v-if="e.invoice_id" class="link" @click="drawerId = e.invoice_id">ver</button>
       <details>
         <summary class="muted">json</summary>
         <pre>{{ bruto(e) }}</pre>
       </details>
     </div>
-    <p v-if="data && data.items.length === 0" class="muted">sin eventos</p>
+    <p v-if="data && data.items.length === 0" class="muted">sin entradas</p>
   </div>
 
   <InvoiceDrawer :invoice-id="drawerId" @close="drawerId = null" @updated="load" />

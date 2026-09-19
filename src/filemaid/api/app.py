@@ -6,7 +6,6 @@ dispara reprocesado; las decisiones se recalculan de forma determinista.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -29,19 +28,6 @@ class OverrideIn(BaseModel):
     reason: str = ""
 
 
-def _iterations(ledger_path: Path) -> dict[str, int]:
-    """Pases de pipeline por factura: eventos 'decision' del ledger append-only.
-
-    El decisions table colapsa por (invoice_id, run_id); el ledger es la
-    única fuente append-only del número real de pasadas.
-    """
-    counts: dict[str, int] = {}
-    for e in Ledger(ledger_path).read():
-        if e.get("type") == "decision" and e.get("invoice_id"):
-            counts[e["invoice_id"]] = counts.get(e["invoice_id"], 0) + 1
-    return counts
-
-
 def create_app(cfg: AppConfig | None = None) -> FastAPI:
     cfg = cfg or AppConfig.load()
     app = FastAPI(title="filemaid", version="0.1.0")
@@ -54,28 +40,11 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
     def facturas() -> list[dict]:
         store = Store(cfg.store_path)
         rows = store.conn.execute(
-            """SELECT i.id, i.file_id, i.status, i.source_path,
-                      d.result, d.timestamp AS decided_at,
-                      (SELECT MIN(m) FROM (
-                         SELECT MAX(confidence) AS m FROM field_values
-                         WHERE invoice_id = i.id GROUP BY field_type
-                       )) AS confidence
-               FROM invoices i
-               LEFT JOIN decisions d
-                 ON d.invoice_id = i.id
-                AND d.rowid = (SELECT MAX(d2.rowid) FROM decisions d2 WHERE d2.invoice_id = i.id)
+            """SELECT i.id, i.file_id, i.status, d.result, d.timestamp
+               FROM invoices i LEFT JOIN decisions d ON d.invoice_id = i.id
                ORDER BY i.file_id"""
         ).fetchall()
-        iteraciones = _iterations(cfg.ledger_path)
-        out: list[dict] = []
-        for r in rows:
-            item = dict(r)
-            src = item.pop("source_path") or ""
-            item["source_path"] = src or None
-            item["folder"] = str(Path(src).parent) if src else None
-            item["iterations"] = iteraciones.get(item["id"], 0)
-            out.append(item)
-        return out
+        return [dict(r) for r in rows]
 
     @app.get("/api/facturas/{invoice_id}")
     def factura(invoice_id: str) -> dict:
@@ -147,32 +116,6 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             "store": "ok" if cfg.store_path.exists() else "vacío",
         }
 
-    @app.get("/api/logs")
-    def logs(q: str = "", event_type: str = "", limit: int = 200, offset: int = 0) -> dict:
-        """Log finder: lee el ledger append-only (orden de escritura).
-
-        seq = posición en el fichero (orden estable aunque un evento antiguo
-        no tenga ts). Filtros: event_type exacto y q como búsqueda libre sobre
-        el evento serializado. Los más recientes primero.
-        """
-        events = Ledger(cfg.ledger_path).read()
-        for i, e in enumerate(events):
-            e["seq"] = i + 1
-        types = sorted({str(e.get("type", "")) for e in events})
-        if event_type:
-            events = [e for e in events if e.get("type") == event_type]
-        if q:
-            needle = q.lower()
-            events = [
-                e for e in events
-                if needle in json.dumps(e, ensure_ascii=False, default=repr).lower()
-            ]
-        limit = max(1, min(limit, 1000))
-        offset = max(0, offset)
-        total = len(events)
-        items = list(reversed(events))[offset:offset + limit]
-        return {"total": total, "types": types, "items": items}
-
     @app.post("/api/reprocesar/{file_id}")
     def reprocesar(file_id: str) -> dict:
         pdf = _find_pdf(file_id)
@@ -189,21 +132,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             name="paginas",
         )
 
-    # UI construida (frontend/dist), si existe: `albertitos serve` sirve todo.
-    dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
-    if dist.exists():
-        app.mount("/", StaticFiles(directory=str(dist), html=True), name="ui")
-
     def _find_pdf(file_id: str) -> Path | None:
-        # 1) la ruta registrada en el store (trazabilidad de origen)
-        store = Store(cfg.store_path)
-        row = store.conn.execute(
-            "SELECT source_path FROM invoices WHERE file_id = ? ORDER BY last_seen DESC LIMIT 1",
-            (file_id,),
-        ).fetchone()
-        if row and row["source_path"] and Path(row["source_path"]).exists():
-            return Path(row["source_path"])
-        # 2) lotes conocidos bajo la raíz de datos
         for lote in (cfg.root / "lotes").glob("*"):
             if lote.is_dir() and (lote / file_id).exists():
                 return lote / file_id

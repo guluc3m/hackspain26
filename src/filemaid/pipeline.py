@@ -66,8 +66,9 @@ class Pipeline:
         invoice_id = invoice_id_for(sha)
         config_version = self.rule_config.version
 
-        # upsert idempotente: guarda también dónde vive el PDF (trazabilidad)
-        self.store.upsert_invoice(invoice_id, pdf_path.name, sha, source_path=str(pdf_path))
+        existing = self.store.invoice_by_sha(sha)
+        if existing is None:
+            self.store.upsert_invoice(invoice_id, pdf_path.name, sha)
         self.ledger.append("invoice_seen", {"invoice_id": invoice_id, "file_id": pdf_path.name, "sha256": sha})
 
         # Extracción (escalera por página, con cache e idempotencia)

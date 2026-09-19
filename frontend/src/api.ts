@@ -1,30 +1,40 @@
-// Cliente tipado del backend (src/albertitos). Espeja types.py y las
-// respuestas de src/albertitos/api/app.py. En modo 'mock' responde con
-// datos sintéticos (src/mock/data.ts), sin invocar ningún motor.
+// Contrato de datos de la UI. Todo lo mostrado proviene de la base de datos
+// (sqlite) que expone el backend; mientras la conexión real está vacía, los
+// datos son la referencia sintética de src/mock/data.ts (targets *_syncth).
 
 import { mockApi } from './mock/data'
 
 export type Resultado = 'PAGAR' | 'NO_PAGAR' | 'ESCALAR'
 export type RuleVerdict = 'PASS' | 'FAIL' | 'UNKNOWN'
+export type LogType = 'invoice_seen' | 'decision' | 'override'
 
-/** Fila de /api/facturas (enriquecida: carpeta, iteraciones, confianza). */
+/** Factura: fila de la tabla invoices de la base de datos. */
 export interface FacturaRow {
   id: string
   file_id: string
   status: string
   source_path: string | null
   folder: string | null
-  result: Resultado | null
+  result: Resultado | null // de la última decisión
+  decision_id: string | null // ID de la última decisión
   decided_at: number | null
-  iterations: number
+  iterations: number // decisiones registradas para esta factura
   confidence: number | null
 }
 
-/** Un candidato de lectura: nunca se colapsan en el store (types.py). */
+/** Un candidato de lectura: nunca se colapsan en la base de datos. */
 export interface Candidate {
   extractor: string
   value: unknown
   confidence: number
+}
+
+/** Decisión del motor: siempre con su ID asignado. */
+export interface DecisionRecord {
+  decision_id: string
+  invoice_id: string
+  result: Resultado
+  timestamp: number
 }
 
 export interface RuleEvaluationRow {
@@ -39,7 +49,7 @@ export interface OverrideRow {
   id: number
   invoice_id: string
   field_type: string
-  before: string // JSON en texto (columna del store)
+  before: string // JSON en texto
   after: string
   who: string
   rung: string
@@ -58,14 +68,8 @@ export interface InvoiceDetail {
     source_path: string
   }
   fields: Record<string, Candidate[]>
-  decision: {
-    invoice_id: string
-    run_id: string
-    result: Resultado
-    config_snapshot: string // JSON en texto
-    timestamp: number
-  } | null
-  rule_evaluations: RuleEvaluationRow[]
+  decision: DecisionRecord | null // última decisión
+  rule_evaluations: RuleEvaluationRow[] // las de la última decisión
   overrides: OverrideRow[]
 }
 
@@ -83,13 +87,24 @@ export interface Salud {
   store: string
 }
 
-/** Evento del ledger append-only. seq = posición en el fichero. */
-export type LogEvent = { seq: number; ts: number | null; type: string } & Record<string, unknown>
+/**
+ * Entrada del log: referencia mínima (tipo + IDs). Sin reglas ni payloads:
+ * el detalle vive en la base de datos y se resuelve al mostrarlo
+ * (`resumen`) o al abrir la traza de la factura.
+ */
+export interface LogItem {
+  seq: number
+  ts: number | null
+  type: LogType
+  invoice_id: string | null
+  decision_id: string | null
+  resumen: string
+}
 
 export interface LogsResponse {
   total: number
   types: string[]
-  items: LogEvent[]
+  items: LogItem[]
 }
 
 export interface OverrideIn {
@@ -101,23 +116,7 @@ export interface OverrideIn {
   reason: string
 }
 
-async function get<T>(url: string): Promise<T> {
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`${url}: ${r.status}`)
-  return r.json() as Promise<T>
-}
-
-async function post<T>(url: string, body?: unknown): Promise<T> {
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  })
-  if (!r.ok) throw new Error(`${url}: ${r.status}`)
-  return r.json() as Promise<T>
-}
-
-/** Contrato de la capa de datos: respuestas del backend o sintéticas. */
+/** Contrato de la capa de datos: referencia sintética o conexión real. */
 export interface Api {
   facturas(): Promise<FacturaRow[]>
   factura(id: string): Promise<InvoiceDetail>
@@ -128,36 +127,25 @@ export interface Api {
   logs(params: { q?: string; event_type?: string; limit?: number; offset?: number }): Promise<LogsResponse>
 }
 
-const realApi: Api = {
-  facturas: () => get<FacturaRow[]>('/api/facturas'),
-  factura: (id: string) => get<InvoiceDetail>(`/api/facturas/${id}`),
-  override: (invoiceId: string, body: OverrideIn) =>
-    post<{ ok: boolean }>(`/api/revision/${invoiceId}/override`, body),
-  reprocesar: (fileId: string) =>
-    post<{ file_id: string; result: Resultado }>(`/api/reprocesar/${encodeURIComponent(fileId)}`),
-  reglas: () => get<Reglas>('/api/reglas'),
-  salud: () => get<Salud>('/api/salud'),
-  logs: (params) => {
-    const usp = new URLSearchParams()
-    if (params.q) usp.set('q', params.q)
-    if (params.event_type) usp.set('event_type', params.event_type)
-    if (params.limit) usp.set('limit', String(params.limit))
-    if (params.offset) usp.set('offset', String(params.offset))
-    const qs = usp.toString()
-    return get<LogsResponse>(`/api/logs${qs ? `?${qs}` : ''}`)
-  }
+// Conexión real: vacía a propósito. Se rellenará cuando el backend exponga
+// la base de datos; la referencia de datos es la sintética.
+function noConectado(): never {
+  throw new Error('conexión real vacía: usa los targets *_syncth (datos sintéticos)')
 }
 
-/**
- * Modo de la interfaz:
- *  - 'mock' (por defecto): respuestas sintéticas, sin motor de decisión ni
- *    de extracción (src/mock/data.ts). Para desarrollar/demostrar la UI.
- *  - 'real': contra la API FastAPI (uv run albertitos serve).
- * Se selecciona con VITE_API_MODE=real (build o dev).
- */
-export const MODO_API: 'mock' | 'real' = import.meta.env.VITE_API_MODE === 'real' ? 'real' : 'mock'
+const realApi: Api = {
+  facturas: noConectado,
+  factura: noConectado,
+  override: noConectado,
+  reprocesar: noConectado,
+  reglas: noConectado,
+  salud: noConectado,
+  logs: noConectado
+}
 
-export const api: Api = MODO_API === 'real' ? realApi : mockApi
+export const SINTETICO: boolean = import.meta.env.MODE === 'syncth'
+
+export const api: Api = SINTETICO ? mockApi : realApi
 
 // ---- helpers de presentación -------------------------------------------
 
@@ -183,7 +171,7 @@ export function liderIndex(cs: Candidate[]): number {
 
 /**
  * Confirmación de lectura: override antes=después (candidato líder de cada
- * campo) y reprocesado. La decisión la recalcula el motor determinista.
+ * campo) y reprocesado; la nueva decisión se registra con su propio ID.
  */
 export async function confirmarLectura(invoiceId: string, reason = 'confirmación en revisión'): Promise<void> {
   const detail = await api.factura(invoiceId)

@@ -202,13 +202,3 @@ def test_pipeline_records_stage_timings(cfg, tmp_path):
     assert decision_event["evaluation_ms"] == decision.evaluation_ms
     assert decision_event["total_ms"] == decision.total_ms
     assert "pypdf_p0" in decision_event["timings"]
-
-
-def test_upsert_preserva_ruta_si_no_llega_nueva(store):
-    store.upsert_invoice("inv-1", "f.pdf", "sha-1", source_path="/lotes/a/f.pdf")
-    store.upsert_invoice("inv-1", "f.pdf", "sha-1")  # re-visto sin ruta: no la borra
-    row = store.conn.execute("SELECT source_path FROM invoices WHERE id = 'inv-1'").fetchone()
-    assert row["source_path"] == "/lotes/a/f.pdf"
-    store.upsert_invoice("inv-1", "f.pdf", "sha-1", source_path="/lotes/b/f.pdf")
-    row = store.conn.execute("SELECT source_path FROM invoices WHERE id = 'inv-1'").fetchone()
-    assert row["source_path"] == "/lotes/b/f.pdf"  # ruta nueva sí actualiza

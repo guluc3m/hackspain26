@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { MODO_API } from './api'
+import { SINTETICO } from './api'
 import DashboardView from './views/DashboardView.vue'
 import InvoicesView from './views/InvoicesView.vue'
 import LogsView from './views/LogsView.vue'
@@ -37,8 +37,11 @@ function go(t: Tab) {
         {{ t.label }}
       </button>
     </nav>
-    <div class="modo" :title="MODO_API === 'mock' ? 'Respuestas sintéticas: sin motor de decisión ni de extracción' : 'API real (FastAPI)'">
-      {{ MODO_API === 'mock' ? 'sintético' : 'API real' }}
+    <div
+      class="modo"
+      :title="SINTETICO ? 'Datos sintéticos de referencia (sin conexión real)' : 'Conexión real vacía: usa los targets *_syncth'"
+    >
+      {{ SINTETICO ? 'sintético' : 'sin conexión' }}
     </div>
     <!-- bloque reservado para el logo -->
     <div class="logo-box" title="albertitos">

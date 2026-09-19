@@ -88,14 +88,6 @@ function safeParse(s: string): unknown {
   }
 }
 
-function pretty(s: string): string {
-  try {
-    return JSON.stringify(JSON.parse(s), null, 2)
-  } catch {
-    return s
-  }
-}
-
 const tieneCorreccion = computed(() => {
   if (!detail.value) return false
   return Object.keys(detail.value.fields).some((f) => elegido(f) !== lider(f))
@@ -122,8 +114,12 @@ const tieneCorreccion = computed(() => {
             <dt>UUID interno</dt><dd class="mono">{{ detail.invoice.id }}</dd>
             <dt>sha256</dt><dd class="mono" :title="detail.invoice.sha256">{{ detail.invoice.sha256.slice(0, 16) }}…</dd>
             <dt>Estado</dt><dd>{{ detail.invoice.status }}</dd>
-            <dt>Carpeta</dt><dd class="mono">{{ detail.invoice.source_path || '—' }}</dd>
-            <dt>Run</dt><dd class="mono">{{ detail.decision?.run_id ?? '—' }} ({{ fmtHora(detail.decision?.timestamp ?? null) }})</dd>
+            <dt>Ruta origen</dt><dd class="mono">{{ detail.invoice.source_path || '—' }}</dd>
+            <dt>Decisión</dt>
+            <dd class="mono">
+              {{ detail.decision?.decision_id ?? '—' }}
+              <span v-if="detail.decision" class="muted">({{ fmtHora(detail.decision.timestamp) }})</span>
+            </dd>
           </dl>
         </section>
 
@@ -192,11 +188,6 @@ const tieneCorreccion = computed(() => {
             </tbody>
           </table>
         </section>
-
-        <details v-if="detail.decision" class="raw">
-          <summary class="muted">config snapshot de la decisión</summary>
-          <pre class="mono">{{ pretty(detail.decision.config_snapshot) }}</pre>
-        </details>
       </template>
     </aside>
   </div>
