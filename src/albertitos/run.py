@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from albertitos.emit import emit_outcomes, list_pdf_files
+from albertitos.emit import emit_outcomes, list_pdf_files, list_pdf_files_recursivo
 from albertitos.extract.cloud import cloud_config_from_env
 from albertitos.extract.config import ExtractionConfig
 from albertitos.extract.ladder import ExtractionLadder
@@ -111,9 +111,13 @@ def aplicar_overrides(
             por_tipo[campo] = nf
     return fields, aplicados, descartados
 
+# Defaults SIN rutas hardcodeadas de ninguna máquina: el módulo vive en
+# `src/albertitos/run.py`, así que las reglas viajan con el paquete y se
+# resuelven desde `__file__` (funciona en Windows/mac/Linux y con cualquier
+# directorio de trabajo). El lote de facturas lo elige el usuario (UI o CLI).
 DEFAULT_FACTURAS = "caja-de-alberto/facturas"
 DEFAULT_MAESTRO = "caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"
-DEFAULT_RULES = "src/albertitos/rules/regla_v3.yaml"
+DEFAULT_RULES = Path(__file__).resolve().parent / "rules" / "regla_v3.yaml"
 
 
 @dataclass(frozen=True)
@@ -137,6 +141,10 @@ class RunnerConfig:
     # T24 (drill): config de extracción inyectable (vlm_base_url del stub,
     # umbrales que fuerzan tráfico al rung 4). None ⇒ la default.
     extract_config: ExtractionConfig | None = None
+    # Modo Alberto: el usuario elige UNA carpeta cualquiera (UI) y el runner
+    # la recorre ENTRERA (subcarpetas incluidas). False = comportamiento
+    # histórico (solo el primer nivel), usado por CLI/tests.
+    recursivo: bool = False
 
 
 @dataclass
@@ -235,7 +243,13 @@ class Runner:
     # ------------------------------------------------------------ enumeración
 
     def files(self) -> list[Path]:
-        files = list_pdf_files(self.cfg.facturas_dir)
+        # Carpeta elegida por el usuario: con `recursivo` se escanea entera
+        # (subcarpetas incluidas); si no, solo el primer nivel (T8).
+        files = (
+            list_pdf_files_recursivo(self.cfg.facturas_dir)
+            if self.cfg.recursivo
+            else list_pdf_files(self.cfg.facturas_dir)
+        )
         if self.cfg.only:
             files = [p for p in files if fnmatch.fnmatch(p.name, self.cfg.only)]
         if self.cfg.only_list is not None:
@@ -574,11 +588,14 @@ def main(argv: list[str] | None = None) -> int:
         prog="albertitos.run",
         description="Runner de lote end-to-end: PDFs → outcomes.jsonl (T8).",
     )
-    parser.add_argument("--facturas", default=DEFAULT_FACTURAS)
+    parser.add_argument("--facturas", default=os.environ.get(
+        "ALBERTITOS_FACTURAS", DEFAULT_FACTURAS))
     parser.add_argument("--outcomes", default="outcomes.jsonl")
     parser.add_argument("--store-root", default=".sdd")
-    parser.add_argument("--rules", default=DEFAULT_RULES)
-    parser.add_argument("--maestro", default=DEFAULT_MAESTRO)
+    parser.add_argument("--rules", default=os.environ.get(
+        "ALBERTITOS_RULES", str(DEFAULT_RULES)))
+    parser.add_argument("--maestro", default=os.environ.get(
+        "ALBERTITOS_MAESTRO", DEFAULT_MAESTRO))
     parser.add_argument("--fecha-referencia", default=_hoy_iso(),
                         help="fecha contra la que se juzga 'futura' (motor puro)")
     parser.add_argument("--limit", type=int, default=None)
@@ -588,6 +605,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=120.0,
                         help="timeout por archivo en segundos")
     parser.add_argument("--max-in-flight", type=int, default=2)
+    parser.add_argument("--recursivo", action="store_true",
+                        help="escanear --facturas en profundidad (subcarpetas)")
     parser.add_argument("--emit-scope", default="todo", choices=["todo", "lote"],
                         help="emisión: 'todo' el store (lote 1) o solo este "
                              "lote (lote 2 → outcomes_lote2.jsonl)")
@@ -606,6 +625,7 @@ def main(argv: list[str] | None = None) -> int:
         only=args.only,
         run_id=args.run_id,
         emit_scope=args.emit_scope,
+        recursivo=args.recursivo,
     )
     runner = Runner(cfg)
     report = runner.run()

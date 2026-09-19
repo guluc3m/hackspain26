@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from albertitos.emit import list_pdf_files
+from albertitos.emit import list_pdf_files, list_pdf_files_recursivo
 from albertitos.extract.review import (
     aplicar_overrides,
     leer_overrides_pendientes,
@@ -104,12 +104,15 @@ class PipelineDeps:
     fail_injector: object = None  # callable(file_id, index) -> None | raise
 
 
-def run_batch(pdf_dir: str | Path, store: Store, deps: PipelineDeps) -> BatchReport:
+def run_batch(pdf_dir: str | Path, store: Store, deps: PipelineDeps,
+              *, recursivo: bool = False) -> BatchReport:
     """Procesa el lote con idempotencia: re-ejecutar completado = no-op.
 
     Orden determinista: file_id ascendente (base del NO_DOUBLE_PAYMENT).
-    Si `fail_injector` lanza en el ítem N, el lote se corta ahí; re-ejecutarlo
-    reanuda desde ese punto sin duplicados.
+    Con `recursivo=True` el lote se escanea EN PROFUNDIDAD (subcarpetas
+    incluidas) — es el modo con el que la UI procesa la carpeta que el
+    usuario elige. Si `fail_injector` lanza en el ítem N, el lote se corta
+    ahí; re-ejecutarlo reanuda desde ese punto sin duplicados.
     """
     cfg = deps.config
     report = BatchReport()
@@ -119,7 +122,12 @@ def run_batch(pdf_dir: str | Path, store: Store, deps: PipelineDeps) -> BatchRep
     prev_pedidos = {d.pedido for d in store.all_decisions()
                     if d.result == "PAGAR" and d.pedido}
 
-    for index, path in enumerate(list_pdf_files(pdf_dir)):
+    pdfs = (
+        list_pdf_files_recursivo(pdf_dir)
+        if recursivo
+        else list_pdf_files(pdf_dir)
+    )
+    for index, path in enumerate(pdfs):
         if deps.fail_injector is not None:
             deps.fail_injector(path.name, index)
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()

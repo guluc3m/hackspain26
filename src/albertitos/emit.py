@@ -92,3 +92,21 @@ def list_pdf_files(pdf_dir: str | Path) -> list[Path]:
          and _RE_PDF_NAME.search(p.name)),
         key=lambda p: p.name,
     )
+
+
+def list_pdf_files_recursivo(pdf_dir: str | Path) -> list[Path]:
+    """PDFs de un directorio y de TODAS sus subcarpetas (escaneo recursivo).
+
+    La app debe funcionar con CUALQUIER lote entregado en cualquier equipo
+    (Windows/mac/Linux): el usuario elige una carpeta y el sistema la recorre
+    entera. Orden determinista por ruta completa. Una ruta inexistente o no
+    legible devuelve [] — quien llama degrada con un mensaje, nunca rompe.
+    """
+    raiz = Path(pdf_dir)
+    if not raiz.is_dir():
+        return []
+    return sorted(
+        (p for p in raiz.rglob("*")
+         if p.is_file() and _RE_PDF_NAME.search(p.name)),
+        key=lambda p: str(p),
+    )

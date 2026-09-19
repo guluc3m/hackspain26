@@ -31,6 +31,28 @@ derecha.</em></p>
   {% endif %}
 </div>
 
+<h2>Añadir facturas</h2>
+<div class="tarjeta">
+  <p>Pega aquí la ruta de la carpeta donde están las facturas (en tu ordenador,
+  con Windows, Mac o Linux) y pulsa el botón. Se buscan todos los PDF de esa
+  carpeta y de sus subcarpetas, se leen y se deciden con las reglas activas.
+  Nada se escribe en tu carpeta: los resultados quedan dentro del sistema.</p>
+  <form method="post" action="/operaciones/procesar" class="fila">
+    <label for="carpeta">Carpeta con las facturas (PDF):</label>
+    <input type="text" id="carpeta" name="carpeta" required
+           placeholder="Ejemplo: C:\Users\Alberto\Facturas  ·  /Users/alberto/Facturas"
+           style="flex:1; min-width:18rem;">
+    <button type="submit">Procesar carpeta</button>
+  </form>
+  {% if lote %}
+  <p>
+    {% if lote.estado == 'procesando' %}<strong>Trabajando:</strong> {{ lote.mensaje }}
+    {% elif lote.estado == 'listo' %}<strong>Último lote:</strong> {{ lote.mensaje }}
+    {% else %}<strong>Atención:</strong> {{ lote.mensaje }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+
 {% if runner %}
 <div class="tarjeta">
   <strong>Estado del runner (lote 1)</strong> — actualizado {{ runner.actualizado }}

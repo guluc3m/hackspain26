@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +28,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from albertitos.emit import list_pdf_files_recursivo
 from albertitos.resumen import datos_resumen
 from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
 from albertitos.ui.ledger import leer_impactos
@@ -102,10 +106,14 @@ GLOSARIO: list[tuple[str, str]] = [
 
 
 def _maestro_para_resumen() -> Path | None:
-    """Maestro real para el resumen ejecutivo (auto-detectado, SOLO LECTURA)."""
-    candidatos = [
+    """Maestro real (SOLO LECTURA), auto-detectado SIN rutas de ninguna
+    máquina concreta: primero la variable de entorno ALBERTITOS_MAESTRO,
+    después las ubicaciones relativas del proyecto. Así la app funciona en
+    el ordenador de Alberto y en cualquier otro sitio."""
+    env = os.environ.get("ALBERTITOS_MAESTRO", "").strip()
+    candidatos = [Path(env)] if env else []
+    candidatos += [
         Path(".sdd/lote1/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
-        Path("/home/deploy/hackspain26/caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
         Path("caja-de-alberto/FINAL_v7_DEFINITIVO_ahorasi.xlsx"),
     ]
     for c in candidatos:
@@ -182,14 +190,75 @@ def _override_destino(store_dir: Path) -> Path:
     return Path(".sdd") / "review-queue" / "overrides.jsonl"
 
 
+def _procesar_carpeta_real(carpeta: Path) -> dict[str, Any]:
+    """Procesa la carpeta que Alberto eligió con el runner end-to-end.
+
+    Sin rutas de ninguna máquina: el maestro se auto-detecta (env
+    ALBERTITOS_MAESTRO o layout relativo del proyecto) y las reglas viajan
+    con el paquete. El escaneo es RECURSIVO (subcarpetas incluidas) y el
+    lote es reanudable: re-procesar lo ya decidido es un no-op.
+    """
+    from albertitos.run import DEFAULT_RULES, Runner, RunnerConfig
+
+    maestro = _maestro_para_resumen()
+    if maestro is None:
+        return {
+            "estado": "error",
+            "mensaje": (
+                "No encontré el maestro de proveedores (el Excel). Ponlo en "
+                "caja-de-alberto/ o indica su ruta en la variable "
+                "ALBERTITOS_MAESTRO y vuelve a intentarlo."
+            ),
+        }
+    try:
+        cfg = RunnerConfig(
+            facturas_dir=carpeta,
+            outcomes_path=Path("outcomes.jsonl"),
+            store_root=Path(".sdd"),
+            rules_yaml=DEFAULT_RULES,
+            master_path=maestro,
+            fecha_referencia=datetime.now(tz=UTC).date().isoformat(),
+            run_id="ui",
+            recursivo=True,
+        )
+        runner = Runner(cfg)
+        report = runner.run()
+        # Entregable del contrato (AGENTS.md §1): outcomes.jsonl con los
+        # file_id de ESTA carpeta (emisión determinista, sin duplicar lote 1).
+        from albertitos.emit import emit_outcomes
+
+        emit_outcomes(runner.store, cfg.outcomes_path,
+                      only_files={p.name for p in runner.files()})
+        runner.store.close()
+    except Exception as e:  # noqa: BLE001 — un lote que falla degrada con mensaje, no tumba la UI
+        return {
+            "estado": "error",
+            "mensaje": f"No pude procesar el lote: {e}",
+        }
+    terminados = report.procesados + report.reutilizados
+    return {
+        "estado": "listo",
+        "mensaje": (
+            f"Lote terminado: {report.total} factura(s) en la carpeta, "
+            f"{terminados} decididas ({report.reutilizados} ya lo estaban, "
+            f"{report.timeout} por esperar demasiado). Mira la pestaña "
+            "Facturas."
+        ),
+    }
+
+
 def create_app(
     store_dir: Path | None = None,
     records: list[dict[str, Any]] | None = None,
     override_dir: Path | None = None,
+    procesador: Callable[[Path], dict[str, Any]] | None = None,
 ) -> FastAPI:
     """Fábrica de la app. `records` inyecta registros (tests); si no, se lee
     el ledger en `store_dir` (por defecto `.sdd/ledger/`; el lote real vive en
     `.sdd/lote1/ledger`, symlink SOLO LECTURA) en solo lectura.
+
+    `procesador` (tests) sustituye al runner real para la carpeta que el
+    usuario elige en Operaciones; por defecto es el runner end-to-end.
 
     Si el ledger lleva el `review-queue` hermano (cola de revisión con campos
     e imágenes), se carga también — ambos en SOLO LECTURA.
@@ -236,6 +305,29 @@ def create_app(
     aplicacion.state.drills = drills
     aplicacion.state.pendiente: dict[str, Any] | None = None
     aplicacion.state.store_base = (Path(store_dir) if store_dir else Path(".sdd") / "ledger")
+    # Lote elegido por el usuario en Operaciones: estado del trabajo en curso
+    # (None = todavía no se ha procesado ninguna carpeta).
+    aplicacion.state.lote: dict[str, Any] | None = None
+    # De dónde se leyó el ledger (para recargarlo cuando el lote termine).
+    aplicacion.state.ledger_base = base if records is None else None
+    # Procesador del lote: el runner real, o el que inyecten los tests.
+    aplicacion.state.procesador = procesador if procesador is not None else _procesar_carpeta_real
+
+    def _recargar_registros() -> None:
+        """Tras procesar un lote, la UI lee de nuevo el ledger (el store ya
+        tiene las decisiones nuevas); Alberto las ve sin reiniciar nada."""
+        base_ledger = aplicacion.state.ledger_base
+        if base_ledger is None:
+            return
+        registros_nuevos = load_ledger(base_ledger)
+        cola_rev = base_ledger.parent / "review-queue"
+        if cola_rev.is_dir():
+            registros_nuevos += load_ledger(cola_rev)
+        if registros_nuevos:
+            aplicacion.state.registros = registros_nuevos
+            aplicacion.state.view = build_view(registros_nuevos)
+            aplicacion.state.demo = False
+            aplicacion.state.pendiente = None
 
     def _store_root() -> Path:
         """Raíz del store (donde vive store.db) — SOLO LECTURA."""
@@ -295,8 +387,61 @@ def create_app(
                 vlm=vlm,
                 llama=sondea,
                 pendiente=aplicacion.state.pendiente,
+                lote=aplicacion.state.lote,
             ),
         )
+
+    @aplicacion.post("/operaciones/procesar")
+    async def procesar_lote(carpeta: str = Form(...)):
+        """Alberto pega la ruta de UNA carpeta cualquiera (Windows/mac/Linux)
+        y la app la escanea en profundidad buscando PDFs y los procesa.
+
+        Nunca se escribe en la carpeta elegida: el store y los resultados
+        viven en `.sdd/` del proyecto. El trabajo corre en segundo plano:
+        la página responde al instante y el estado se ve aquí mismo.
+        """
+        texto = carpeta.strip().strip('"').strip("'")
+        ruta = Path(texto).expanduser()
+        if aplicacion.state.lote and aplicacion.state.lote.get("estado") == "procesando":
+            aplicacion.state.lote["mensaje"] = (
+                "Ya hay un lote procesándose (" + aplicacion.state.lote.get("carpeta", "")
+                + "). Espera a que termine antes de lanzar otro."
+            )
+            return RedirectResponse("/", status_code=303)
+        pdfs = list_pdf_files_recursivo(ruta)
+        if not ruta.is_dir():
+            aplicacion.state.lote = {
+                "estado": "error",
+                "mensaje": f"La carpeta «{texto}» no existe o no puedo leerla. Revisa la ruta.",
+            }
+        elif not pdfs:
+            aplicacion.state.lote = {
+                "estado": "error",
+                "mensaje": (
+                    f"En «{texto}» no hay ningún PDF (busqué también en sus "
+                    "subcarpetas). Comprueba que es la carpeta de las facturas."
+                ),
+            }
+        else:
+            procesador = aplicacion.state.procesador
+            aplicacion.state.lote = {
+                "estado": "procesando",
+                "carpeta": str(ruta),
+                "n_pdfs": len(pdfs),
+                "mensaje": f"Procesando {len(pdfs)} factura(s) de «{ruta}»…",
+            }
+
+            def _trabajo() -> None:
+                try:
+                    resultado = procesador(ruta)
+                except Exception as e:  # noqa: BLE001 — el fallo se muestra, la UI sigue
+                    resultado = {"estado": "error", "mensaje": f"No pude procesar el lote: {e}"}
+                resultado.setdefault("carpeta", str(ruta))
+                aplicacion.state.lote = resultado
+                _recargar_registros()
+
+            threading.Thread(target=_trabajo, daemon=True).start()
+        return RedirectResponse("/", status_code=303)
 
     @aplicacion.get("/ayuda", response_class=HTMLResponse)
     def ayuda(request: Request):
