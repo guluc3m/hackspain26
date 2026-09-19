@@ -124,7 +124,9 @@ class ExtractionLadder:
         pdfium_doc = pdfium.PdfDocument(pdf_bytes)
         try:
             # ---- rung 1: text layer (deterministic; cached so re-runs are no-ops)
-            pdf_text = self._extract_text(pdf_bytes, page_index)
+            # un solo PdfReader por página (T33-M2): contar y extraer reutilizan
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            pdf_text = self._extract_text(reader, page_index)
             r1 = self._rung_cached(
                 engine="pdf_text",
                 ev_version=engine_version("pypdf"),
@@ -327,9 +329,13 @@ class ExtractionLadder:
         self.cache.put(psha, engine, ev_version, self.cfg.config_version, payload)
         return result
 
-    def _extract_text(self, pdf_bytes: bytes, page_index: int) -> str:
+    def _extract_text(self, reader: PdfReader, page_index: int) -> str:
+        """Texto crudo de una página con UN reader ya creado (T33-M2).
+
+        Un PDF dañado degrada a texto vacío: cae por la puerta de plausibilidad,
+        nunca aborta el lote (AGENTS.md §3).
+        """
         try:
-            reader = PdfReader(io.BytesIO(pdf_bytes))
             return reader.pages[page_index].extract_text() or ""
         except Exception:  # noqa: BLE001 - empty text falls through the plausibility gate
             return ""

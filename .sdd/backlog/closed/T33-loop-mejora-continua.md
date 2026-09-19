@@ -36,3 +36,37 @@ trivial ("añadir más tests" sin más no vale).
 - SUGERENCIAS.md existe con ≥6 entradas bien fundadas y ≥3 categorías.
 - Alguna mejora pequeña implementada como ejemplo del formato (con su ticket).
 - pytest+ruff verde; ticket a closed en el mismo commit.
+
+## CIERRE (W1, 2026-09-19) — ciclo 1 del loop
+**Re-lectura**: AGENTS.md (contrato + §13), architecture.typ (features/parser/
+reglas/logs/retroalimentación), DECISIONS.md (D-001/D-002 PaddleOCR q8 +
+llama-server CPU), mi módulo extract/ + tools/, y los tickets cerrados de W1
+(T1, T7, T10, T14, T17, T18, T22, T25, T27).
+
+**Mejoras implementadas (3 — máximo del ciclo, cada una con ticket+commit):**
+- T33-M1 (da4d1fe): `ExtractionConfig.tesseract_psm` — el `--psm 6` hardcodeado
+  del rung 3 pasa a configuración (doctrina «thresholds are config, not code»);
+  comportamiento idéntico por defecto; test hermético con binario falso que
+  imita tesseract real (--version vs run).
+- T33-M2 (baf6db6): un solo PdfReader por página en la escalera (antes 3 parses
+  completos por PDF de 2 páginas); degradación de PDF dañado intacta (test).
+- T33-M3 (06aeba0): `ReviewQueue` dedupe O(1) amortizado (se lee la cola UNA
+  vez por instancia) + `tools/regen_review_queue.py` (la cola es estado
+  derivado, regenerable en segundos sin re-facturar cloud; regenerada la real:
+  29 páginas con invoice_uuid correcto).
+
+**SUGERENCIAS.md creado**: 9 entradas, 6 categorías (operación ×3,
+arquitectura, extracción ×2, reglas, UI, producto), ninguna trivial.
+
+**Estado del suite (honesto)**: 251/252 verde en la última corrida completa.
+El único rojo es `test_ui_lote1::test_store_real_truncado_50_filas` y es
+interferencia ENTRE WORKERS: `tests/test_simulacro.py` de W2 (T21) ejecuta
+`shutil.rmtree(Path(".sdd/review-queue"))` sobre la cola REAL de este worktree
+a mitad de suite (documentado con causa y fix de 2 líneas en SUGERENCIAS #1,
+prioridad alta — W2). También observado: colisión de puerto 8231 entre
+pytest concurrentes (SUGERENCIAS #2) y un crash esporádico de memoria en la
+máquina en carga (malloc_consolidate), transitorio. Regenerable con
+`uv run python tools/regen_review_queue.py` (idempotente).
+
+Rangos de las reglas duras respetados: motor/política/emit intocables;
+outcomes y delivery-repo sin tocar; validador 500/500 intacto.
