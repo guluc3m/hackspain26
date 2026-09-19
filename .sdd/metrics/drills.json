@@ -1,0 +1,73 @@
+{
+  "generado": "2026-09-18T23:39:15+00:00",
+  "drills": [
+    {
+      "drill": "rung5-provider-caido",
+      "pass": true,
+      "mediciones": {
+        "intentos_cloud": 3,
+        "error_en_evidencia": true,
+        "motivo_evidencia": "provider-failed:exhausted:http-error:ConnectError; degrades to review queue",
+        "pagina_en_cola_revision": true,
+        "lote_continua": true
+      },
+      "detalle": "El proveedor no responde tras 3 intentos; la página queda en cola de revisión (ESCALAR) con motivo en evidencia y el proceso sigue."
+    },
+    {
+      "drill": "backoff-429",
+      "pass": true,
+      "mediciones": {
+        "n_llamadas": 3,
+        "secuencia_estados": [
+          "429",
+          "429",
+          "200"
+        ],
+        "delays_aplicados": [
+          0.05,
+          0.02
+        ],
+        "delays_esperados": [
+          0.05,
+          0.02
+        ],
+        "backoff_respetado": true,
+        "exito": true
+      },
+      "detalle": "429×2 con Retry-After y luego éxito: 3 llamadas exactas, delays según Retry-After (cap) + exponencial."
+    },
+    {
+      "drill": "crash-reanudacion",
+      "pass": true,
+      "mediciones": {
+        "n_archivos": 3,
+        "crash_simulado_en_index": 2,
+        "decididos_tras_crash": 2,
+        "decididos_tras_reanudar": 3,
+        "resultados_unicos": 3,
+        "duplicados_en_store": 0,
+        "reutilizados_por_cache": 2,
+        "reanudacion_completa": true,
+        "sin_duplicados": true
+      },
+      "detalle": "Crash en el ítem 2: 2 decididos; reanudar completa el lote sin duplicados."
+    },
+    {
+      "drill": "ledger-corrupto",
+      "pass": true,
+      "mediciones": {
+        "lineas_totales": 4,
+        "registros_validos": 2,
+        "lineas_corruptas_ignoradas": 3,
+        "decisiones_cargadas": 1,
+        "evidencia_cargada": 1,
+        "sin_datos_inventados": true
+      },
+      "detalle": "El lector ignora las líneas corruptas y usa solo las válidas: degradación, no aborte."
+    }
+  ],
+  "resumen": {
+    "pass": 4,
+    "fail": 0
+  }
+}
