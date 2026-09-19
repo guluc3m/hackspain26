@@ -121,7 +121,11 @@ class NoDoublePayment:
             return _ev(self.code, RuleVerdict.UNKNOWN, f"pedido no fiable: {why}", {})
         order = ctx.master.pedidos.get(str(pedido.value))
         if order is None:
-            return _ev(self.code, RuleVerdict.UNKNOWN, "pedido no existe en el ERP", {"pedido": str(pedido.value)})
+            return _ev(
+                self.code, RuleVerdict.PASS,
+                f"Pedido {pedido.value} no existe en el ERP: sin pago previo registrado",
+                {"pedido": str(pedido.value), "pagado": False},
+            )
         if order.pagado:
             return _ev(self.code, RuleVerdict.FAIL, f"Pedido {order.numero} ya está pagado: nunca pagar dos veces", {"pagado": True})
         return _ev(self.code, RuleVerdict.PASS, f"Pedido {order.numero} sin pago previo", {"pagado": False})

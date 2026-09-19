@@ -56,8 +56,12 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             "SELECT * FROM decisions WHERE invoice_id = ? ORDER BY timestamp DESC LIMIT 1", (invoice_id,)
         ).fetchone()
         rules = store.conn.execute(
-            "SELECT code, verdict, reason, consumed FROM rule_evaluations WHERE invoice_id = ? ORDER BY code",
-            (invoice_id,),
+            """SELECT code, verdict, reason, consumed FROM rule_evaluations
+               WHERE invoice_id = ?
+                 AND run_id = (SELECT run_id FROM rule_evaluations
+                               WHERE invoice_id = ? ORDER BY timestamp DESC LIMIT 1)
+               ORDER BY code""",
+            (invoice_id, invoice_id),
         ).fetchall()
         return {
             "invoice": dict(inv),
@@ -87,7 +91,6 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
     def reglas() -> dict:
         rc = RuleConfig.load(cfg.rules_config_path)
         return {
-            "rule_set_version": rc.rule_set_version,
             "config_version": rc.version,
             "enabled": rc.enabled_codes,
             "thresholds": rc.thresholds,

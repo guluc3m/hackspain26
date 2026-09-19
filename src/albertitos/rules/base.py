@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from albertitos.types import Candidate, ExtractionField, RuleEvaluation
 
+from .escoger import Selection, escoger, field_selection
 from .master import MasterData
 
 
@@ -21,6 +22,7 @@ class RuleContext:
     fields: dict[str, ExtractionField]
     master: MasterData
     thresholds: dict[str, Any] = field(default_factory=dict)
+    seleccion: dict[str, Any] = field(default_factory=dict)
 
     def threshold(self, rule_code: str, key: str, default: float) -> float:
         value = self.thresholds.get(rule_code, {}).get(key, default)
@@ -29,22 +31,38 @@ class RuleContext:
         except (TypeError, ValueError):
             return default
 
-    def pick(self, field_type: str, min_confidence: float = 0.0) -> tuple[Candidate | None, str | None]:
-        """Colapso a escalar *solo aquí*: mejor candidato con confianza suficiente.
+    def pick(
+        self, field_type: str, min_confidence: float = 0.0
+    ) -> tuple[Candidate | None, str | None]:
+        """Colapso a escalar *solo aquí*, según docs/report/architecture/rules/escoger.typ.
 
-        Devuelve (candidato, None) o (None, motivo). Determinista: mayor confianza,
-        desempate por nombre de extractor.
+        Devuelve (candidato, None) o (None, motivo). Determinista: trim, tests
+        de formato, puntuación (confianza × peso) con umbral por field y
+        desempates (valores iguales; si no, ranking de extractores).
         """
+        sel = self.pick_detailed(field_type, min_confidence)
+        if sel.candidate is None:
+            return None, sel.reason
+        return sel.candidate, None
+
+    def pick_detailed(self, field_type: str, min_confidence: float = 0.0) -> Selection:
+        """Como pick(), pero con la trazabilidad completa del colapso (auditoría)."""
         f = self.fields.get(field_type)
         if f is None or not f.values:
-            return None, f"sin campo {field_type}"
-        best = min(f.values, key=lambda c: (-c.confidence, c.extractor))
-        if best.confidence < min_confidence:
-            return None, (
-                f"mejor candidato de {field_type} ({best.extractor}) con confianza "
-                f"{best.confidence:.2f} < umbral {min_confidence:.2f}"
+            return Selection(None, reason=f"sin campo {field_type}")
+        sel = escoger(f, field_selection(self.seleccion, field_type))
+        if sel.candidate is None:
+            return sel
+        if sel.candidate.confidence < min_confidence:
+            return Selection(
+                None,
+                reason=(
+                    f"mejor candidato de {field_type} ({sel.candidate.extractor}) con confianza "
+                    f"{sel.candidate.confidence:.2f} < umbral {min_confidence:.2f}"
+                ),
+                audit=sel.audit,
             )
-        return best, None
+        return sel
 
 
 class Rule(Protocol):

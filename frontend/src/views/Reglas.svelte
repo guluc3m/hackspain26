@@ -11,8 +11,7 @@
 <h2>Reglas</h2>
 {#if reglas}
   <p>
-    Conjunto <strong>{reglas.rule_set_version}</strong> · config
-    <code>{reglas.config_version}</code>
+    Config <code>{reglas.config_version}</code>
   </p>
   <ul>
     {#each reglas.enabled as codigo (codigo)}

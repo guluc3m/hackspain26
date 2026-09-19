@@ -9,7 +9,6 @@ export interface Factura {
 }
 
 export interface Reglas {
-  rule_set_version: string
   config_version: string
   enabled: string[]
   thresholds: Record<string, Record<string, number>>
