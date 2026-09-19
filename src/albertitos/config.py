@@ -17,7 +17,9 @@ class AppConfig:
         self.cache_dir = root / "cache"
         self.pages_dir = root / "pages"
         self.master_dir = Path(os.environ.get("ALBERTITOS_MASTER", "master"))
-        self.rules_config_path = Path(os.environ.get("ALBERTITOS_RULES", "master/rules.yaml"))
+        self.rules_config_path = Path(
+            os.environ.get("ALBERTITOS_RULES", str(self.master_dir / "rules.yaml"))
+        )
         self.extraction_config_path = Path(
             os.environ.get("ALBERTITOS_EXTRACTION", "master/extraction.yaml")
         )
