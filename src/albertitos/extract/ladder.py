@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,14 @@ from albertitos.extract.rungs import (
     tesseract_version,
 )
 from albertitos.types import EvidenceRow, ExtractionFeature
+
+# PDFium (pypdfium2) NO es thread-safe: dos hilos llamando a la vez al C de
+# pdfium — incluso con documentos distintos — pueden SEGVear el proceso
+# entero (T40F3: repro real con run.py a 2 workers cuando el rung 4 cae,
+# justo la degradación que ejercita el drill). Lock global alrededor de TODA
+# entrada a pdfium: el raster se serializa; los rungs 3–5 (tesseract en
+# subproceso, VLM por HTTP, red) siguen en paralelo.
+_PDFIUM_LOCK = threading.Lock()
 
 
 @dataclass
@@ -121,7 +130,8 @@ class ExtractionLadder:
         file_id = file_id or invoice_id
         out = PageExtraction(page=page_no, page_sha256=psha)
 
-        pdfium_doc = pdfium.PdfDocument(pdf_bytes)
+        with _PDFIUM_LOCK:
+            pdfium_doc = pdfium.PdfDocument(pdf_bytes)
         try:
             # ---- rung 1: text layer (deterministic; cached so re-runs are no-ops)
             # un solo PdfReader por página (T33-M2): contar y extraer reutilizan
@@ -145,10 +155,12 @@ class ExtractionLadder:
                 return self._finish(out)
 
             # the rendered PNG feeds rungs 2–4 and the review UI; cached on disk
-            png_bytes = self._ensure_png(page_no and pdfium_doc[page_index], psha)
+            with _PDFIUM_LOCK:
+                png_bytes = self._ensure_png(pdfium_doc[page_index], psha)
 
             def ctx2() -> RungContext:
-                bgr = render_page(pdfium_doc[page_index], self.cfg.dpi)
+                with _PDFIUM_LOCK:
+                    bgr = render_page(pdfium_doc[page_index], self.cfg.dpi)
                 return self._ctx(invoice_id, page_no, psha, pdf_text, bgr, png_bytes, out.evidence)
 
             def ctx34() -> RungContext:
@@ -239,7 +251,8 @@ class ExtractionLadder:
             )
             return self._finish(out)
         finally:
-            pdfium_doc.close()
+            with _PDFIUM_LOCK:
+                pdfium_doc.close()
 
     # ------------------------------------------------------------- internals
 
