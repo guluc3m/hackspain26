@@ -341,11 +341,39 @@ def factura_detalle(vista: LedgerView, invoice_id: str) -> dict[str, Any] | None
 def revision_queue(vista: LedgerView) -> list[dict[str, Any]]:
     """Cola de ESCALAR: candidatas lado a lado, desacuerdo resaltado."""
     cola: list[dict[str, Any]] = []
+    # join decisión↔cola por file_id: el runner emitía invoice_id UUID en el
+    # ledger y file_id en la cola de revisión (bug real: sin esto, la Revisión
+    # nunca mostraba campos/imágenes de la factura real). Fallback a invoice_id.
+    decision_por_file: dict[str, DecisionView] = {}
+    for d in vista.decisions:
+        if d.file_id:
+            decision_por_file[d.file_id] = d
+    items_cola: list[tuple[DecisionView, dict[int, str]]] = []
+    vistos: set[str] = set()
+    for rec_fields in vista.fields_by_invoice, vista.images_by_invoice:
+        pass  # no-op: el join real se hace abajo con decisiones ESCALAR
     for d in vista.decisions:
         if d.result != "ESCALAR":
             continue
+        img = vista.images_by_invoice.get(d.file_id, {}) or vista.images_by_invoice.get(d.invoice_id, {})
+        campos_src = vista.fields_by_invoice.get(d.file_id, []) or vista.fields_by_invoice.get(d.invoice_id, [])
+        items_cola.append((d, img, campos_src))
+        vistos.add(d.invoice_id)
+    # ítems de la cola de revisión sin decisión en el ledger (lote truncado):
+    # muéstralos igual, con sus campos/imágenes del queue record
+    for iid, campos in vista.fields_by_invoice.items():
+        if iid in vistos:
+            continue
+        img = vista.images_by_invoice.get(iid, {})
+        if not (img or campos):
+            continue
+        d_stub = DecisionView(invoice_id=iid, file_id=iid, result="ESCALAR",
+                              verdicts=[], config_snapshot={}, timestamp=0.0)
+        items_cola.append((d_stub, img, campos))
+        vistos.add(iid)
+    for d, img, campos_src in items_cola:
         campos = []
-        for f in vista.fields_by_invoice.get(d.invoice_id, []):
+        for f in campos_src:
             valores = {json.dumps(c.value, sort_keys=True) for c in f.candidates}
             campos.append(
                 {
@@ -360,7 +388,7 @@ def revision_queue(vista: LedgerView) -> list[dict[str, Any]]:
                 "decision": d,
                 "codes": decisive_codes(d),
                 "campos": campos,
-                "imagenes": vista.images_by_invoice.get(d.invoice_id, {}),
+                "imagenes": img,
                 "motivo": desconocidas[0].reason if desconocidas else "revisión requerida",
             }
         )
