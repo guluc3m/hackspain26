@@ -4,6 +4,7 @@ import {
   staticFile,
 } from "remotion";
 import { cargarFuentes } from "./fuentes";
+import { Anuncio } from "./Anuncio";
 import {
   Cierre, Decisiones, Escalera, Numeros, Portada, Problema, Traza,
 } from "./Secciones";
@@ -87,6 +88,19 @@ export const RemotionRoot: React.FC = () => {
         component={function () {
           return (
             <ConDatos>{(d: Datos) => <Secciones datos={d} />}</ConDatos>
+          );
+        }}
+        defaultProps={{}}
+      />
+      <Composition
+        id="Anuncio"
+        durationInFrames={2400}  // 80 s @30fps: problema 9s + 5 capturas + escalera + traza + resultados + cierre
+        fps={VIDEO.fps}
+        width={VIDEO.width}
+        height={VIDEO.height}
+        component={function () {
+          return (
+            <ConDatos>{(d: Datos) => <Anuncio datos={d} />}</ConDatos>
           );
         }}
         defaultProps={{}}

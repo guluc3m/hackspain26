@@ -72,7 +72,7 @@ const Etiqueta: React.FC<{ m: Metrica }> = ({ m }) => (
   </span>
 );
 
-const Titulo: React.FC<{ texto: string }> = ({ texto }) => {
+export const Titulo: React.FC<{ texto: string }> = ({ texto }) => {
   const frame = useCurrentFrame();
   const op = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" });
   return (

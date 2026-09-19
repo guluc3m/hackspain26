@@ -54,3 +54,6 @@ dist/
 presentation/node_modules/
 presentation/out/
 presentation/render.log
+presentation/public/capturas/
+presentation/render-anuncio.log
+presentation/render.log
