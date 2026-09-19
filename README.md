@@ -18,6 +18,10 @@ src/filemaid/
   config.py         rutas de estado (data/, nunca /tmp) y config de extracción
   pipeline.py       worker: lote idempotente y resumable (clave: sha+stage+version+config)
   run.py            CLI: run | emit | serve | reprocess | clean
+  engines/          los dos motores de la arquitectura (llamadas sin definir)
+    extraction.py   bloque de extracción: features -> campos (extract/ + parse/)
+    decision.py     bloque de decisión: campos -> resultado (rules/)
+  desktop/          ventana nativa (pywebview): puente JS -> motores
   extract/          escalera de 7 escalones por página, cache y plausibilidad
     rungs/          1 texto (pypdf) · 2 raster+QR (pypdfium2+zxing) · 3 tesseract
                     4 VLM local (llama-server, temp 0) · 5 TypeSafe (solo juicios)
@@ -49,25 +53,37 @@ misma página sin cambiar la configuración, el juicio cacheado puede quedar obs
 uv sync                              # entorno (Python 3.13, user-space)
 uv run filemaid run --lote caja-de-alberto/facturas --out outcomes.jsonl
 uv run filemaid emit               # re-emite outcomes desde el store
-uv run filemaid serve              # API + UI de revisión
+uv run filemaid serve              # API de revisión
 uv run filemaid clean              # borra store.db (pide confirmación)
 uv run pytest                        # tests
 uv run ruff check src tests          # lint
 pnpm --dir frontend install          # dependencias de la UI
 pnpm --dir frontend dev_syncth       # UI con datos sintéticos de referencia
 pnpm --dir frontend build_syncth     # build de la UI sintética
+uv sync --extra desktop              # pywebview para la ventana nativa
+uv run albertitos-desktop            # ventana nativa con la misma UI
 ```
 
 ### Modo sintético y UI
+
+La ventana nativa (pywebview) carga el front construido
+(`frontend/dist`, assets relativos para file://) y expone
+`window.pywebview.api`: `ping` (puente vivo) y las llamadas a los dos motores
+de la arquitectura (`extraer` → engines.extraction, `decidir` →
+engines.decision), aún **sin definir**: propagan NotImplementedError. La UI
+sigue consumiendo la referencia sintética. En dev, con `dev_syncth` corriendo:
+`ALBERTITOS_UI_URL=http://127.0.0.1:5173 uv run albertitos-desktop`.
 
 La UI consume los datos de la base de datos (sqlite) que expone el backend.
 Mientras esa conexión no existe, los targets `*_syncth` ejecutan la interfaz
 con una referencia sintética de esa base (`src/mock/data.ts`): decisiones con
 ID asignado y entradas de log mínimas (solo tipo + IDs; el detalle vive en las
-tablas). La conexión real queda vacía a propósito en `src/api.ts`.
+tablas). La conexión real queda vacía a propósito en `src/api.ts`, igual que
+las llamadas a los motores en el puente de la ventana nativa.
 
-El backend (`uv run filemaid serve`) expone la API y sirve la UI construida
-en `frontend/dist`.
+El backend (`uv run filemaid serve`) expone únicamente la API (FastAPI) y sirve
+las páginas rasterizadas (`/paginas`); no sirve `frontend/dist`. La UI sintética
+se ejecuta por separado (Vite dev server en `dev_syncth` o ventana nativa desktop).
 
 ### Limpiar el estado (`clean`)
 

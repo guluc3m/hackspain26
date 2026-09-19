@@ -42,6 +42,7 @@ packages = ["src/filemaid"]
 [project.scripts]
 filemaid = "filemaid.run:main"
 albertitos = "filemaid.run:main"
+albertitos-desktop = "filemaid.desktop.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
