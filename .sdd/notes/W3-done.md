@@ -159,3 +159,14 @@
   la medición actual, jamás al revés.
 - Para la defensa: `uv run python -m albertitos.simulacro` antes de cada
   ensayo; si algo sale ROJO, se actualiza el guion con la medición nueva.
+
+## Sesión 11 — T30 cerrado (commit fd11670) — BONUS
+
+- Plan por dinero en riesgo: los 45 escalados priorizados por importe con
+  suma acumulada y % cubierto; "para_cubrir_80_pct" = mínimo k de facturas
+  que cubren el 80 % del dinero en juego. Demo real: 116 163,14 € en riesgo,
+  con 3 facturas se cubre el 80 % (encabeza la outlier de 84 700 €).
+- Aditivo puro: resumen ejecutivo (T26) enriquecido; motor y reglas intactos.
+- Submodule caja-de-alberto inicializado user-space en este worktree (W1 lo
+  necesitaba); queda 1 flaky de timing en test_drill_rung4_live (W1, verde
+  en suite completa) — documentado.
