@@ -1,0 +1,184 @@
+{
+  "cierre": {
+    "bonus": "45 escalados priorizados por € (triage T14, reproceso 108)",
+    "entregables": [
+      "outcomes.jsonl (500/500 validado)",
+      "outcomes_lote2.jsonl (cuando llegue el lote 2)",
+      "albertitos_plan.pdf (13 páginas, cifras del store)"
+    ]
+  },
+  "decisiones": [
+    {
+      "evidencia": "T13/T21: v4 activada por yaml ⇒ 5/10 cambian, diff medido",
+      "porque": "el motor es determinista y puro; añadir o cambiar reglas es cambiar un yaml, cero código",
+      "titulo": "Reglas como DATOS (v3 → v4)"
+    },
+    {
+      "evidencia": "misma entrada ⇒ misma Decision (test de bytes)",
+      "porque": "los extractores proponen candidatos; las reglas deciden (§12) — determinismo byte a byte",
+      "titulo": "Ningún LLM en la decisión"
+    },
+    {
+      "evidencia": "cola de revisión del drill: 12 páginas (medido)",
+      "porque": "los escalados entran en cola con página y todas las lecturas lado a lado; el lote nunca espera",
+      "titulo": "Revisión humana no bloqueante"
+    },
+    {
+      "evidencia": "87/108 falsos NO_PAGAR medidos → fix ADR-06 (86→87, 0 regresiones)",
+      "porque": "las ambigüedades se resuelven una sola vez, con registro de qué candidato y por qué",
+      "titulo": "Colapso de candidatos con provenance"
+    },
+    {
+      "evidencia": "norma §5: estado ERP PENDIENTE, nunca pagar dos veces",
+      "porque": "el estado del pedido se consulta por interfaz intercambiable; ningún módulo conoce el ERP",
+      "titulo": "ERP fuera de scope, con costura"
+    },
+    {
+      "evidencia": "drill EN VIVO T24: 12 degradados → 0 divergentes",
+      "porque": "llama-server muerto a mitad ⇒ degradación a ESCALAR y recuperación con outcomes byte-idénticos",
+      "titulo": "Resiliencia medida, no prometida"
+    }
+  ],
+  "escalera": {
+    "errores_timeouts": {
+      "etiqueta": "medido",
+      "valor": "0 / 0"
+    },
+    "latencias": {
+      "rung1": {
+        "media": {
+          "etiqueta": "medido",
+          "valor": "0.4 ms"
+        },
+        "p95": {
+          "etiqueta": "medido",
+          "valor": "2.0 ms"
+        }
+      },
+      "rung2": {
+        "media": {
+          "etiqueta": "medido",
+          "valor": "42.1 ms"
+        },
+        "p95": {
+          "etiqueta": "medido",
+          "valor": "73.0 ms"
+        }
+      }
+    },
+    "raster": {
+      "etiqueta": "medido",
+      "valor": 29
+    },
+    "rung4": "PaddleOCR-VL q8 en llama-server, SERIALIZADO",
+    "rung5": "deepseek-v4.1-flash (solo si rung 4 falla; lectura = candidato)",
+    "solo_qr": {
+      "etiqueta": "medido",
+      "valor": "0"
+    },
+    "texto_usable": {
+      "etiqueta": "medido",
+      "valor": 471
+    }
+  },
+  "generado": "albertitos.presentacion (fuente: .sdd/metrics/)",
+  "numeros": {
+    "coste_cloud_eur": {
+      "etiqueta": "estimado",
+      "valor": 0.0
+    },
+    "coste_formula": "nº llamadas 200 × precio; electricidad CPU estimada",
+    "distribucion_final": {
+      "etiqueta": "medido",
+      "valor": "PAGAR 433 · NO_PAGAR 22 · ESCALAR 45"
+    },
+    "drills": {
+      "etiqueta": "medido",
+      "valor": "4 PASS / 0 fail"
+    },
+    "files_por_s_lote1": {
+      "etiqueta": "medido",
+      "valor": 4.162
+    },
+    "fuentes": "todo desde .sdd/metrics/ (lote1, corpus-dryrun, drills, impacto, metrics)",
+    "hardware": {
+      "nucleos": {
+        "etiqueta": "medido",
+        "valor": "8"
+      },
+      "ram": {
+        "etiqueta": "medido",
+        "valor": "12.0 GB"
+      }
+    },
+    "rung1_files_per_s": {
+      "etiqueta": "medido",
+      "valor": 2636.364
+    },
+    "validador": {
+      "etiqueta": "medido",
+      "valor": "500/500"
+    }
+  },
+  "portada": {
+    "chips": [
+      "FACTURA",
+      "DECISIÓN",
+      "TRAZA"
+    ],
+    "subtitulo": "500 Sombras de Alberto · qué hicimos y por qué",
+    "titulo": "ALBERTITOS PLAN"
+  },
+  "problema": {
+    "n_facturas": {
+      "etiqueta": "medido",
+      "valor": 500
+    },
+    "n_resultados": {
+      "etiqueta": "medido",
+      "valor": 3
+    },
+    "norma": "pagar solo si NIF e IBAN cruzan con el maestro, el pedido existe, cuadra y está pendiente; ante duda razonable, ESCALAR",
+    "resultados": [
+      "PAGAR",
+      "NO_PAGAR",
+      "ESCALAR"
+    ]
+  },
+  "traza": {
+    "campos_parseados": [
+      "base",
+      "fecha",
+      "iban",
+      "iva_amount",
+      "iva_pct",
+      "nif",
+      "numero_factura",
+      "pedido",
+      "proveedor",
+      "total"
+    ],
+    "disponible": true,
+    "file_id": "2026-01-08_P001.pdf",
+    "reglas": [
+      "NIF_IN_MASTER:PASS",
+      "IBAN_MATCHES_MASTER:PASS",
+      "ORDER_BELONGS_TO_SUPPLIER:PASS",
+      "ORDER_AMOUNT_MATCHES:PASS",
+      "TOTALS_MUST_MATCH:PASS",
+      "IVA_CONSISTENT:PASS",
+      "DATE_VALID_NOT_FUTURE:PASS",
+      "ORDER_PENDING:PASS",
+      "NO_DOUBLE_PAYMENT:PASS",
+      "NO_EMBEDDED_INSTRUCTIONS:PASS",
+      "PROVEEDOR_FANTASMA:PASS",
+      "AMOUNT_OUTLIER:PASS",
+      "PEDIDO_EN_REVISION:PASS"
+    ],
+    "resultado": "PAGAR",
+    "rungs": [
+      "extract:rung1_pdf_text"
+    ],
+    "sha256": "12a5e1eff4299d5b"
+  }
+}
