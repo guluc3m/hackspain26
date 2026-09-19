@@ -342,7 +342,7 @@
   show link: set text(fill: teal)
   show ref: set text(fill: teal)
 
-  show raw.where(block: false): it => box(fill: sand, outset: (x: 2.5pt, y: 2pt), it)
+  show raw.where(block: false): it => box(fill: sand, outset: (y: 2pt), it)
   show raw.where(block: true): it => block(
     width: 100%,
     breakable: true,
