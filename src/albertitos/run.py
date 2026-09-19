@@ -137,7 +137,6 @@ class RunnerConfig:
     force: bool = False  # T13: re-ejecutar aunque la decisión exista
     run_id: str = "base"  # T13: run del histórico en decision_runs
     emit_scope: str = "todo"  # "todo" (store completo) | "lote" (solo los file_id de este directorio)
-    maestro_patch: Path | None = None  # T13: parche de maestro EN MEMORIA
     # T24 (drill): config de extracción inyectable (vlm_base_url del stub,
     # umbrales que fuerzan tráfico al rung 4). None ⇒ la default.
     extract_config: ExtractionConfig | None = None
@@ -227,13 +226,6 @@ class Runner:
             cloud=cloud,
         )
         self.rung4_disponible = cfg.use_rung4 and _vlm_up(xcfg.vlm_base_url)
-        # T13: parche de maestro en memoria (el Excel del submódulo no se toca)
-        self.patch_resumen: dict | None = None
-        if cfg.maestro_patch is not None:
-            from albertitos.reprocess import apply_master_patch, load_patch
-
-            self.master, self.patch_resumen = apply_master_patch(
-                self.master, load_patch(cfg.maestro_patch))
         # Costuras de prueba (None en producción): un hook que lanza simula
         # crash; un hook que duerme simula archivo colgado.
         self.fail_hook = None
