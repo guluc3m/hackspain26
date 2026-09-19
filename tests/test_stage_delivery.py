@@ -154,3 +154,27 @@ def test_pdf_compilado_en_el_repo_de_entrega():
 
     reader = PdfReader(delivery / "albertitos_plan.pdf")
     assert len(reader.pages) >= 2
+
+
+def test_staging_ignora_artefactos_extra_de_la_raiz():
+    """T27: el resumen de Alberto (y cualquier otro artefacto de la solución)
+    NO entra en el repo de entrega — la raíz queda EXACTAMENTE con los
+    entregables del contrato, aunque existan en la raíz de la solución."""
+    resumen = REPO / "resumen_alberto.pdf"
+    existed = resumen.exists()
+    resumen.write_bytes(b"%PDF-fake-resumen")
+    try:
+        dest = STAGE_TMP / "delivery-resumen"
+        env = _entorno("resumen")
+        env["DESTINO"] = str(dest)
+        r = _run(env)
+        assert r.returncode == 0, r.stderr
+        contenido = sorted(p.name for p in dest.iterdir() if p.name != ".git")
+        assert contenido == ["albertitos_plan.pdf", "outcomes.jsonl"], (
+            "el contrato manda EXACTAMENTE los entregables; el resumen no entra"
+        )
+    finally:
+        if existed:
+            resumen.unlink()
+        else:
+            resumen.unlink(missing_ok=True)
