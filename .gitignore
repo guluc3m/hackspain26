@@ -46,3 +46,6 @@ dist/
 .sdd/lote2-sim/
 .sdd/pytest-tmp/
 >>>>>>> worker/w2
+
+# sandbox del drill T24 (estado en disco; la evidencia consolidada va en metrics/drill-rung4-live.json)
+.sdd/drill-live/

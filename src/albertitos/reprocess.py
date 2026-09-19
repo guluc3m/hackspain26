@@ -29,6 +29,7 @@ from pathlib import Path
 
 import yaml
 
+from albertitos.extract.config import ExtractionConfig
 from albertitos.rules.master import Maestro
 from albertitos.run import Runner, RunnerConfig, _hoy_iso
 from albertitos.store import Store, StoredDecision
@@ -210,6 +211,7 @@ def reprocesar(cfg: ReprocessConfig) -> dict:
             master_path=cfg.master_path,
             fecha_referencia=cfg.fecha_referencia,
             use_rung4=cfg.use_rung4,
+            extract_config=cfg.extract_config,
             force=True,  # reprocesar aunque la decisión exista
             run_id=cfg.run_id,
             maestro_patch=cfg.patch_path,
@@ -360,6 +362,8 @@ class ReprocessConfig:
     run_id: str = "repro"
     base_run: str = RUN_BASE
     use_rung4: bool = False
+    # T24: config de extracción inyectable (drill del rung 4).
+    extract_config: ExtractionConfig | None = None
     outcomes_path: Path | None = None
 
 

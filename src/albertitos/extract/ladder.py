@@ -284,7 +284,14 @@ class ExtractionLadder:
         self, *, engine, ev_version, psha, invoice_id, rung_fn, ctx_factory, out,
         stage=None,
     ):
-        """Run one rung through the page cache (key: page/engine/version/config)."""
+        """Run one rung through the page cache (key: page/engine/version/config).
+
+        T24: un FALLO TRANSIENTE de proveedor (llama-server caído, llamada
+        fallida) NO se cachea — cacharlo convertiría la degradación en
+        permanente y haría imposible la recuperación (la filosofía de T8 con
+        el timeout: el fallo no es definitivo; re-run lo reintenta). Los
+        skips ESTABLES (binario ausente, cloud no configurado) sí se cachean.
+        """
         stage = stage or f"extract:{engine}"
         cached = self.cache.get(psha, engine, ev_version, self.cfg.config_version)
         if cached is not None:
@@ -307,6 +314,9 @@ class ExtractionLadder:
 
         ctx = ctx_factory()
         result = rung_fn(ctx)
+        if _fallo_transient(result.detail):
+            # no cachear: el proveedor puede estar de vuelta en el re-run
+            return result
         payload = {
             "features": [_feature_to_json(f, psha, self.cache.root) for f in result.features],
             "stop": result.stop,
@@ -330,6 +340,16 @@ class RungResult:
         self.features = features
         self.stop = stop
         self.detail = detail
+
+
+# Fallos TRANSIENTES de proveedor: jamás se cachean (T24). El re-run reintenta.
+_TRANSIENTES = ("skipped:llama-server-not-running", "skipped:vlm-call-failed",
+                "skipped:cloud-vlm-failed", "skipped:tesseract-failed")
+
+
+def _fallo_transient(detail: str) -> bool:
+    d = str(detail or "")
+    return any(d == t or d.startswith(t + ":") for t in _TRANSIENTES)
 
 
 def _feature_to_json(feat: ExtractionFeature, page_sha: str, cache_root: Path) -> dict:
