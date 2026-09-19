@@ -11,6 +11,10 @@ Salida: ExtractionFeature con el texto/JSON extraído o candidatos.
 Métricas: latency_ms y extractor_version.
 Caché: (page_image_sha, VERSION, config_version).
 Graceful skip si no hay API key configurada o no hay imagen.
+Reintentos (ADR-05, drill `backoff-429`): 429/5xx con cabecera Retry-After se respeta
+(cap 30 s); sin cabecera, backoff exponencial corto (1 s, 2 s). Máximo 3 llamadas en
+total; al agotar, mismo skip de siempre (`skipped:cloud-vlm-error:*`) — el escalón
+nunca bloquea el lote.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ VERSION = "cloud_vlm-1"
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_MODEL = "gpt-4o-mini"
+_MAX_ATTEMPTS = 3
+_RETRY_CAP_S = 30.0
 _PROMPT = (
     "Extract all invoice text and key-value fields from this invoice image. "
     "Output the readable text accurately preserving layout, dates, amounts, NIF/CIF, and invoice numbers."
@@ -48,6 +54,22 @@ def _get_setting(ctx: PageContext, key: str, env_var: str, default: Any = "") ->
     if key in ctx.config and ctx.config[key] is not None:
         return ctx.config[key]
     return os.environ.get(env_var, default)
+
+
+def _is_retryable(resp: httpx.Response) -> bool:
+    """429 y 5xx son reintentables; red y otros 4xx fallan sin reintento."""
+    return resp.status_code == 429 or 500 <= resp.status_code < 600
+
+
+def _retry_delay_s(resp: httpx.Response, attempt: int) -> float:
+    """Espera antes del reintento: Retry-After si viene (cap 30 s), si no 1 s, 2 s, ..."""
+    raw = resp.headers.get("Retry-After")
+    if raw is not None:
+        try:
+            return max(0.0, min(float(raw), _RETRY_CAP_S))
+        except ValueError:
+            pass  # fecha HTTP u otro formato no numérico: backoff exponencial
+    return min(2.0 ** (attempt - 1), _RETRY_CAP_S)
 
 
 def extract(ctx: PageContext) -> ExtractionFeature:
@@ -108,18 +130,21 @@ def extract(ctx: PageContext) -> ExtractionFeature:
         "Content-Type": "application/json",
     }
 
-    resp = None
+    text = ""
     try:
-        resp = httpx.post(url, headers=headers, json=req_body, timeout=timeout_sec)
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            resp = httpx.post(url, headers=headers, json=req_body, timeout=timeout_sec)
+            capture_response(NAME, resp)
+            if _is_retryable(resp) and attempt < _MAX_ATTEMPTS:
+                time.sleep(_retry_delay_s(resp, attempt))
+                continue
+            break
         resp.raise_for_status()
         data = resp.json()
         text = data["choices"][0]["message"]["content"] or ""
     except Exception as exc:
         latency_ms = int((time.monotonic() - t0) * 1000)
         return _skip(f"cloud-vlm-error:{exc.__class__.__name__}", latency_ms=latency_ms)
-    finally:
-        if resp is not None:
-            capture_response(NAME, resp)
 
     latency_ms = int((time.monotonic() - t0) * 1000)
     if not text or not text.strip():

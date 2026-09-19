@@ -63,7 +63,7 @@ def test_config_key_is_used_for_remote_vlm(tmp_path, monkeypatch):
         requests.append((url, kwargs))
         return httpx.Response(
             200,
-            json={"choices": [{"message": {"content": "FACTURA NIF B12345678 TOTAL 121,00 EUR"}}]},
+            json={"choices": [{"message": {"content": "FACTURA NIF B12345678 TOTAL 121,00 EUR Fecha 15/01/2026"}}]},
             request=httpx.Request("POST", url),
         )
 
