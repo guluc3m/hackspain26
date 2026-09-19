@@ -28,3 +28,7 @@ dist/
 .sdd/store.db-wal
 .sdd/store.db-shm
 .sdd/smoke_outcomes.jsonl
+
+# runtime pesado regenerable (W1): imágenes de revisión, tessdata, workdir drills
+.sdd/tessdata/
+.sdd/drills/

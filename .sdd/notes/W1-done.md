@@ -134,3 +134,27 @@
   estado PINNADO en tests/test_auditoria_trampas.py — al corregir y reprocesar
   el test fallará a propósito y forzará re-auditar. El supervisor decide.
 - 164 tests verde, ruff limpio.
+
+## Actualización 4: T14 · Corrida real del lote 1 → outcomes.jsonl
+- `python -m albertitos.run` sobre los 500 PDFs reales (llama-server UP ⇒ lote
+  SECUENCIAL), regla v3, umbrales calibrados T10 (extract-v2), rung 4
+  PaddleOCR-VL y rung 5 deepseek-v4.1-flash (credenciales SOLO por env).
+- Resultados: PAGAR 347 · NO_PAGAR 108 · ESCALAR 45. Validador OK 500/500.
+- 29 ESCALAR = extracción sin resolver (sin capa de texto, tesseract binario
+  ausente ⇒ rung 3 skipped; candidatas VLM + deepseek en cola de revisión).
+  16 ESCALAR = anomalías de reglas (instrucciones embebidas 9, fecha futura 3,
+  pedido en revisión 2, maestro fantasma/IBAN 4...).
+- Incidencia documentada y corregida: la primera pasada marcó 20 scans como
+  ESCALAR/RUNNER_TIMEOUT (presupuesto desde cola de 120 s detrás de llamadas
+  VLM compartidas). Exactitud > velocidad: decisiones timeout borradas del
+  store (ledger conserva el histórico) y re-procesadas con --timeout 900 ⇒
+  0 timeouts. Re-run posterior: 500/500 reutilizados y outcomes.jsonl
+  BYTE-A-BYTE idéntico (verificado con diff).
+- Métricas: .sdd/metrics/lote1.json (files/s, latencias por rung — rung 4
+  media 28,2 s por página en máquina compartida, rung 5: 25 llamadas cloud ⇒
+  ~0,10 € estimado a 0,004 €/llamada (T9), uso de rutas, motivos ESCALAR).
+- Drills de resiliencia (T12): 4/4 PASS (provider caído, backoff 429, crash +
+  reanudación, ledger corrupto).
+- outcomes.jsonl se commitea en la solución (regla dura del ticket); el repo
+  de entrega lo prepara el supervisor. Cola de revisión (37 MB con imágenes)
+  queda como estado .sdd NO commiteado — regenerable desde cache/store.

@@ -1,46 +1,106 @@
 {
-  "config_version": "v3.0-2026-09-19",
-  "coste_cloud_eur": {
-    "medido": 0.0,
-    "nota": "estimado: 0.00 € — 0 lecturas cloud facturables (5 intentos con 404 no facturan, 4 sin credenciales aún); fórmula T9: nº llamadas 200 × precio por lectura deepseek-v4.1-flash"
+  "coste_cloud": {
+    "etiqueta": "llamadas medido × precio estimado (T9 PRECIOS)",
+    "eur_por_llamada": 0.004,
+    "eur_total_estimado": 0.1,
+    "llamadas_cloud": 25
   },
   "distribucion": {
     "ESCALAR": 45,
     "NO_PAGAR": 108,
     "PAGAR": 347
   },
-  "engine_version": "runner-1.0.0",
   "escalares": {
-    "DATE_VALID_NOT_FUTURE:UNKNOWN": 3,
-    "IBAN_MATCHES_MASTER:UNKNOWN": 1,
-    "NO_EMBEDDED_INSTRUCTIONS:UNKNOWN": 5,
-    "PEDIDO_EN_REVISION:UNKNOWN": 2,
-    "RUNNER_TIMEOUT:UNKNOWN": 20,
-    "mixto": 14
+    "archivos": [
+      "2026-03-19_P008.pdf",
+      "2026-06-04_P006.pdf",
+      "2026-07-01_P009.pdf",
+      "2026-07-09_P010.pdf",
+      "2026-79712_limpiezas.pdf",
+      "F26-2201_transportes.pdf",
+      "F26-3011_suministros.pdf",
+      "F26-7728_limpiezas2.pdf",
+      "F26-9007_catering.pdf",
+      "FA-1123_construcciones.pdf",
+      "FA-2508_consultoría.pdf",
+      "FA-2967_seguridad.pdf",
+      "FA-8488_transportes.pdf",
+      "copia_2026_0518.pdf",
+      "factura_4485.pdf",
+      "factura_5911.pdf",
+      "factura_7265.pdf",
+      "fax_2026_0411.pdf",
+      "reimpresion_0712.pdf",
+      "scan_001.pdf",
+      "scan_002.pdf",
+      "scan_003.pdf",
+      "scan_004.pdf",
+      "scan_005.pdf",
+      "scan_006.pdf",
+      "scan_007.pdf",
+      "scan_008.pdf",
+      "scan_009.pdf",
+      "scan_010.pdf",
+      "scan_011.pdf",
+      "scan_012.pdf",
+      "scan_013.pdf",
+      "scan_014.pdf",
+      "scan_015.pdf",
+      "scan_016.pdf",
+      "scan_017.pdf",
+      "scan_018.pdf",
+      "scan_021.pdf",
+      "scan_022.pdf",
+      "scan_023.pdf",
+      "scan_025.pdf",
+      "scan_026.pdf",
+      "scan_027.pdf",
+      "scan_028.pdf",
+      "scan_029.pdf"
+    ],
+    "motivos_dominantes": {
+      "DATE_VALID_NOT_FUTURE": 3,
+      "IBAN_MATCHES_MASTER": 1,
+      "IBAN_MATCHES_MASTER,ORDER_AMOUNT_MATCHES,ORDER_PENDING,NO_EMBEDDED_INSTRUCTIONS,PROVEEDOR_FANTASMA": 2,
+      "IBAN_MATCHES_MASTER,ORDER_AMOUNT_MATCHES,ORDER_PENDING,PROVEEDOR_FANTASMA": 1,
+      "NIF_IN_MASTER,IBAN_MATCHES_MASTER,ORDER_BELONGS_TO_SUPPLIER,ORDER_AMOUNT_MATCHES,TOTALS_MUST_MATCH,IVA_CONSISTENT,DATE_VALID_NOT_FUTURE,ORDER_PENDING,AMOUNT_OUTLIER": 29,
+      "NO_EMBEDDED_INSTRUCTIONS": 6,
+      "NO_EMBEDDED_INSTRUCTIONS,AMOUNT_OUTLIER": 1,
+      "PEDIDO_EN_REVISION": 2
+    },
+    "n": 45
   },
-  "fallos": 0,
-  "files_per_s": 4.162,
-  "fuente": {
-    "ledger": ".sdd/ledger/ledger.jsonl",
-    "outcomes": "/home/deploy/hackspain26/outcomes.jsonl",
-    "runner": ".sdd/state/runner.json",
-    "store": ".sdd/store.db"
+  "files_per_s": {
+    "lote_reutilizado": 112.492,
+    "nota": "corrida inicial: 480 en ~7 min + 20 re-procesos VLM-bound (~27 min, secuencial, máquina compartida); re-run 500/500 reutilizados en ~4 s"
   },
-  "generado": "2026-09-18 23:57:31",
   "kind": "lote1",
-  "latencia_total_s": 120.1,
-  "medido": true,
-  "n_archivos": 500,
-  "rung4_llama_server": "up",
-  "rung4_serializado": true,
-  "rung4_vlm_local": {
-    "latencia_max_ms": 33725,
-    "latencia_media_ms": 15818.3,
-    "n_invocaciones": 9
+  "latencia_por_rung": {
+    "rung2": {
+      "mean_ms": 53.9,
+      "n": 27,
+      "p95_ms": 78
+    },
+    "rung4": {
+      "mean_ms": 28178.1,
+      "n": 23,
+      "p95_ms": 38082
+    }
   },
-  "rung5_cloud": {
-    "latencia_max_ms": 2605,
-    "latencia_media_ms": 524.6,
-    "n_invocaciones": 9
-  }
+  "n_archivos": 500,
+  "reproducibilidad": {
+    "rerun_byte_identico": true,
+    "reutilizados": 500
+  },
+  "rungs_invocados": {
+    "rung1": 520,
+    "rung2": 27,
+    "rung4": 23,
+    "rung5": 25
+  },
+  "uso_rutas": {
+    "rung1_pdf_text": 471,
+    "unresolved": 29
+  },
+  "validador": "OK"
 }
