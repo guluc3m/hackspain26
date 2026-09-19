@@ -7,6 +7,10 @@ impacto-fix-colapso.json) y cada cifra lleva su etiqueta.
 
 import json
 
+import pytest
+
+from conftest import lote1_estado_real_presente
+
 SECCIONES = ("portada", "problema", "escalera", "decisiones", "numeros",
              "traza", "cierre")
 
@@ -23,6 +27,11 @@ def test_datos_seccionadas_y_etiquetadas(tmp_path):
 
 
 def test_determinismo_y_origen_medido(tmp_path):
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     a = json.dumps(__import__("albertitos.presentacion",
                               fromlist=["generar_datos"]).generar_datos(
         destino=tmp_path / "a.json"), sort_keys=True)

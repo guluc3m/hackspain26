@@ -380,3 +380,11 @@ implementa con ticket propio; lo grande/riesgoso vive aquí.
 **Estado del protocolo T38**: ≥1 hallazgo con repro (SUGERENCIAS.md roto +
 verificación de #1), ≥2 entradas en SUGERENCIAS (evaluación documentada
 aquí), ≥1 mejora implementada con tests (7 commits LOOP).
+
+## T40F4 (provisioning, para el supervisor — 2026-09-19, W4)
+La defensa necesita el estado real del lote 1 en el nodo de presentación.
+Hoy `.sdd/lote1/` es gitignored: 5 tests de defensa/UI/presentación se
+saltan con motivo honesto en worktrees sin estado (T40F4, cerrado con
+skipif). Antes de la defensa: materializar el estado REAL con una semilla
+reproducible (copiar el store validado o reprocesar el lote 1) para que la
+verificación íntegra corra donde se defiende el producto.

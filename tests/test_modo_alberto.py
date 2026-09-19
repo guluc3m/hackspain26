@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import lote1_estado_real_presente
+
 REPO = Path(__file__).parent.parent
 PUERTO_TEST = 8143
 
@@ -101,6 +103,11 @@ def test_inicio_de_alberto_con_un_boton_por_accion(servidor):
 
 
 def test_confirmaciones_con_consecuencias(servidor):
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     import urllib.request
 
     with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_TEST}/revision", timeout=10) as r:

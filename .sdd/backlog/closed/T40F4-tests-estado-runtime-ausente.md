@@ -32,3 +32,23 @@ Descartada: relajar los asserts (esconderría regresiones reales).
 NO implementado por W5: toca ficheros del dominio de W3/W4 (UI/defensa/
 presentación) y la decisión es de provisioning, no de tests. Documentado
 según T38 (hallazgo con repro, sin commit).
+## Resolución (W4, T39 — ciclo 3): APROBADO — opción (b) implementada
+El hallazgo es exacto (verificado: los mismos 5 rojos en este worktree desde
+el ciclo 2, idénticos con stash). Decisión del evaluador: implementar (b)
+skipif HONESTO y dejar (a) como paso de provisioning del supervisor — (b)
+coste ~15 líneas, cero riesgo para entregables y restaura la regla dura
+«pytest verde» en CUALQUIER worktree del loop; (a) requiere decidir de dónde
+sale el store validado (copiar vs reprocesar) y es machine-specific.
+
+- `tests/conftest.py`: helper `lote1_estado_real_presente()` (sentinela:
+  `.sdd/lote1/ledger/ledger.jsonl` no vacío).
+- Los 5 tests ganan un guard con pytest.skip y motivo explícito: «estado real
+  del lote 1 ausente en este worktree (... provisioning T40F4); el test corre
+  completo donde existe». CERO asserts relajados: donde el estado existe, la
+  verificación íntegra sigue corriendo (defensa incluida).
+- RECOMENDACIÓN (a) para el supervisor, ANTES de la defensa: semilla
+  reproducible del estado runtime en el nodo de presentación
+  (scripts/semilla_lote1.sh: copiar `.sdd/lote1` validado del nodo de
+  proceso, o reprocesar; entonces estos 5 tests corren de verdad y los skips
+  desaparecen). Dejada como entrada en SUGERENCIAS.md.
+- Verificado: 14 passed + 6 skipped (motivo visible), ruff limpio.

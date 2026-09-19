@@ -10,6 +10,10 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
+from conftest import lote1_estado_real_presente
+
 REPO = Path(__file__).parent.parent
 DEFENSA = REPO / "docs" / "report" / "DEFENSA.md"
 
@@ -32,6 +36,11 @@ def test_guion_existe_con_4_secciones_y_checklist():
 
 def test_todos_los_ficheros_citados_existen():
     """Cada ruta `.sdd/...` citada en el guion existe en disco (fuente real)."""
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     texto = DEFENSA.read_text(encoding="utf-8")
     rutas = set(re.findall(r"`(\.sdd/[A-Za-z0-9_\-./]+)`", texto))
     assert rutas, "el guion debe citar sus fuentes"

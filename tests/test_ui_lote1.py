@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from albertitos.ui.app import create_app
 from albertitos.ui.ledger import estado_runner
+from conftest import lote1_estado_real_presente
 
 LOTE1 = Path(".sdd/lote1")  # symlink → /home/deploy/fleet/w1/.sdd (SOLO LECTURA)
 
@@ -133,6 +134,11 @@ def test_operaciones_con_estado_runner(lote_real_formato: Path):
 
 def test_facturas_filtro_y_busqueda():
     """Store real = objetivo móvil (W1 sigue escribiendo): consistencia interna."""
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     c = TestClient(create_app(store_dir=Path(".sdd/lote1/ledger")))
     assert c.get("/facturas").status_code == 200
     r = c.get("/facturas", params={"result": "ESCALAR"})
@@ -179,6 +185,11 @@ def test_revision_escalados_paginados():
 
 
 def test_reglas_umbrales_reales_y_sin_confianza():
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     c = TestClient(create_app(store_dir=Path(".sdd/lote1/ledger")))
     r = c.get("/reglas")
     assert r.status_code == 200
