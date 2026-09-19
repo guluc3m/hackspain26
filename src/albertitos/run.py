@@ -10,20 +10,40 @@ from pathlib import Path
 
 from .config import AppConfig
 from .pipeline import Pipeline, outcomes_from_store
+from .rules.report import write_report
 from .store.db import Store
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="albertitos", description="Sistema de decisión de facturas de Alberto")
+    parser = argparse.ArgumentParser(
+        prog="albertitos", description="Sistema de decisión de facturas de Alberto"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="procesa un lote de PDFs")
     p_run.add_argument("--lote", type=Path, required=True, help="directorio con los PDFs")
     p_run.add_argument("--out", type=Path, default=Path("outcomes.jsonl"))
+    p_run.add_argument(
+        "--no-report", action="store_true", help="no genera el informe HTML tras el lote"
+    )
+    p_run.add_argument(
+        "--report-dir",
+        type=Path,
+        default=Path("rules"),
+        help="directorio del informe HTML (reglas + breadcrumbs)",
+    )
 
     p_emit = sub.add_parser("emit", help="re-emite outcomes.jsonl desde el store")
     p_emit.add_argument("--out", type=Path, default=Path("outcomes.jsonl"))
     p_emit.add_argument("--run-id", default=None)
+
+    p_report = sub.add_parser(
+        "report", help="informe HTML de un run: reglas y breadcrumbs por factura"
+    )
+    p_report.add_argument("--run-id", default=None, help="por defecto, el último run")
+    p_report.add_argument(
+        "--out", type=Path, default=Path("rules"), help="directorio de salida del informe"
+    )
 
     sub.add_parser("serve", help="arranca la API (FastAPI) y la UI")
 
@@ -49,6 +69,16 @@ def main(argv: list[str] | None = None) -> int:
             counts[d.result.value] = counts.get(d.result.value, 0) + 1
         for result in ("PAGAR", "NO_PAGAR", "ESCALAR"):
             print(f"{result}: {counts.get(result, 0)}")
+        if not args.no_report and decisions:
+            out = write_report(pipeline.store, cfg, pipeline.rule_config.version, args.report_dir)
+            print(f"informe: {out / 'index.html'}")
+        return 0
+
+    if args.command == "report":
+        store = Store(cfg.store_path)
+        run_id = args.run_id or _latest_run_id(store)
+        out = write_report(store, cfg, run_id, args.out)
+        print(f"{len(store.decision_rows_for_run(run_id))} facturas -> {out / 'index.html'}")
         return 0
 
     if args.command == "emit":
@@ -67,7 +97,11 @@ def main(argv: list[str] | None = None) -> int:
 
         from .api.app import create_app
 
-        uvicorn.run(create_app(), host="127.0.0.1", port=int(__import__("os").environ.get("ALBERTITOS_PORT", "8000")))
+        uvicorn.run(
+            create_app(),
+            host="127.0.0.1",
+            port=int(__import__("os").environ.get("ALBERTITOS_PORT", "8000")),
+        )
         return 0
 
     if args.command == "reprocess":

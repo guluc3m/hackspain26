@@ -121,6 +121,11 @@ The system runs unattended, indefinitely. Therefore:
 ("ante duda razonable, escalar antes que pagar"). The boundary is a documented policy, not a
 per-ticket judgement call: any change to it is an ADR, and any ticket touching it needs review.
 
+The boundary is **per-rule configuration** (`outcomes.default` / `outcomes.on_fail.<RULE>` in
+`rules.yaml`), not code. A rule's `FAIL` resolves to `NO_PAGAR` (default) or `ESCALAR`; it may
+never resolve `PAGAR`, and the engine rejects such config. The resolved outcome per rule is
+recorded in the decision's config snapshot as `rule_outcomes`.
+
 ## 7 · Human review
 
 Escalation never blocks the batch. An item that fails every automated rung resolves to `ESCALAR`

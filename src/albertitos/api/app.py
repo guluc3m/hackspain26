@@ -94,6 +94,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             "config_version": rc.version,
             "enabled": rc.enabled_codes,
             "thresholds": rc.thresholds,
+            "outcomes": rc.outcomes,
         }
 
     @app.get("/api/salud")

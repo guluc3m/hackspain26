@@ -28,6 +28,54 @@ class RuleVerdict(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+# Códigos estables de la causa de un UNKNOWN (contrato: reglas, store e informes).
+UNKNOWN_SIN_CAMPO = "SIN_CAMPO"  # el campo no se extrajo o vino vacío
+UNKNOWN_SIN_CANDIDATO_VALIDO = (
+    "SIN_CANDIDATO_VALIDO"  # había candidatos, ninguno supera formato y umbral
+)
+UNKNOWN_CONFIANZA_BAJA = "CONFIANZA_BAJA"  # el mejor candidato no llega al umbral de la regla
+UNKNOWN_NO_PARSEABLE = "NO_PARSEABLE"  # hay valor pero no se puede interpretar (fecha, …)
+UNKNOWN_CRUZ_NO_POSIBLE = "CRUZ_NO_POSIBLE"  # falta el dato con el que cruzar (maestro/ERP)
+UNKNOWN_OTRO = "OTRO"  # motivo sin categoría estable
+
+UNKNOWN_CODES = (
+    UNKNOWN_SIN_CAMPO,
+    UNKNOWN_SIN_CANDIDATO_VALIDO,
+    UNKNOWN_CONFIANZA_BAJA,
+    UNKNOWN_NO_PARSEABLE,
+    UNKNOWN_CRUZ_NO_POSIBLE,
+    UNKNOWN_OTRO,
+)
+
+
+def classify_unknown_reason(reason: str) -> str:
+    """Clasifica un motivo UNKNOWN (texto) en su código estable.
+
+    Solo para filas legacy sin reason_code: las reglas nuevas ya emiten el
+    código estructural desde escoger/pick. Determinista: misma cadena ⇒ mismo código.
+    """
+    r = (reason or "").strip()
+    # quita envolturas del tipo "NIF no fiable: <motivo del colapso>"
+    while True:
+        head, sep, tail = r.partition(": ")
+        if sep and "no fiable" in head.lower():
+            r = tail.strip()
+            continue
+        break
+    low = r.lower()
+    if low.startswith("sin campo"):
+        return UNKNOWN_SIN_CAMPO
+    if "ningún candidato" in low or low.startswith("sin candidatos"):
+        return UNKNOWN_SIN_CANDIDATO_VALIDO
+    if "con confianza" in low and "< umbral" in low:
+        return UNKNOWN_CONFIANZA_BAJA
+    if "no parseable" in low:
+        return UNKNOWN_NO_PARSEABLE
+    if "fuera de maestro" in low or "no existe en el erp" in low:
+        return UNKNOWN_CRUZ_NO_POSIBLE
+    return UNKNOWN_OTRO
+
+
 @dataclass(slots=True)
 class ExtractionFeature:
     """Material en crudo del PDF, sin interpretar (fase 1)."""
@@ -73,7 +121,10 @@ class RuleEvaluation:
     verdict: RuleVerdict
     reason: str
     consumed: dict[str, Any] = field(default_factory=dict)
-    chosen_candidates: dict[str, str] = field(default_factory=dict)  # field -> candidate elegido y por qué
+    chosen_candidates: dict[str, str] = field(
+        default_factory=dict
+    )  # field -> candidate elegido y por qué
+    reason_code: str = ""  # si UNKNOWN: causa estable (types.UNKNOWN_*); si no, vacío
 
 
 @dataclass(slots=True)
@@ -84,6 +135,8 @@ class ConfigSnapshot:
     extractor_versions: dict[str, str] = field(default_factory=dict)
     master_sha256: str = ""
     config_version: str = ""
+    # Resultado del motor si la regla devuelve FAIL (configurable, nunca PAGAR).
+    rule_outcomes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

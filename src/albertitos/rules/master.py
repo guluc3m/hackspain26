@@ -41,7 +41,9 @@ class MasterData:
             h.update(f"proveedor|{p.nif}|{p.nombre}|{p.iban}\n".encode())
         for num in sorted(self.pedidos):
             q = self.pedidos[num]
-            h.update(f"pedido|{q.numero}|{q.nif_proveedor}|{q.importe}|{q.estado}|{q.pagado}\n".encode())
+            h.update(
+                f"pedido|{q.numero}|{q.nif_proveedor}|{q.importe}|{q.estado}|{q.pagado}\n".encode()
+            )
         return h.hexdigest()
 
 
@@ -67,7 +69,8 @@ def load_master(dir_path: Path) -> MasterData:
                     nif_proveedor=row["nif_proveedor"].strip().upper(),
                     importe=float(row["importe"].replace(",", ".")),
                     estado=row["estado"].strip().upper(),
-                    pagado=row.get("pagado", "no").strip().lower() in {"si", "sí", "yes", "true", "1"},
+                    pagado=row.get("pagado", "no").strip().lower()
+                    in {"si", "sí", "yes", "true", "1"},
                 )
                 master.pedidos[q.numero] = q
     return master

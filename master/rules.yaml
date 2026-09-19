@@ -25,6 +25,15 @@ thresholds:
     min_confidence: 0.7
   TOTALS_MUST_MATCH:
     min_confidence: 0.7
+outcomes:
+  # Resultado del motor cuando una regla devuelve FAIL. Una regla rota NUNCA
+  # paga: solo NO_PAGAR (negativo definitivo) o ESCALAR (duda razonable).
+  # NIF/IBAN fuera del maestro pueden ser un proveedor nuevo: se escala, no se
+  # descarta definitivamente. Cambiar esta frontera es una ADR.
+  default: NO_PAGAR
+  on_fail:
+    NIF_IN_MASTER: ESCALAR
+    IBAN_MATCHES_MASTER: ESCALAR
 seleccion:
   # puntuación = confianza × peso del extractor; el field debe superarla para continuar.
   default_score_threshold: 0.3

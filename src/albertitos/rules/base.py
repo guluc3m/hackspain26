@@ -9,7 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from albertitos.types import Candidate, ExtractionField, RuleEvaluation
+from albertitos.types import (
+    UNKNOWN_CONFIANZA_BAJA,
+    UNKNOWN_SIN_CAMPO,
+    Candidate,
+    ExtractionField,
+    RuleEvaluation,
+)
 
 from .escoger import Selection, escoger, field_selection
 from .master import MasterData
@@ -40,16 +46,26 @@ class RuleContext:
         de formato, puntuación (confianza × peso) con umbral por field y
         desempates (valores iguales; si no, ranking de extractores).
         """
+        cand, why, _code = self.pick_coded(field_type, min_confidence)
+        return cand, why
+
+    def pick_coded(
+        self, field_type: str, min_confidence: float = 0.0
+    ) -> tuple[Candidate | None, str | None, str]:
+        """Como pick(), pero devuelve también el código estable del motivo.
+
+        (candidato, None, "") o (None, motivo, código de types.UNKNOWN_*).
+        """
         sel = self.pick_detailed(field_type, min_confidence)
         if sel.candidate is None:
-            return None, sel.reason
-        return sel.candidate, None
+            return None, sel.reason, sel.reason_code
+        return sel.candidate, None, ""
 
     def pick_detailed(self, field_type: str, min_confidence: float = 0.0) -> Selection:
         """Como pick(), pero con la trazabilidad completa del colapso (auditoría)."""
         f = self.fields.get(field_type)
         if f is None or not f.values:
-            return Selection(None, reason=f"sin campo {field_type}")
+            return Selection(None, reason=f"sin campo {field_type}", reason_code=UNKNOWN_SIN_CAMPO)
         sel = escoger(f, field_selection(self.seleccion, field_type))
         if sel.candidate is None:
             return sel
@@ -60,6 +76,7 @@ class RuleContext:
                     f"mejor candidato de {field_type} ({sel.candidate.extractor}) con confianza "
                     f"{sel.candidate.confidence:.2f} < umbral {min_confidence:.2f}"
                 ),
+                reason_code=UNKNOWN_CONFIANZA_BAJA,
                 audit=sel.audit,
             )
         return sel

@@ -23,7 +23,12 @@ from datetime import date
 from typing import Any
 
 from albertitos.parse.normalizers import normalize_iban, normalize_nif, parse_amount
-from albertitos.types import Candidate, ExtractionField
+from albertitos.types import (
+    UNKNOWN_SIN_CAMPO,
+    UNKNOWN_SIN_CANDIDATO_VALIDO,
+    Candidate,
+    ExtractionField,
+)
 
 # ---------------------------------------------------------------- formatos
 
@@ -163,6 +168,7 @@ class Selection:
 
     candidate: Candidate | None
     reason: str = ""  # motivo si no hay candidato
+    reason_code: str = ""  # código estable del motivo (types.UNKNOWN_*)
     why: str = ""  # por qué se eligió el candidato (procedencia para la evidencia)
     audit: list[CandidateAudit] = field(default_factory=list)
 
@@ -170,7 +176,9 @@ class Selection:
 def escoger(f: ExtractionField, sel: FieldSelection) -> Selection:
     """Colapsa un ExtractionField a un candidato según el proceso de escoger.typ."""
     if not f.values:
-        return Selection(None, reason=f"sin candidatos para {f.type}")
+        return Selection(
+            None, reason=f"sin candidatos para {f.type}", reason_code=UNKNOWN_SIN_CAMPO
+        )
 
     audit: list[CandidateAudit] = []
     vivos: list[tuple[Candidate, float]] = []
@@ -212,6 +220,7 @@ def escoger(f: ExtractionField, sel: FieldSelection) -> Selection:
         return Selection(
             None,
             reason=f"ningún candidato de {f.type} supera formato y umbral de puntuación",
+            reason_code=UNKNOWN_SIN_CANDIDATO_VALIDO,
             audit=audit,
         )
 

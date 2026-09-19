@@ -4,12 +4,15 @@ import json
 
 from albertitos.extract.ladder import PageExtraction
 from albertitos.parse.parser import parse_fields
+from albertitos.store.db import Store
 from albertitos.store.ledger import Ledger
 from albertitos.types import ExtractionFeature, Result
 
 
 def _feature(texto: str, method: str) -> ExtractionFeature:
-    return ExtractionFeature(type="pdf_text", extraction_method=method, data=texto, page=0, extractor_version="1")
+    return ExtractionFeature(
+        type="pdf_text", extraction_method=method, data=texto, page=0, extractor_version="1"
+    )
 
 
 def test_parser_conserva_candidatos_de_varias_fuentes():
@@ -24,10 +27,14 @@ def test_parser_conserva_candidatos_de_varias_fuentes():
 
 def test_store_nunca_colapsa_candidatos(store):
     store.upsert_invoice("inv-1", "f.pdf", "sha-1")
-    store.add_field("inv-1", "total", [
-        {"extractor": "pypdf", "value": 121.00, "confidence": 0.7},
-        {"extractor": "vlm", "value": 120.50, "confidence": 0.9},
-    ])
+    store.add_field(
+        "inv-1",
+        "total",
+        [
+            {"extractor": "pypdf", "value": 121.00, "confidence": 0.7},
+            {"extractor": "vlm", "value": 120.50, "confidence": 0.9},
+        ],
+    )
     fields = store.fields_for("inv-1")
     assert len(fields["total"]) == 2
     assert fields["total"][0]["value"] == 120.50  # ordenado por confianza
@@ -36,8 +43,14 @@ def test_store_nunca_colapsa_candidatos(store):
 def test_store_idempotente_feature(store):
     store.upsert_invoice("inv-1", "f.pdf", "sha-1")
     kw = {
-        "stage": "pypdf", "page": 0, "extractor_version": "1", "config_version": "cfg",
-        "sha256": "sha-1", "latency_ms": 5, "confidence": 1.0, "outcome": "pypdf",
+        "stage": "pypdf",
+        "page": 0,
+        "extractor_version": "1",
+        "config_version": "cfg",
+        "sha256": "sha-1",
+        "latency_ms": 5,
+        "confidence": 1.0,
+        "outcome": "pypdf",
         "detail": {"type": "pdf_text"},
     }
     store.add_feature("inv-1", **kw)
@@ -57,12 +70,53 @@ def test_ledger_append_only(tmp_path):
 
 def test_override_con_procedencia(store):
     store.upsert_invoice("inv-1", "f.pdf", "sha-1")
-    store.add_override({
-        "invoice_id": "inv-1", "field_type": "iban",
-        "before": "ES00", "after": "ES9121000418450200051332",
-        "who": "revisor", "rung": "review-ui", "reason": "lectura",
-    })
+    store.add_override(
+        {
+            "invoice_id": "inv-1",
+            "field_type": "iban",
+            "before": "ES00",
+            "after": "ES9121000418450200051332",
+            "who": "revisor",
+            "rung": "review-ui",
+            "reason": "lectura",
+        }
+    )
     rows = store.overrides_for("inv-1")
     assert len(rows) == 1
     assert rows[0]["who"] == "revisor"
     assert json.loads(rows[0]["after"]) == "ES9121000418450200051332"
+
+
+def test_store_guarda_reason_code(store):
+    store.upsert_invoice("inv-1", "f.pdf", "sha-1")
+    store.add_rule_evaluations(
+        "inv-1",
+        "run-1",
+        [
+            {
+                "code": "DATE_VALID_NOT_FUTURE",
+                "verdict": "UNKNOWN",
+                "reason": "sin campo fecha",
+                "reason_code": "SIN_CAMPO",
+                "consumed": {},
+            },
+        ],
+    )
+    row = store.rule_evaluations_for("inv-1", "run-1")[0]
+    assert row["reason_code"] == "SIN_CAMPO"
+
+
+def test_store_backfill_reason_code_de_filas_legacy(cfg):
+    # simula un store anterior a reason_code: fila UNKNOWN con solo el motivo textual
+    store = Store(cfg.store_path)
+    store.upsert_invoice("inv-1", "f.pdf", "sha-1")
+    store.conn.execute(
+        """INSERT INTO rule_evaluations (invoice_id, run_id, code, verdict, reason, consumed, timestamp)
+           VALUES ('inv-1', 'run-1', 'NIF_IN_MASTER', 'UNKNOWN', 'NIF no fiable: sin campo nif', '{}', 0)"""
+    )
+    store.conn.commit()
+    store.close()
+
+    reopened = Store(cfg.store_path)  # la migración añade columna y clasifica las filas legacy
+    row = reopened.rule_evaluations_for("inv-1", "run-1")[0]
+    assert row["reason_code"] == "SIN_CAMPO"
