@@ -224,3 +224,13 @@
   cerrado: teamId en albertitos_plan.typ:13, recompilar, re-staging, y
   git -C /home/deploy/delivery-repo remote add origin … + push HEAD:main.
 - 220 tests verde, ruff limpio.
+
+## Actualización 9: T33 · Loop de mejora continua (ciclo 1)
+- M1 (da4d1fe): tesseract_psm configurable (rung 3); comportamiento idéntico.
+- M2 (baf6db6): un solo PdfReader por página (menos re-parseos).
+- M3 (06aeba0): ReviewQueue dedupe O(1) + tools/regen_review_queue.py
+  (cola regenerable: 29 páginas, replay de cache, 0 re-facturación).
+- docs/report/SUGERENCIAS.md: 9 entradas / 6 categorías. La #1 (alta, W2):
+  test_simulacro rmtree la cola REAL de W1 a mitad de suite — causa del único
+  rojo residual del suite (test_ui_lote1); regenerable con el tool.
+- 251/252 verde (rojo = interferencia entre workers documentada), ruff limpio.
