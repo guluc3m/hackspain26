@@ -44,8 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         pipeline = Pipeline(cfg)
         decisions = pipeline.run_lote(args.lote, args.out)
+        counts: dict[str, int] = {}
         for d in decisions:
-            print(f"{d.file_id}: {d.result.value}")
+            counts[d.result.value] = counts.get(d.result.value, 0) + 1
+        for result in ("PAGAR", "NO_PAGAR", "ESCALAR"):
+            print(f"{result}: {counts.get(result, 0)}")
         return 0
 
     if args.command == "emit":
