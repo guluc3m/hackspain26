@@ -21,8 +21,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from albertitos.resumen import datos_resumen
@@ -384,6 +384,37 @@ def create_app(
                 n_paginas=n_paginas,
                 overrides=vista.overrides,
             ),
+        )
+
+    @aplicacion.get("/facturas/{invoice_id}/pdf")
+    def factura_pdf(invoice_id: str):
+        """PDF original servido inline para verlo en la UI. La carpeta de PDFs
+        NO está hardcodeada: ALBERTITOS_CARPETA (o candidates relativos), y se
+        busca el file_id EXACTO (basename) recursivamente dentro."""
+        vista = aplicacion.state.view
+        file_id = next(
+            (d.file_id for d in vista.decisions
+             if d.invoice_id == invoice_id and d.file_id),
+            invoice_id,
+        )
+        if not file_id or file_id.startswith("—"):
+            raise HTTPException(status_code=404, detail="esta factura aún no tiene PDF asociado")
+        env = os.environ.get("ALBERTITOS_CARPETA", "").strip()
+        candidatos = [Path(env)] if env else []
+        candidatos += [Path("caja-de-alberto/facturas"), Path("facturas")]
+        ruta = next(
+            (p for c in candidatos if c.is_dir() for p in c.rglob(file_id) if p.is_file()),
+            None,
+        )
+        if ruta is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"PDF {file_id} no encontrado — configura ALBERTITOS_CARPETA con la carpeta de facturas",
+            )
+        return Response(
+            content=ruta.read_bytes(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{file_id}"'},
         )
 
     @aplicacion.post("/revision/{invoice_id}/resolver")

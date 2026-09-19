@@ -17,6 +17,11 @@ trabajando en ella.</p>
 {% endif %}
 
 <h2>Campos leídos (todas las lecturas candidatas)</h2>
+<iframe src="/facturas/{{ invoice_id }}/pdf" title="PDF original de la factura"
+        style="width:100%;height:600px;border:1px solid #ccc;border-radius:.4rem;"
+        loading="lazy"></iframe>
+<p class="peq">Si no se ve, el PDF no está en la carpeta configurada
+(<code>ALBERTITOS_CARPETA</code>): usa «Ver PDF» en la lista y revisa la ruta.</p>
 {% for f in campos %}
 <div class="tarjeta {% if f.candidatos | map(attribute='value') | list | length > 1 %}desacuerdo{% endif %}">
   <strong>{{ f.tipo }}</strong> —

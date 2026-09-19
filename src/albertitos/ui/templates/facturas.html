@@ -35,7 +35,8 @@ extracción (el eslabón más débil).</p>
     <td>{{ f.latencia_ms }} ms {{ m.etq('medido') }}</td>
     <td>{% if f.confianza is not none %}{{ '%.2f'|format(f.confianza) }} {{ m.etq('medido') }}{% else %}—{% endif %}</td>
     <td>{{ f.paginas | join(', ') or '—' }}</td>
-    <td><a href="/facturas/{{ f.invoice_id }}">Detalle</a></td>
+    <td><a href="/facturas/{{ f.invoice_id }}">Detalle</a>
+        · <a href="/facturas/{{ f.invoice_id }}/pdf">Ver PDF</a></td>
   </tr>
   {% else %}
   <tr><td colspan="8">Ninguna factura coincide con el filtro.</td></tr>
