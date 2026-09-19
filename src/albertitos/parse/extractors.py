@@ -78,6 +78,9 @@ def extraer_iban(texto: str) -> list[tuple[str, float]]:
         for m in _RE_IBAN.finditer(linea):
             iban = normalize_iban(m.group(1))
             if len(iban) != 24:
+                # T38-F5: NO veto (§2: conservar candidatos, vetar es de las
+                # reglas) — candidato de baja confianza con la señal.
+                out.append((iban, _CONF_MALA))
                 continue
             if validate_iban(iban):
                 conf = _CONF_ALTA

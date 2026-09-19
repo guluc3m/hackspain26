@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 import yaml
 
 from albertitos.parse.parser import field_by_type, parse_invoice
@@ -310,3 +312,91 @@ def test_umbrales_son_configuracion():
     assert cfg.ghost_iban == "ES6614910001213000098877"
     assert "PENDIENTE" in cfg.estados_pagables
     assert "PAGADO" not in cfg.estados_pagables
+
+# --------------------------------------------------- T38-F7: master robusto
+
+def test_master_importe_como_texto_y_pedido_duplicado(tmp_path):
+    """T38-F7: el ERP del lote 2 puede traer importe como TEXTO ("1.234,56")
+    y filas de pedido duplicadas — load_master no cae y la primera gana."""
+    from openpyxl import Workbook
+
+    ruta = tmp_path / "maestro_erp.xlsx"
+    wb = Workbook()
+    prov = wb.active
+    prov.title = "Proveedores"
+    prov.append(["ID", "Razon Social", "NIF", "IBAN", "Ciudad", "Condiciones"])
+    prov.append(["P001", "Papelería Ruzafa", "B46102331", "ES91 2100 0418 4502 0005 1332", "Valencia", "30 días"])
+    pedidos = wb.create_sheet("Pedidos_2026")
+    pedidos.append(["Pedido", "ProveedorID", "NIF", "Importe_Total", "Estado", "Fecha_Pedido"])
+    pedidos.append(["PO-TEST-1", "P001", "B46102331", "1.234,56", "PENDIENTE", "2026-06-01"])  # TEXTO
+    pedidos.append(["PO-TEST-1", "P001", "B46102331", 99999.0, "PENDIENTE", "2026-06-02"])  # duplicado
+    pedidos.append(["PO-TEST-2", "P001", "B46102331", "ilegible", "PENDIENTE", "2026-06-03"])
+    wb.save(ruta)
+
+    from albertitos.rules import load_master
+
+    maestro = load_master(ruta, hojas_ignoradas=())
+    assert float(maestro.pedidos["PO-TEST-1"].importe) == 1234.56  # texto → parse_amount
+    # duplicado: PRIMERA gana (99999 NO pisa)
+    assert len(maestro.pedidos) == 2
+    # aviso registrado en el snapshot
+    assert any("pedido_deduplicado:PO-TEST-1" in a for a in maestro.avisos)
+    assert any("importe_ilegible:PO-TEST-2" in a for a in maestro.avisos)
+
+
+# ------- T38-F1 (W1): documentado con xfail — REQUIERE ADR DEL SUPERVISOR
+# Cambiar la evaluación de candidatos en reglas de match exacto CAMBIA
+# RESULTADOS (falsos NO_PAGAR del lote 1) ⇒ solo el supervisor puede
+# aprobarlo (AGENTS.md T38 regla 2). El test documenta el bug con repro.
+
+
+@pytest.mark.xfail(reason="T38-F1: NIF_IN_MASTER colapsa con el 1er candidato — requiere ADR (supervisor)", strict=False)
+def test_xfail_nif_evalua_todos_los_candidatos():
+    """Con el texto de W1 (NIF etiquetado inexistente + referencia interna
+    válida), NIF_IN_MASTER debería PASS citando el candidato válido."""
+    texto = (
+        "PAPELERÍA RUZAFA S.C.\n"
+        "NIF: J99999999\n"
+        "Referencia interna: B46102331\n"
+        "IBAN: ES55 3159 0012 3487 6512 3407\n"
+        "Factura: FA-1480\n"
+        "Fecha factura: 26/01/2026    PO: PO-2026-0222\n"
+        "TOTAL A PAGAR: EUR 1705.37\n"
+    )
+    feature = ExtractionFeature(
+        type="pdf_text", extraction_method="pypdf", timestamp=0.0,
+        data=texto, sha256=hashlib.sha256(texto.encode()).hexdigest(),
+    )
+    fields = parse_invoice([feature])
+    veredictos = decide(
+        fields, (texto,), _master(), _config(),
+        BatchContext(facturas_vistas={}, pedidos_pagados=frozenset()),
+        invoice_id="00000000-0000-0000-0000-0000000000f1",
+        file_id="t38-f1.pdf",
+    )
+    nif = next(v for v in veredictos if v.code == "NIF_IN_MASTER")
+    assert nif.outcome == "PASS"  # hoy: FAIL (colapsa con el 1er candidato)
+
+
+@pytest.mark.xfail(reason="T38-F2: labels de total — requiere ADR + reprocesar con diff", strict=False)
+def test_xfail_total_labels_subtotal_y_facturado():
+    from albertitos.parse.parser import parse_invoice
+    texto = (
+        "PAPELERÍA RUZAFA S.C.\n"
+        "NIF: B46102331\n"
+        "Factura: FA-1480\n"
+        "Fecha factura: 26/01/2026    PO: PO-2026-0222\n"
+        "Subtotal: EUR 1409.40\n"
+        "IVA (21%): EUR 295.97\n"
+        "Total facturado: EUR 1705.37\n"
+    )
+    feature = ExtractionFeature(
+        type="pdf_text", extraction_method="pypdf", timestamp=0.0,
+        data=texto, sha256=hashlib.sha256(texto.encode()).hexdigest(),
+    )
+    total = next(f for f in parse_invoice([feature]) if f.type == "total")
+    valores = [str(c.value) for c in total.values]
+    # post-fix esperado: Subtotal NO es candidato de total y 'Total facturado'
+    # SÍ se captura
+    assert "1705.37" in valores
+    assert all(v != "1409.4" for v in valores)

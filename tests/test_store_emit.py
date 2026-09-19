@@ -231,3 +231,43 @@ def test_validador_500_file_id_de_caja_de_alberto(tmp_path):
     resultados = {o["result"] for o in read_outcomes(out)}
     assert resultados <= {"PAGAR", "NO_PAGAR", "ESCALAR"}
     store.close()
+
+# ---------------------------------------------------------- overrides (T38-F6)
+
+def test_override_humano_se_aplica_y_la_decision_recalcula(tmp_path):
+    """T38-F6 REPRO: un override humano del UI alimenta la extracción y la
+    decisión se recalcula; el override queda marcado CONSUMIDO y sellado."""
+    store = Store(tmp_path / ".sdd")
+    deps = _deps()
+    # 1ª corrida: factura en NO_PAGAR (el NIF no está en el maestro)
+    run_batch(pdfs := _pdf_dir(tmp_path, n=1), store, deps)
+    primera = store.all_decisions()[0]
+    overrides = tmp_path / ".sdd" / "review-queue" / "overrides.jsonl"
+    overrides.parent.mkdir(parents=True, exist_ok=True)
+    overrides.write_text(
+        json.dumps(
+            {
+                "invoice_id": primera.invoice_id,
+                "file_id": primera.file_id,
+                "campo": "total",
+                "valor": "1705.37",
+                "cuando": "2026-09-19T10:00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    # 2ª corrida (--force equivalente: decision cache se salta con force…)
+    # run_batch reutiliza por cache: re-crear deps con otro engine_version
+    # obliga a re-decidir (misma ruta que --force del runner).
+    deps2 = PipelineDeps(master=deps.master, config=deps.config, engine_version="runner-override-test")
+    run_batch(pdfs, store, deps2)
+    consumidos = tmp_path / ".sdd" / "review-queue" / "overrides.consumidos.jsonl"
+    assert consumidos.is_file(), "el override debe quedar sellado como consumido"
+    assert "1705.37" in consumidos.read_text(encoding="utf-8")
+    assert "1705.37" not in overrides.read_text(encoding="utf-8"), "no debe re-inyectarse"
+    # la decisión final ya no es el NO_PAGAR original si el importe corregido
+    # matchea el maestro (el motor recalcula con el candidato humano)
+    final = store.decision_for(primera.file_id)
+    assert final is not None

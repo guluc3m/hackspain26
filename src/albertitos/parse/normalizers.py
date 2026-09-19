@@ -33,7 +33,7 @@ def parse_amount(token: str) -> Decimal | None:
             if len(s.rsplit(",", 1)[1]) in (1, 2):
                 miles, dec = "", ","
             else:
-                miles, dec = ".", ""
+                miles, dec = ",", ""  # T38-F3: coma de MILES ("12,345"), no decimal
         elif "." in s:
             parts = s.split(".")
             if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]) and len(parts[-1]) == 3:
@@ -77,24 +77,26 @@ _RE_FECHA_TEXTO = re.compile(
 
 
 def parse_fecha(texto: str) -> str | None:
-    """Extrae la primera fecha plausible del texto y la devuelve ISO YYYY-MM-DD."""
-    m = _RE_FECHA_NUM.search(texto)
-    if m:
+    """Extrae la primera fecha VÁLIDA del texto y la devuelve ISO YYYY-MM-DD.
+
+    T38-F4: una fecha imposible (30/02/2026) NO anula el campo — se itera
+    hasta la primera válida (las imposibles son ruido de tipografía)."""
+    for m in _RE_FECHA_NUM.finditer(texto):
         d, mm, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try:
             datetime.date(y, mm, d)
+            return f"{y:04d}-{mm:02d}-{d:02d}"
         except ValueError:
-            return None
-        return f"{y:04d}-{mm:02d}-{d:02d}"
-    m = _RE_FECHA_TEXTO.search(texto)
-    if m:
+            continue
+    for m in _RE_FECHA_TEXTO.finditer(texto):
         d, mes, y = int(m.group(1)), _MESES.get(m.group(2).lower(), 0), int(m.group(3))
-        if mes:
-            try:
-                datetime.date(y, mes, d)
-            except ValueError:
-                return None
+        if not mes:
+            continue
+        try:
+            datetime.date(y, mes, d)
             return f"{y:04d}-{mes:02d}-{d:02d}"
+        except ValueError:
+            continue
     return None
 
 

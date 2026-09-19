@@ -15,7 +15,7 @@ from pathlib import Path
 
 import openpyxl
 
-from albertitos.parse.normalizers import normalize_iban, normalize_nif
+from albertitos.parse.normalizers import normalize_iban, normalize_nif, parse_amount
 
 # Hojas que SÍ se leen (título → lector). Cualquier otra = ignorada.
 HOJAS_MAESTRO = ("Proveedores", "Pedidos_2026")
@@ -108,12 +108,26 @@ def load_master(
             if not row or not row[0]:
                 continue
             pid = str(row[0]).strip()
+            # T38-F7: pedido duplicado ⇒ PRIMERA gana + aviso (como Proveedores;
+            # el lote 2 puede traer filas repetidas del ERP).
+            if pid in pedidos:
+                avisos.append("pedido_deduplicado:" + pid)
+                continue
             importe = row[3] if row[3] is not None else 0.0
+            # T38-F7: el ERP puede traer el importe como TEXTO ("1.234,56")
+            # — fallback a parse_amount en vez de caer el runner completo.
+            if isinstance(importe, (int, float)):
+                importe_num = float(importe)
+            else:
+                importe_num = parse_amount(str(importe).strip())
+                if importe_num is None:
+                    avisos.append(f"importe_ilegible:{pid}")
+                    importe_num = 0.0
             pedidos[pid] = Pedido(
                 id=pid,
                 proveedor_id=str(row[1] or "").strip(),
                 nif=normalize_nif(str(row[2] or "")),
-                importe=float(importe),
+                importe=importe_num,
                 estado=str(row[4] or "").strip().upper(),
                 fecha=str(row[5] or "").strip(),
             )
