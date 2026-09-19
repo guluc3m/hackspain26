@@ -21,6 +21,7 @@ dist/
 /prompts/
 
 # runtime state del runner (W2/T8) — evidencia en disco, no en git
+.sdd/llama/
 .sdd/ledger/
 .sdd/state/
 .sdd/review-queue/

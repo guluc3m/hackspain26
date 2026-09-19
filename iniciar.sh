@@ -19,6 +19,7 @@ cd "$(dirname "$0")"
 aviso() { echo "ERROR: $*" >&2; exit 1; }
 
 . "$(dirname "$0")/scripts/_ensure_uv.sh"
+. "$(dirname "$0")/scripts/_ensure_llama.sh"
 [ -n "$STORE" ] && export ALBERTITOS_STORE="$STORE"
 mkdir -p .sdd/telemetria
 
