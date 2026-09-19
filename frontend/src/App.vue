@@ -207,6 +207,40 @@ const statusBadgeClass = computed(() => {
   }
   return 'badge-standalone'
 })
+
+// --- Sync manual desde el topbar (misma acción que el botón de ConnectionSettings) ---
+const syncingManual = ref(false)
+const syncErrorMsg = ref('')
+const syncOkMsg = ref('')
+
+const syncConfigurado = computed(() =>
+  confirmed.value
+  && !SINTETICO
+  && currentConfig.value.mode === 'server'
+  && !!currentConfig.value.sync_url
+)
+
+// En curso si hay una petición manual activa o el sondeo ya ve "syncing".
+const syncEnCurso = computed(() =>
+  syncingManual.value || syncStatus.value?.state === 'syncing'
+)
+
+async function sincronizarAhora() {
+  if (syncEnCurso.value || !syncConfigurado.value) return
+  syncingManual.value = true
+  syncErrorMsg.value = ''
+  syncOkMsg.value = ''
+  try {
+    await api.sync()
+    await fetchSyncStatus()
+    syncOkMsg.value = 'Sincronización completada con éxito.'
+  } catch (e: any) {
+    await fetchSyncStatus()
+    syncErrorMsg.value = `Error de sincronización: ${e?.message || e}`
+  } finally {
+    syncingManual.value = false
+  }
+}
 </script>
 
 <template>
@@ -234,6 +268,31 @@ const statusBadgeClass = computed(() => {
       >
         {{ statusBadgeText }}
       </div>
+      <!-- Sync manual sin abrir el modal: misma acción que el botón de configuración -->
+      <button
+        v-if="syncConfigurado"
+        type="button"
+        class="sync-btn"
+        :disabled="syncEnCurso"
+        aria-label="Sincronizar ahora con el servidor"
+        title="Sincronizar ahora con el servidor"
+        @click="sincronizarAhora"
+      >
+        {{ syncEnCurso ? 'sincronizando...' : 'Sync ahora' }}
+      </button>
+      <span
+        v-if="syncErrorMsg"
+        class="sync-feedback"
+        role="alert"
+        aria-live="assertive"
+      >{{ syncErrorMsg }}</span>
+
+      <span
+        v-else-if="syncOkMsg"
+        class="sync-feedback"
+        role="status"
+        aria-live="polite"
+      >{{ syncOkMsg }}</span>
 
       <!-- Botón de configuración siempre disponible -->
       <button
@@ -345,6 +404,30 @@ nav { display: flex; gap: 2px; }
   align-items: center;
   gap: 10px;
 }
+
+.sync-btn {
+  font-size: 12px;
+  padding: 5px 11px;
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  border-radius: 0;
+}
+.sync-btn:hover { background: rgba(201, 161, 74, 0.14); }
+.sync-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: none;
+}
+
+.sync-feedback {
+  font-size: 11px;
+  max-width: 280px;
+  white-space: normal;
+  line-height: 1.3;
+}
+.sync-feedback[role='alert'] { color: #f0a79f; }
+.sync-feedback[role='status'] { color: #9fd6c9; }
 
 .tab {
   font-family: var(--display);

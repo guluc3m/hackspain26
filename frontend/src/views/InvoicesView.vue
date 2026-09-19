@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, type FacturaRow, type Resultado } from '../api'
 import { irALogsDe } from '../nav'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
@@ -11,6 +11,8 @@ const filtro = ref<'todos' | Resultado | 'pendiente' | 'disputadas'>('todos')
 const busqueda = ref('')
 const drawerId = ref<string | null>(null)
 
+let timer: ReturnType<typeof setInterval> | undefined
+
 async function load() {
   try {
     facturas.value = await api.facturas()
@@ -19,7 +21,11 @@ async function load() {
     error.value = String(e)
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  timer = setInterval(load, 10_000)
+})
+onUnmounted(() => clearInterval(timer))
 
 const opciones: { id: typeof filtro.value; label: string }[] = [
   { id: 'todos', label: 'Todos' },
@@ -63,7 +69,7 @@ const visibles = computed(() =>
       </button>
     </div>
     <input v-model="busqueda" placeholder="buscar por nombre…" />
-    <button @click="load">Actualizar</button>
+    <!-- refresco automático cada 10 s; sin botón manual -->
   </div>
 
   <p v-if="error" class="error">{{ error }}</p>

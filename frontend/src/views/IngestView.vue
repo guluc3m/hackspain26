@@ -109,6 +109,11 @@ const progreso = computed(() => {
   return Math.round(((c.done + c.error) / c.total) * 100)
 })
 
+// destino inteligente al completar: si hay escaladas, la cola de revisión
+const escaladas = computed(() =>
+  job.value?.state === 'complete' ? job.value.items.filter((it) => it.result === 'ESCALAR').length : 0
+)
+
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`
@@ -292,7 +297,10 @@ onUnmounted(() => {
     </table>
 
     <div v-if="job.state === 'complete'" class="job-done">
-      <button type="button" class="primary" @click="irA('invoices')">Ver facturas</button>
+      <button v-if="escaladas > 0" type="button" class="primary" @click="irA('review')">
+        Revisar {{ escaladas }} escalada(s)
+      </button>
+      <button v-else type="button" class="primary" @click="irA('invoices')">Ver facturas</button>
     </div>
   </section>
 

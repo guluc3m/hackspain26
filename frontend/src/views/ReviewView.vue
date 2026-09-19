@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { api, fmtHora, type ReviewItem } from '../api'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { api, confirmarLectura, fmtHora, type ReviewItem } from '../api'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 
 const items = ref<ReviewItem[]>([])
 const error = ref('')
 const cargando = ref(false)
 const drawerId = ref<string | null>(null)
+const busyKey = ref<string | null>(null)
+
+let timer: ReturnType<typeof setInterval> | undefined
 
 async function load() {
   cargando.value = true
@@ -20,7 +23,24 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  timer = setInterval(load, 10_000) // la cola respira sola, como el Dashboard
+})
+onUnmounted(() => clearInterval(timer))
+
+/** Confirmación directa de la lectura: acepta los candidatos líderes y resuelve. */
+async function confirmar(it: ReviewItem) {
+  busyKey.value = it.file_key
+  try {
+    await confirmarLectura(it.file_key)
+    await load()
+  } catch (e) {
+    error.value = String(e)
+  } finally {
+    busyKey.value = null
+  }
+}
 </script>
 
 <template>
@@ -32,7 +52,6 @@ onMounted(load)
   </p>
 
   <div class="toolbar">
-    <button type="button" :disabled="cargando" @click="load">Actualizar</button>
     <span class="muted">{{ items.length }} pendiente(s)</span>
   </div>
 
@@ -58,7 +77,16 @@ onMounted(load)
           <td>{{ it.reason }}</td>
           <td class="muted">{{ fmtHora(it.since) }}</td>
           <td>
-            <button type="button" class="primary" @click="drawerId = it.file_key">Revisar</button>
+            <button
+              type="button"
+              class="primary"
+              :disabled="busyKey === it.file_key"
+              title="Aceptar los candidatos líderes: resuelve la revisión (el motor recalcula)"
+              @click="confirmar(it)"
+            >
+              Confirmar lectura
+            </button>
+            <button type="button" @click="drawerId = it.file_key">Revisar</button>
           </td>
         </tr>
         <tr v-if="items.length === 0">
