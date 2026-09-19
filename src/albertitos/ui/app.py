@@ -30,7 +30,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from albertitos.emit import list_pdf_files_recursivo
-from albertitos.resumen import datos_resumen
 from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
 from albertitos.ui.ledger import leer_impactos
 
@@ -140,31 +139,34 @@ def _maestro_para_resumen() -> Path | None:
 
 
 def _pendiente_alberto(store_root: Path) -> dict[str, Any]:
-    """Lo primero que Alberto quiere saber: qué hay pendiente y por cuánto."""
-    maestro = _maestro_para_resumen()
+    """Lo primero que Alberto quiere saber: qué hay pendiente. Se calcula
+    del propio store (conteos por resultado), sin maestro ni Excel: la app
+    funciona con cualquier lote en cualquier ordenador."""
     try:
-        datos = datos_resumen(store_root, maestro_path=maestro) if maestro else None
-    except Exception:  # noqa: BLE001 — sin maestro el resumen degrada, no rompe
-        datos = None
-    if not datos:
-        # Sin maestro (clon fresco / nodo sin submodule): misma FORMA que el
-        # camino con datos — claves presentes a None. El guard de la plantilla
-        # usa `is not none`; sobre una clave AUSENTE (Undefined) daría True y
-        # el render de `/` moriría en 500 (el lanzador diría «No arrancó»).
+        raiz = Path(store_root)
+        decisiones = None
+        if (raiz / "store.db").is_file():
+            from albertitos.store import Store
+
+            decisiones = Store(raiz).all_decisions()
+    except Exception:  # noqa: BLE001 — sin store aún, degrada honesto
+        decisiones = None
+    if decisiones is None:
         return {
             "n": None,
-            "euros": None,
             "pagado_n": None,
             "pagado_total": None,
             "no_pago_n": None,
-            "nota": "PENDIENTE: sin maestro en este nodo",
+            "nota": "PENDIENTE: sin store en este nodo",
         }
+    conteo: dict[str, int] = {}
+    for d in decisiones:
+        conteo[d.result] = conteo.get(d.result, 0) + 1
     return {
-        "n": datos["revisar"]["n"],
-        "euros": datos["riesgo"]["total_en_riesgo_eur"],
-        "pagado_n": datos["pago"]["n"],
-        "pagado_total": datos["pago"]["total_eur"],
-        "no_pago_n": datos["no_pago"]["n"],
+        "n": {"valor": str(conteo.get("ESCALAR", 0))},
+        "pagado_n": {"valor": str(conteo.get("PAGAR", 0))},
+        "pagado_total": {"valor": "—"},
+        "no_pago_n": {"valor": str(conteo.get("NO_PAGAR", 0))},
         "nota": "",
     }
 
@@ -464,24 +466,6 @@ def create_app(
     @aplicacion.get("/ayuda", response_class=HTMLResponse)
     def ayuda(request: Request):
         return _TEMPLATES.TemplateResponse(request, "ayuda.html", ctx())
-
-    @aplicacion.get("/resumen-ejecutivo", response_class=HTMLResponse)
-    def resumen_ejecutivo(request: Request):
-        """«¿Qué pago hoy y por qué?» — se genera y se muestra, sin terminal."""
-        try:
-            maestro = _maestro_para_resumen()
-            datos = datos_resumen(_store_root(), maestro) if maestro else None
-        except Exception:  # noqa: BLE001 — degrada con aviso, no rompe
-            datos = None
-        if not datos:
-            return _TEMPLATES.TemplateResponse(
-                request,
-                "resumen_ejecutivo.html",
-                ctx(datos=None, error="No pude generar el resumen: falta el maestro de proveedores en este nodo."),
-            )
-        return _TEMPLATES.TemplateResponse(
-            request, "resumen_ejecutivo.html", ctx(datos=datos)
-        )
 
     @aplicacion.get("/facturas", response_class=HTMLResponse)
     def facturas(
