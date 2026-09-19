@@ -36,3 +36,5 @@ dist/
 /docs/report/*.pdf
 /outcomes.jsonl
 /outcomes_lote2.jsonl
+.sdd/lote1
+.sdd/metrics
