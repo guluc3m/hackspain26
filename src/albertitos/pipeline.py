@@ -18,7 +18,8 @@ from albertitos.types import Decision
 
 from .config import AppConfig
 from .extract.cache import FeatureCache, sha256_file
-from .extract.ladder import extract_document
+from .extract.ladder import IMAGE_SUFFIXES as EXTRACT_IMAGE_SUFFIXES
+from .extract.ladder import extract_file
 from .parse.parser import parse_fields
 from .rules.config import RuleConfig
 from .rules.engine import evaluate
@@ -27,6 +28,7 @@ from .store.db import Store
 from .store.ledger import Ledger
 
 _UUID_NAMESPACE = uuid.UUID("d5f04a3e-6f9a-4b3f-9d2f-5c1a2b3c4d5e")  # ns estable del proyecto
+_SUPPORTED_SUFFIXES = {".pdf"} | EXTRACT_IMAGE_SUFFIXES
 
 
 def invoice_id_for(sha256: str) -> str:
@@ -45,7 +47,7 @@ class Pipeline:
 
     def run_lote(self, lote_dir: Path, outcomes_path: Path) -> list[Decision]:
         """Procesa todos los PDFs del lote (resumible desde cualquier punto)."""
-        pdfs = sorted(lote_dir.glob("*.pdf"))
+        pdfs = sorted(p for p in lote_dir.iterdir() if p.suffix.lower() in _SUPPORTED_SUFFIXES)
         decisions: list[Decision] = []
         for pdf in pdfs:
             try:
@@ -69,7 +71,7 @@ class Pipeline:
         self.ledger.append("invoice_seen", {"invoice_id": invoice_id, "file_id": pdf_path.name, "sha256": sha})
 
         # Extracción (escalera por página, con cache e idempotencia)
-        pages = extract_document(pdf_path, self.cache, self.cfg.extraction_config(), self.cfg.pages_dir)
+        pages = extract_file(pdf_path, self.cache, self.cfg.extraction_config(), self.cfg.pages_dir)
         for page in pages:
             for feat in page.features:
                 self.store.add_feature(

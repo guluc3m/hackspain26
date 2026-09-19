@@ -41,12 +41,21 @@ class QrRungResult:
 
 
 def extract(ctx: PageContext) -> QrRungResult:
-    if pdfium is None:
-        return QrRungResult([_skip("dep:pypdfium2")])
+    page: Any | None = None
+    if ctx.pdf_path.suffix.lower() == ".pdf":
+        if pdfium is None:
+            return QrRungResult([_skip("dep:pypdfium2")])
+        page = pdfium.PdfDocument(ctx.pdf_path)[ctx.page_index]
+        img = page.render(scale=ctx.config.get("render_scale", 2.0)).to_pil()
+    else:
+        # imagen suelta (png/jpg/...): el rasterizado ES la propia imagen
+        try:
+            from PIL import Image as PILImage
 
-    page = pdfium.PdfDocument(ctx.pdf_path)[ctx.page_index]
-    bitmap = page.render(scale=ctx.config.get("render_scale", 2.0))
-    img = bitmap.to_pil()
+            img = PILImage.open(ctx.pdf_path).convert("RGB")
+        except Exception:
+            return QrRungResult([_skip("dep:pillow")])
+
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     png_bytes = buf.getvalue()
@@ -80,7 +89,7 @@ def extract(ctx: PageContext) -> QrRungResult:
     if not payloads:
         return QrRungResult([image_feature], page_image_sha=page_sha)
 
-    confidence = _page_qr_confidence(page, payloads)
+    confidence = _page_qr_confidence(page, payloads, img_size=img.size)
     qr_feature = ExtractionFeature(
         type="qr_payload",
         extraction_method=NAME,
@@ -97,11 +106,11 @@ def extract(ctx: PageContext) -> QrRungResult:
     )
 
 
-def _page_qr_confidence(page: Any, payloads: list[str]) -> float:
+def _page_qr_confidence(page: Any, payloads: list[str], img_size: tuple[int, int] | None = None) -> float:
     """Confianza [0,1] en que esta página ES solo-QR (el payload es el contenido).
 
     Tres señales independientes, media aritmética:
-      1. Estructura del PDF: sin objetos de texto ⇒ nada que el OCR pueda leer.
+      1. Estructura: sin objetos de texto (o imagen suelta, sin PDF) ⇒ nada que OCR lea.
       2. Cobertura: los QRs dominan el área de la página (son "la" página).
       3. Payload: aspecto de datos estructurados de factura (URL, key=value,
          o el formato FEIE/Veri*factu), no ruido.
@@ -110,7 +119,7 @@ def _page_qr_confidence(page: Any, payloads: list[str]) -> float:
         return 0.0
     signals = [
         _signal_no_text(page),
-        _signal_qr_coverage(page, payloads),
+        _signal_qr_coverage(page, payloads, img_size=img_size),
         _signal_payload_shape(payloads),
     ]
     return sum(signals) / len(signals)
@@ -118,15 +127,26 @@ def _page_qr_confidence(page: Any, payloads: list[str]) -> float:
 
 def _signal_no_text(page: Any) -> float:
     """1.0 si la página no tiene ningún objeto de texto (nada que OCR lea)."""
+    if page is None:  # imagen suelta: no hay capa de texto
+        return 1.0
     try:
         return 0.0 if page.get_textpage().count_chars() > 0 else 1.0
     except Exception:
         return 0.5  # no inspeccionable ⇒ neutral, no sesga
 
 
-def _signal_qr_coverage(page: Any, payloads: list[str]) -> float:
+def _signal_qr_coverage(
+    page: Any, payloads: list[str], img_size: tuple[int, int] | None = None
+) -> float:
     """Fracción de la página cubierta por los QRs, saturada en 1.0."""
     try:
+        if page is None:
+            if img_size is None:
+                return 0.5
+            page_w, page_h = img_size
+            # una imagen suelta: si zxing leyó algo, la imagen ES el QR;
+            # aproximar por proporción no es fiable ⇒ señal generosa
+            return 1.0
         page_w, page_h = page.get_size()
         page_area = page_w * page_h
         if page_area <= 0:
@@ -140,6 +160,15 @@ def _signal_qr_coverage(page: Any, payloads: list[str]) -> float:
         return min(1.0, qr_area / page_area / _QR_COVERAGE_FULL)
     except Exception:
         return 0.5
+
+
+def _signal_no_text(page: Any) -> float:
+    """1.0 si la página no tiene ningún objeto de texto (nada que OCR lea)."""
+    try:
+        return 0.0 if page.get_textpage().count_chars() > 0 else 1.0
+    except Exception:
+        return 0.5  # no inspeccionable ⇒ neutral, no sesga
+
 
 
 def _signal_payload_shape(payloads: list[str]) -> float:

@@ -1,14 +1,11 @@
-"""Gestión del sidecar llama-server (escalón 4): load → process → stop.
-
-El servidor se arranca bajo demanda la primera vez que una página necesita VLM,
-se reutiliza mientras haya trabajo y se detiene tras `idle_timeout` sin uso.
-No se fijan hilos ni backend: `llama` usa sus defaults (el instalador de
-llama.app ya elige CUDA/ROCm/CPU según la máquina). Si el binario o el modelo
-faltan, el escalón degrada (`skipped:...`) — nunca para el lote.
-
-Estado y logs en disco del proyecto (nunca /tmp). Idempotente: si algo ya
-escucha en la URL configurada, se reutiliza y no se toca al parar.
+"""Sidecar llama-server (escalón 4): se arranca al pedirlo, se para a los
+5 min sin uso. Sin flags de hilos/GPU — llama.cpp usa sus defaults. Si el
+binario o el modelo faltan, no lanza: ensure_started() devuelve False y el
+escalón degrada (skipped:...). Si ya algo escucha en la URL, se reutiliza
+y jamás se mata.
 """
+
+from __future__ import annotations
 
 import atexit
 import os
@@ -22,55 +19,44 @@ from typing import Any
 import httpx
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MODEL = _PROJECT_ROOT / "models" / "llama" / "PaddleOCR-VL-1.6-GGUF.gguf"
-DEFAULT_MMPROJ = _PROJECT_ROOT / "models" / "llama" / "PaddleOCR-VL-1.6-GGUF-mmproj.gguf"
-DEFAULT_IDLE_TIMEOUT = 300.0  # 5 min sin trabajo ⇒ stop
-_STARTUP_TIMEOUT = 180.0  # carga del GGUF + mmproj (~1 GB) en frío
+_MODELS = Path(__file__).resolve().parents[2] / "models" / "llama"
+DEFAULT_IDLE_TIMEOUT = 300.0
+_STARTUP_TIMEOUT = 180.0
 _POLL = 0.5
 
 
 class LlamaSidecar:
-    """Arranca/reutiliza/para `llama serve` con parada por inactividad."""
-
     def __init__(
         self,
         base_url: str | None = None,
         model: Path | None = None,
         mmproj: Path | None = None,
-        binary: str | None = None,
-        idle_timeout: float | None = None,
+        binary: str = "llama",
+        idle_timeout: float = DEFAULT_IDLE_TIMEOUT,
         log_dir: Path | None = None,
     ) -> None:
-        # Una sola fuente de verdad: ALBERTITOS_LLAMA_URL la lee AppConfig y
-        # llega ya inyectada (base_url); aquí solo se normaliza el sufijo /v1.
-        self.base_url = (base_url or DEFAULT_BASE_URL + "/v1").rstrip("/")
-        if self.base_url.endswith("/v1"):
-            self.base_url = self.base_url.removesuffix("/v1")
-        self.model = model or Path(os.environ.get("ALBERTITOS_LLAMA_MODEL", DEFAULT_MODEL))
-        self.mmproj = mmproj or Path(os.environ.get("ALBERTITOS_LLAMA_MMPROJ", DEFAULT_MMPROJ))
-        self.binary = binary or os.environ.get("ALBERTITOS_LLAMA_BIN", "llama")
-        self.idle_timeout = idle_timeout if idle_timeout is not None else float(
-            os.environ.get("ALBERTITOS_LLAMA_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT)
-        )
+        self.base_url = (base_url or DEFAULT_BASE_URL + "/v1").removesuffix("/v1").rstrip("/")
+        self.model = model or Path(os.environ.get("ALBERTITOS_LLAMA_MODEL", _MODELS / "PaddleOCR-VL-1.6-GGUF.gguf"))
+        self.mmproj = mmproj or Path(os.environ.get("ALBERTITOS_LLAMA_MMPROJ", _MODELS / "PaddleOCR-VL-1.6-GGUF-mmproj.gguf"))
+        self.binary = binary
+        self.idle_timeout = idle_timeout
         self.log_dir = log_dir
-        self._serve_mode: bool | None = None  # None = probar `serve`; False = binario clásico
-        self._atexit_registered = False
-        self._resolved_binary: str = self.binary
-        self._lock = threading.Lock()
+        self._serve: bool | None = None  # None = probar `serve`; False = binario clásico
         self._proc: subprocess.Popen[bytes] | None = None
         self._log_path: Path | None = None
         self._last_used = 0.0
-        self._external = False  # ya estaba corriendo antes de nosotros
-        self._watchdog: threading.Thread | None = None
-
-    # -- estado ---------------------------------------------------------
+        self._external = False
+        self._lock = threading.Lock()
 
     def is_up(self) -> bool:
         try:
             return httpx.get(f"{self.base_url}/health", timeout=1.0).status_code == 200
         except httpx.HTTPError:
             return False
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last_used = time.monotonic()
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -79,35 +65,23 @@ class LlamaSidecar:
                 "managed_pid": self._proc.pid if self._proc else None,
                 "external": self._external,
                 "idle_s": round(time.monotonic() - self._last_used, 1) if self._last_used else None,
-                "idle_timeout_s": self.idle_timeout,
                 "model": str(self.model),
                 "log": str(self._log_path) if self._log_path else None,
             }
 
-    def touch(self) -> None:
-        """Marcar uso reciente (cada petición del escalón 4)."""
-        with self._lock:
-            self._last_used = time.monotonic()
-
-    # -- ciclo de vida ---------------------------------------------------
-
     def ensure_started(self, wait_s: float = _STARTUP_TIMEOUT) -> bool:
-        """True si hay servidor disponible (propio o externo). No lanza."""
+        """True si hay servidor (propio o ajeno). Falla sin lanzar."""
         if self.is_up():
             with self._lock:
                 self._external = self._proc is None
                 self._last_used = time.monotonic()
             return True
-
         with self._lock:
-            # otro hilo ya está arrancando el nuestro
-            if self._proc is not None and self._proc.poll() is None:
-                pass
-            elif not self._prerequisites_ok():
-                return False
-            elif self._proc is None or self._proc.poll() is not None:
-                self._spawn_locked()
-
+            if self._proc is None or self._proc.poll() is not None:
+                resolved = shutil.which(self.binary) or _llama_app(self.binary)
+                if resolved is None or not (self.model.is_file() and self.mmproj.is_file()):
+                    return False
+                self._spawn_locked(resolved)
         return self._wait_healthy(wait_s)
 
     def stop(self, timeout: float = 10.0) -> None:
@@ -125,74 +99,43 @@ class LlamaSidecar:
 
     # -- internals --------------------------------------------------------
 
-    def _prerequisites_ok(self) -> bool:
-        resolved = _resolve_binary(self.binary)
-        if resolved is None:
-            return False
-        self._resolved_binary = resolved
-        return self.model.is_file() and self.mmproj.is_file()
+    def _spawn_locked(self, binary: str) -> None:
+        cmd = [binary]
+        if self._serve is not False:
+            cmd.append("serve")  # CLI unificado de llama.app; fallback abajo
+        cmd += ["-m", str(self.model), "--mmproj", str(self.mmproj), "--temp", "0"]
+        host, _, port = self.base_url.split("//", 1)[1].partition(":")
+        cmd += ["--host", host, "--port", port or "8080"]
 
-    def _spawn_locked(self) -> None:
-        # `serve` es del CLI unificado de llama.app; el binario clásico
-        # llama-server no lo entiende — se reintenta sin él (ver _wait_healthy).
-        cmd = [self._resolved_binary]
-        if self._serve_mode is not False:
-            cmd.append("serve")
-        cmd += [
-            "-m",
-            str(self.model),
-            "--mmproj",
-            str(self.mmproj),
-            "--temp",
-            "0",
-            "--host",
-            _host_port(self.base_url)[0],
-            "--port",
-            _host_port(self.base_url)[1],
-        ]
-        log_file = None
+        out = subprocess.DEVNULL
         if self.log_dir is not None:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             self._log_path = self.log_dir / "llama-server.log"
-            log_file = self._log_path.open("ab")
-        # Sin --threads, sin flags de GPU: defaults de llama.cpp para esta máquina.
-        popen_kwargs: dict[str, Any] = {}
-        if os.name == "posix":
-            popen_kwargs["start_new_session"] = True  # Windows: ValueError si se pasa
-        self._proc = subprocess.Popen(
-            cmd,
-            stdout=log_file or subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-            **popen_kwargs,
-        )
-        if log_file is not None:
-            log_file.close()  # el hijo ya duplicó el fd
-        if not self._atexit_registered:
-            atexit.register(self.stop)  # no dejar huérfanos comiendo RAM
-            self._atexit_registered = True
+            out = self._log_path.open("ab")
+        kwargs: dict[str, Any] = {"start_new_session": True} if os.name == "posix" else {}
+        self._proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, **kwargs)
+        if hasattr(out, "close"):
+            out.close()
+        atexit.register(self.stop)
         self._last_used = time.monotonic()
         self._external = False
-        if self._watchdog is None or not self._watchdog.is_alive():
-            self._watchdog = threading.Thread(target=self._watch_loop, daemon=True, name="llama-idle-watchdog")
-            self._watchdog.start()
+        threading.Thread(target=self._watch_loop, daemon=True, name="llama-idle-watchdog").start()
 
     def _wait_healthy(self, wait_s: float) -> bool:
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
             if self.is_up():
-                with self._lock:
-                    self._last_used = time.monotonic()
+                self.touch()
                 return True
             with self._lock:
                 proc = self._proc
             if proc is not None and proc.poll() is not None:
-                if self._serve_mode is None:
-                    # binario clásico (llama-server.exe): reintenta sin `serve`
-                    self._serve_mode = False
+                if self._serve is None:  # binario clásico: reintenta sin `serve`
+                    self._serve = False
                     with self._lock:
-                        self._spawn_locked()
+                        self._spawn_locked(str(proc.args[0]))
                     continue
-                return False  # murió al arrancar (puerto ocupado, modelo inválido...)
+                return False
             time.sleep(_POLL)
         return False
 
@@ -200,36 +143,15 @@ class LlamaSidecar:
         while True:
             time.sleep(min(30.0, max(1.0, self.idle_timeout / 4)))
             with self._lock:
-                proc = self._proc
-                idle_for = time.monotonic() - self._last_used if self._last_used else 0.0
-                stop_now = (
-                    proc is not None
-                    and proc.poll() is None
-                    and not self._external
-                    and idle_for >= self.idle_timeout
-                )
-            if stop_now:
+                idle = time.monotonic() - self._last_used if self._last_used else 0.0
+                ours = self._proc is not None and self._proc.poll() is None and not self._external
+            if ours and idle >= self.idle_timeout:
                 self.stop()
 
 
-
-
-def _host_port(base_url: str) -> tuple[str, str]:
-    rest = base_url.split("//", 1)[1]
-    host, _, port = rest.partition(":")
-    return host or "127.0.0.1", port or "8080"
-
-def _resolve_binary(binary: str) -> str | None:
-    """Ruta absoluta del binario, o None. Windows: prueba .exe en ~/.llama-app."""
-    if os.sep in binary or (os.altsep and os.altsep in binary):
-        return binary if Path(binary).is_file() else None
-    found = shutil.which(binary)
-    if found:
-        return found
-    for cand in (
-        Path.home() / ".llama-app" / binary,  # instalador llama.app
-        Path.home() / ".llama-app" / f"{binary}.exe",  # Windows
-    ):
+def _llama_app(binary: str) -> str | None:
+    """Fallback fuera de PATH: instala el binario en ~/.llama-app (y .exe en Windows)."""
+    for cand in (Path.home() / ".llama-app" / binary, Path.home() / ".llama-app" / f"{binary}.exe"):
         if cand.is_file():
             return str(cand)
     return None
@@ -238,12 +160,9 @@ def _resolve_binary(binary: str) -> str | None:
 _manager: LlamaSidecar | None = None
 _manager_lock = threading.Lock()
 
-def get_manager(cfg: Any = None, **kwargs: Any) -> LlamaSidecar:
-    """Singleton por proceso; rung 4 y CLI comparten el mismo sidecar.
 
-    `cfg` es un AppConfig: una sola fuente de verdad para la URL (y dir de
-    logs). Sin cfg, defaults — solo para debug manual.
-    """
+def get_manager(cfg: Any = None, **kwargs: Any) -> LlamaSidecar:
+    """Singleton por proceso. `cfg` (AppConfig) = una sola fuente de la URL."""
     global _manager
     with _manager_lock:
         if _manager is None:
@@ -254,7 +173,7 @@ def get_manager(cfg: Any = None, **kwargs: Any) -> LlamaSidecar:
         return _manager
 
 
-if __name__ == "__main__":  # debug manual: uv run python -m albertitos.llama_manager
+if __name__ == "__main__":  # debug: uv run python -m albertitos.llama_manager [start|stop]
     import sys
 
     mgr = get_manager(log_dir=Path(os.environ.get("ALBERTITOS_DATA", "data")))
