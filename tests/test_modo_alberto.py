@@ -91,6 +91,11 @@ def test_pantallas_sin_jerga_sin_traducir(servidor):
 
 
 def test_inicio_de_alberto_con_un_boton_por_accion(servidor):
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     import urllib.request
 
     with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_TEST}/", timeout=10) as r:
@@ -117,6 +122,11 @@ def test_confirmaciones_con_consecuencias(servidor):
 
 
 def test_ayuda_y_resumen_alberto_en_la_ui(servidor):
+    if not lote1_estado_real_presente():
+        pytest.skip(
+            "estado real del lote 1 ausente en este worktree (.sdd/lote1 "
+            "gitignored — provisioning T40F4); el test corre completo donde existe"
+        )
     import urllib.request
 
     with urllib.request.urlopen(f"http://127.0.0.1:{PUERTO_TEST}/ayuda", timeout=10) as r:
