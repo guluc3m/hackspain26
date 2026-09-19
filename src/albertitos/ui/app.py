@@ -16,6 +16,7 @@ Reglas duras (T5):
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,8 @@ from .demo import demo_records
 from .ledger import (
     OverrideView,
     build_view,
+    drills_estado,
+    estado_runner,
     factura_detalle,
     facturas_rows,
     health,
@@ -42,8 +45,12 @@ _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 def _override_destino(store_dir: Path) -> Path:
-    """Cola de overrides: junto al ledger, pero JAMÁS dentro del store."""
-    return store_dir.parent / "review-queue" / "overrides.jsonl"
+    """Cola de overrides: SIEMPRE en el `.sdd/` local del worktree de la UI.
+
+    Los stores externos (p. ej. `.sdd/lote1` → worktree de W1) son SOLO
+    LECTURA: ni el ledger ni su review-queue se tocan jamás.
+    """
+    return Path(".sdd") / "review-queue" / "overrides.jsonl"
 
 
 def create_app(
@@ -52,28 +59,43 @@ def create_app(
     override_dir: Path | None = None,
 ) -> FastAPI:
     """Fábrica de la app. `records` inyecta registros (tests); si no, se lee
-    el ledger en `store_dir` (por defecto `.sdd/ledger/`) en solo lectura."""
+    el ledger en `store_dir` (por defecto `.sdd/ledger/`; el lote real vive en
+    `.sdd/lote1/ledger`, symlink SOLO LECTURA) en solo lectura.
+
+    Si el ledger lleva el `review-queue` hermano (cola de revisión con campos
+    e imágenes), se carga también — ambos en SOLO LECTURA.
+    """
     aplicacion = FastAPI(title="Albertitos — Operaciones", docs_url=None, redoc_url=None)
 
     demo = records is None
     if records is None:
         base = Path(store_dir) if store_dir else Path(".sdd") / "ledger"
         registros = load_ledger(base)
+        # cola de revisión del lote real (campos + imágenes por página)
+        cola_rev = base.parent / "review-queue"
+        if cola_rev.is_dir():
+            registros += load_ledger(cola_rev)
         if not registros:
             registros = demo_records()
         else:
             demo = False
         destino = override_dir if override_dir is not None else _override_destino(base)
+        estado = estado_runner(base)
+        drills = drills_estado()
     else:
         registros = records
         destino = override_dir
+        estado = None
+        drills = None
 
     aplicacion.state.view = build_view(registros)
     aplicacion.state.override_dir = destino
     aplicacion.state.demo = demo
+    aplicacion.state.runner = estado
+    aplicacion.state.drills = drills
 
     def ctx(**extra: Any) -> dict[str, Any]:
-        datos: dict[str, Any] = {"demo": demo}
+        datos: dict[str, Any] = {"demo": demo, "runner": estado, "drills": drills}
         datos.update(extra)
         return datos
 
@@ -103,13 +125,40 @@ def create_app(
     @aplicacion.get("/", response_class=HTMLResponse)
     def operaciones(request: Request):
         return _TEMPLATES.TemplateResponse(
-            request, "operaciones.html", ctx(resumen=ops_summary(aplicacion.state.view))
+            request,
+            "operaciones.html",
+            ctx(resumen=ops_summary(aplicacion.state.view)),
         )
 
     @aplicacion.get("/facturas", response_class=HTMLResponse)
-    def facturas(request: Request):
+    def facturas(
+        request: Request,
+        result: str = "",
+        q: str = "",
+        pagina: int = 1,
+    ):
+        filas = facturas_rows(aplicacion.state.view)
+        if result:
+            filas = [f for f in filas if f["result"] == result]
+        if q:
+            filas = [f for f in filas if q.casefold() in f["file_id"].casefold()]
+        total = len(filas)
+        por_pagina = 50
+        n_paginas = max(1, -(-total // por_pagina))
+        pagina = min(max(1, pagina), n_paginas)
+        visibles = filas[(pagina - 1) * por_pagina : pagina * por_pagina]
         return _TEMPLATES.TemplateResponse(
-            request, "facturas.html", ctx(filas=facturas_rows(aplicacion.state.view))
+            request,
+            "facturas.html",
+            ctx(
+                filas=visibles,
+                total=total,
+                pagina=pagina,
+                n_paginas=n_paginas,
+                result=result,
+                q=q,
+                resultados=("PAGAR", "NO_PAGAR", "ESCALAR", "EN_PROCESO"),
+            ),
         )
 
     @aplicacion.get("/facturas/{invoice_id}", response_class=HTMLResponse)
@@ -127,13 +176,23 @@ def create_app(
         )
 
     @aplicacion.get("/revision", response_class=HTMLResponse)
-    def revision(request: Request):
+    def revision(request: Request, pagina: int = 1):
+        vista = aplicacion.state.view
+        cola = revision_queue(vista)
+        con_imagen = sum(1 for c in cola if c["imagenes"])
+        por_pagina = 6
+        n_paginas = max(1, -(-len(cola) // por_pagina))
+        pagina = min(max(1, pagina), n_paginas)
         return _TEMPLATES.TemplateResponse(
             request,
             "revision.html",
             ctx(
-                cola=revision_queue(aplicacion.state.view),
-                overrides=aplicacion.state.view.overrides,
+                cola=cola[(pagina - 1) * por_pagina : pagina * por_pagina],
+                n_cola=len(cola),
+                con_imagen=con_imagen,
+                pagina=pagina,
+                n_paginas=n_paginas,
+                overrides=vista.overrides,
             ),
         )
 
@@ -168,6 +227,14 @@ def create_app(
                 cambios = what_if(vista, codigo, float(nuevo_umbral.replace(",", ".")))
             except ValueError:
                 error = "El umbral debe ser un número entre 0 y 1."
+        # con el formato real del runner (lote 1) los veredictos no registran
+        # confianza por campo: el what-if lo dice explícitamente
+        sin_confianza = bool(codigo) and not cambios and not any(
+            "_confianza" in v.consumed
+            for d in vista.decisions
+            for v in d.verdicts
+            if v.code == codigo
+        )
         return _TEMPLATES.TemplateResponse(
             request,
             "reglas.html",
@@ -177,6 +244,7 @@ def create_app(
                 nuevo_umbral=nuevo_umbral,
                 cambios=cambios,
                 error=error,
+                sin_confianza=sin_confianza,
             ),
         )
 
@@ -189,4 +257,6 @@ def create_app(
     return aplicacion
 
 
-app = create_app()
+# Store configurable por entorno: `ALBERTITOS_STORE=.sdd/lote1/ledger` para la
+# demo con el lote 1 real (symlink SOLO LECTURA); default = `.sdd/ledger`.
+app = create_app(store_dir=Path(os.environ.get("ALBERTITOS_STORE", ".sdd/ledger")))

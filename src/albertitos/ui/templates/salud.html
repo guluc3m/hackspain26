@@ -3,6 +3,27 @@
 {% block titulo %}Salud · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Salud del sistema</h1>
+{% if runner %}
+<div class="tarjeta">
+  <strong>Rung 4 — llama-server (127.0.0.1:8080)</strong>: estado
+  <strong>{{ runner.rung4_llama_server[0] }}</strong> · serializado:
+  {{ runner.rung4_secuencial[0] }} · engine {{ runner.engine_version[0] }}
+  · <span class="etq {{ runner.rung4_llama_server[1].split()[0] }}">{{ runner.rung4_llama_server[1] }}</span>
+</div>
+{% endif %}
+{% if drills %}
+<div class="tarjeta">
+  <strong>Drills de resiliencia (T12)</strong> — {{ drills.resumen[0] }}
+  <span class="etq {{ 'medido' if 'fail: 0' not in drills.resumen[0] else 'medido' }}">{{ drills.resumen[1] }}</span>
+  <ul>
+    {% for nombre, estado in drills.por_nombre %}
+    <li>{{ nombre }} — <strong>{{ estado }}</strong></li>
+    {% endfor %}
+  </ul>
+  <p>Fuente: <code>.sdd/metrics/drills.json</code>. Correr de nuevo:
+  <code>uv run python -m albertitos.drills</code>.</p>
+</div>
+{% endif %}
 <p>Estado:
   {% if estado.degradado %}
   <strong>degradado</strong> — hay fallos o extractores ausentes, pero el lote

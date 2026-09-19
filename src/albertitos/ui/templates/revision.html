@@ -6,6 +6,11 @@
 <p>Casos marcados para revisión humana. Puedes resolverlos con calma: el resto
 del lote sigue funcionando mientras tanto. Tu corrección se guarda con quién,
 cuándo y qué cambió; la decisión final la recalcula siempre el motor de reglas.</p>
+<p>En cola: <strong>{{ n_cola }}</strong> factura(s) {{ m.etq('medido') }} ·
+con imagen disponible: {{ con_imagen }} {{ m.etq('medido') }} ·
+página {{ pagina }} de {{ n_paginas }}.
+{% if pagina > 1 %}<a href="/revision?pagina={{ pagina - 1 }}">← Anterior</a>{% endif %}
+{% if pagina < n_paginas %}<a href="/revision?pagina={{ pagina + 1 }}">Siguiente →</a>{% endif %}</p>
 
 {% for c in cola %}
 <div class="tarjeta">

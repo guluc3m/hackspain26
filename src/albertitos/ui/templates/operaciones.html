@@ -3,6 +3,19 @@
 {% block titulo %}Operaciones · Albertitos{% endblock %}
 {% block cuerpo %}
 <h1>Operaciones</h1>
+{% if runner %}
+<div class="tarjeta">
+  <strong>Estado del runner (lote 1, medido)</strong> — actualizado {{ runner.actualizado[0] }}
+  <div class="fila">
+    <div>Procesados: {{ runner.done[0] }} / {{ runner.total[0] }} {{ m.etq(runner.done[1]) }}</div>
+    <div>Fallos: {{ runner.fallos[0] }} {{ m.etq(runner.fallos[1]) }}</div>
+    <div>Pendientes: {{ runner.pendientes[0] }} {{ m.etq(runner.pendientes[1]) }}</div>
+    <div>Throughput: {{ runner.files_per_second[0] }} archivos/s {{ m.etq(runner.files_per_second[1]) }}</div>
+    <div>Reglas: {{ runner.config_version[0] }} {{ m.etq(runner.config_version[1]) }}</div>
+    <div>Rung 4: llama-server {{ runner.rung4_llama_server[0] }} · serializado: {{ runner.rung4_secuencial[0] }} <span class="etq estimado">{{ runner.rung4_llama_server[1] }}</span></div>
+  </div>
+</div>
+{% endif %}
 <div class="fila">
   <div class="tarjeta"><div>Facturas decididas</div>
     <div class="num">{{ resumen.total }}</div><div>{{ m.etq('medido') }}</div></div>
@@ -10,12 +23,12 @@
     <div class="num">{{ resumen.pendientes }}</div><div>{{ m.etq('medido') }}</div></div>
   <div class="tarjeta"><div>Tiempo medio por página</div>
     <div class="num">{% if resumen.ms_por_pagina %}{{ resumen.ms_por_pagina }} ms{% else %}—{% endif %}</div>
-    <div>{{ m.etq('medido') }}</div></div>
+    <div>{% if resumen.ms_por_pagina %}{{ m.etq('medido') }}{% else %}{{ m.etq('sin datos') }} — el runner real no registra latencia por página en este ledger{% endif %}</div></div>
   <div class="tarjeta"><div>Coste acumulado</div>
     <div class="num">{% if resumen.coste_eur is not none %}{{ '%.2f'|format(resumen.coste_eur) }} €{% else %}sin datos{% endif %}</div>
-    <div>{% if resumen.n_registros_coste %}{{ m.etq('medido') }}{% else %}{{ m.etq('estimado') }} — sin registros de coste{% endif %}</div></div>
+    <div>{% if resumen.n_registros_coste %}{{ m.etq('medido') }}{% else %}{{ m.etq('estimado') }} — sin registros de coste en este ledger{% endif %}</div></div>
   <div class="tarjeta"><div>Versión de reglas activa</div>
-    <div class="num">{% if resumen.rule_set_version %}{{ resumen.rule_set_version }}{% else %}—{% endif %}</div>
+    <div class="num">{% if resumen.rule_set_version %}{{ resumen.rule_set_version }}{% elif runner %}{{ runner.config_version[0] }}{% else %}—{% endif %}</div>
     <div>{{ m.etq('medido') }}</div></div>
 </div>
 

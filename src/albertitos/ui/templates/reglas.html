@@ -52,8 +52,15 @@ la decisión real la recalcula el motor al reprocesar).</p>
   {% endfor %}
 </table>
 {% elif codigo %}
+{% if sin_confianza %}
+<p class="aviso">Sin confianzas medidas para <code>{{ codigo }}</code>: los
+veredictos del runner real no registran confianza por campo, así que no se
+puede previsualizar el efecto sobre la evidencia existente (la decisión real
+la recalcula el motor al reprocesar).</p>
+{% else %}
 <p>Con ese umbral no cambiaría ningún veredicto ya evaluado (según la evidencia
 medida hasta ahora).</p>
+{% endif %}
 {% endif %}
 {% endif %}
 {% endblock %}
