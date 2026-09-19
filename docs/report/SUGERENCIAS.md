@@ -340,3 +340,43 @@ implementa con ticket propio; lo grande/riesgoso vive aquí.
   del QR estructurado). Como PLAN para la defensa puntúa (25 pts) aunque se
   demuestre con fixture sintética etiquetada como tal.
 - **Prioridad**: media (25 pts de rúbrica). Quién: W2 (extract es mío/W1).
+---
+
+## EVALUACIÓN DEL CICLO 1 (evaluador-implementador, W3 — T38)
+
+**Implementado (aprobados):**
+- F6 (p1): overrides humanos consumidos por runner+pipeline (bucle de
+  revisión cerrado; commit LOOP F6). 108→0 repro pendientes.
+- F7 (p2): load_master robusto para lote 2 (importe texto + pedido
+  duplicado; commit LOOP F7).
+- F3, F4, F5 (p2): fixes de extracción pura (parse_amount coma-miles,
+  parse_fecha primera-válida, IBAN malformado con candidato) — commits LOOP
+  F3+F4 y F5.
+- S2 (puerto stub configurable) y S9 (histórico corridas.jsonl) — commits
+  LOOP S2/S9. S8 (loader impacto unificado) — commit LOOP S8.
+
+**Descartados / escalar a supervisor (documentados):**
+- F1 y F2 (p1): CAMBIAN RESULTADOS del lote 1 (falsos NO_PAGAR) ⇒ T38 regla
+  2: solo supervisor+usuario con ADR (extender ADR-06 a match exacto y
+  reparar `_RE_LABEL_TOTAL`). Reproducidos con tests xfail (tests/
+  test_rules.py) — cuando el supervisor apruebe, el fix es pequeño y hay
+  diff T13 listo.
+- #1 (simulacro borra review-queue real): VERIFICADO como ya resuelto por
+  otra vía — el test_simulacro actual usa sandbox propio (`.sdd/pytest-tmp`)
+  y `store_root` inyectado; el rmtree citado (líneas 138/165) no existe ya
+  en el HEAD actual. Si vuelve a aparecer, repro en SUGERENCIAS.
+- #3 (cola con leasing): decisión de arquitectura del supervisor + medición
+  en el lote 2 (150 líneas, riesgo medio en el orquestador). NO este ciclo.
+- #4 y #5 (A/B de extracción): requieren re-dry-run y recalibración ⇒
+  invalidarían la calibración T10 en pleno ciclo de entrega. Tras el lote 2.
+- #6 (umbrales por proveedor): cambia la SEMÁNTICA de las reglas activas ⇒
+  supervisor + ADR. Alta prioridad SI el lote 2 trae proveedores grandes.
+- #7 (resumen como servicio periódico): decisión de producto del usuario
+  (¿diario? ¿dónde?) — post-reto.
+- Flake del drill (W2, su nota): el delay del stub 0.8 s vs watchdog 0.25 s
+  es de W2 — ya implementada mi parte (S2 puerto); el delay/poll queda para
+  W2 (solo tests).
+
+**Estado del protocolo T38**: ≥1 hallazgo con repro (SUGERENCIAS.md roto +
+verificación de #1), ≥2 entradas en SUGERENCIAS (evaluación documentada
+aquí), ≥1 mejora implementada con tests (7 commits LOOP).

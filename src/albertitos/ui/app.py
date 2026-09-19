@@ -27,6 +27,7 @@ from fastapi.templating import Jinja2Templates
 
 from albertitos.resumen import datos_resumen
 from albertitos.telemetria import EventChain, stats_por_rung, stats_vlm
+from albertitos.ui.ledger import leer_impactos
 
 from .demo import demo_records
 from .ledger import (
@@ -412,6 +413,7 @@ def create_app(
                 eventos=cadena.leer()[-50:],
                 integridad=cadena.verificar(),
                 total=len(cadena.leer()),
+                impacto=leer_impactos(),
             ),
         )
 

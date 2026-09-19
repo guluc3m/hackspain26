@@ -27,6 +27,11 @@ from albertitos.drill_rung4_live import (
 from albertitos.run import _vlm_up
 
 REPO = Path(__file__).resolve().parent.parent
+DRILL_TMP = REPO / ".sdd" / "pytest-tmp" / "drill-live"
+# T38 SUGERENCIA-2 (W1): puerto configurable para NADA colisiones entre
+# workers corriendo pytest a la vez.
+STUB_PORT = int(__import__("os").environ.get("ALBERTITOS_STUB_PORT", "8231"))
+STUB_URL = f"http://127.0.0.1:{STUB_PORT}"
 
 
 class StubLlamaServer:

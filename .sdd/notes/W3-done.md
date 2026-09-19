@@ -224,3 +224,18 @@
 - Tests nuevos (test_entrega.py, 3): estructura del acta, sha256 cuadran
   contra el repo real, repo válido y sin secretos.
 - Al cierre: 288 passed, ruff limpio, sin secretos.
+
+## Sesión 14 — LOOP ciclo 1 (rol EVALUADOR-IMPLEMENTADOR, T38)
+
+- 9 commits trazados (uno por hallazgo/sugerencia aprobada):
+  LOOP hallazgo-0 (SUGERENCIAS.md roto con conflict markers commitados —
+  unión recuperada), F6 (overrides humanos consumidos: runner+pipeline),
+  F7 (master robusto lote 2), F3+F4 (parse_amount/parse_fecha), F5 (IBAN
+  con candidato), S2 (puerto stub env), S9 (corridas.jsonl), S8 (loader
+  impacto unificado), y la evaluación completa en SUGERENCIAS.md.
+- F1/F2 (cambian resultados): NO implementados — xfail tests documentan el
+  repro; requieren ADR del supervisor (T38 regla 2).
+- Suite al cierre: 290 passed + 2 xfailed, ruff limpio, sin secretos.
+- Los tickets de W1 (T38F1–F7 en /home/deploy/fleet/w1/.sdd/backlog/open/)
+  siguen allí: son suyos; el estado de cada uno queda en la evaluación del
+  ciclo (SUGERENCIAS.md) para que el supervisor los cierre o reasigne.
