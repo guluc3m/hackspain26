@@ -310,3 +310,33 @@ def test_umbrales_son_configuracion():
     assert cfg.ghost_iban == "ES6614910001213000098877"
     assert "PENDIENTE" in cfg.estados_pagables
     assert "PAGADO" not in cfg.estados_pagables
+
+# --------------------------------------------------- T38-F7: master robusto
+
+def test_master_importe_como_texto_y_pedido_duplicado(tmp_path):
+    """T38-F7: el ERP del lote 2 puede traer importe como TEXTO ("1.234,56")
+    y filas de pedido duplicadas — load_master no cae y la primera gana."""
+    from openpyxl import Workbook
+
+    ruta = tmp_path / "maestro_erp.xlsx"
+    wb = Workbook()
+    prov = wb.active
+    prov.title = "Proveedores"
+    prov.append(["ID", "Razon Social", "NIF", "IBAN", "Ciudad", "Condiciones"])
+    prov.append(["P001", "Papelería Ruzafa", "B46102331", "ES91 2100 0418 4502 0005 1332", "Valencia", "30 días"])
+    pedidos = wb.create_sheet("Pedidos_2026")
+    pedidos.append(["Pedido", "ProveedorID", "NIF", "Importe_Total", "Estado", "Fecha_Pedido"])
+    pedidos.append(["PO-TEST-1", "P001", "B46102331", "1.234,56", "PENDIENTE", "2026-06-01"])  # TEXTO
+    pedidos.append(["PO-TEST-1", "P001", "B46102331", 99999.0, "PENDIENTE", "2026-06-02"])  # duplicado
+    pedidos.append(["PO-TEST-2", "P001", "B46102331", "ilegible", "PENDIENTE", "2026-06-03"])
+    wb.save(ruta)
+
+    from albertitos.rules import load_master
+
+    maestro = load_master(ruta, hojas_ignoradas=())
+    assert float(maestro.pedidos["PO-TEST-1"].importe) == 1234.56  # texto → parse_amount
+    # duplicado: PRIMERA gana (99999 NO pisa)
+    assert len(maestro.pedidos) == 2
+    # aviso registrado en el snapshot
+    assert any("pedido_deduplicado:PO-TEST-1" in a for a in maestro.avisos)
+    assert any("importe_ilegible:PO-TEST-2" in a for a in maestro.avisos)
