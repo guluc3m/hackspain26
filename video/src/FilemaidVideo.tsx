@@ -151,7 +151,7 @@ const CAPTURAS = [
 
 const Producto: React.FC = () => {
   const f = useCurrentFrame();
-  const lf = f - SCENES.slice(0, 2).reduce((a, s) => a + s.frames, 0); // frame local de la escena
+  const lf = Math.max(0, f - SCENES.slice(0, 2).reduce((a, s) => a + s.frames, 0)); // frame local de la escena
   // Rotación de capturas: ~6,5 s cada una dentro de los 600 frames de la escena.
   const idx = Math.min(Math.floor(lf / 200), CAPTURAS.length - 1);
   const cap = CAPTURAS[idx];
@@ -313,7 +313,8 @@ const Traza: React.FC = () => {
 
 // ── 6 · ADRs ─────────────────────────────────────────────────────────────────
 const Adrs: React.FC = () => {
-  const f = useCurrentFrame();
+  // Frame local a la escena: los delays de rise() son relativos al inicio.
+  const f = useCurrentFrame() - SCENES.slice(0, 5).reduce((a, s) => a + s.frames, 0);
   return (
     <Escena idx={5}>
       <Frame>
