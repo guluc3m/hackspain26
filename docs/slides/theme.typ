@@ -99,74 +99,7 @@
   },
 )
 
-/// Numbered step of the extraction ladder.
-#let step(num, title, detail, fill: sand) = box(
-  width: 100%,
-  fill: fill,
-  stroke: 0.9pt + ink,
-  inset: (x: 0.5em, y: 0.3em),
-  height: 2.5em,
-  align(left + horizon, grid(
-    columns: (1.1em, 1fr),
-    gutter: 0.45em,
-    align: (center + horizon, left + horizon),
-    circle(radius: 0.42em, fill: ink, text(font: display-font, size: 0.48em, fill: paper, str(num))),
-    [
-      #text(font: display-font, size: 0.55em, fill: ink, title)
-      #h(0.4em)
-      #text(size: 0.58em, fill: brown, detail)
-    ],
-  )),
-)
-
-/// Flow box with a fixed height so all boxes in a row align.
-#let fbox(title, sub: none, fill: sand, tfill: ink) = box(
-  fill: fill,
-  stroke: 0.9pt + ink,
-  width: 100%,
-  height: 2.5em,
-  inset: (x: 0.45em, y: 0.25em),
-  align(center + horizon, {
-    text(font: display-font, size: 0.5em, fill: tfill, title)
-    if sub != none {
-      linebreak()
-      text(size: 0.44em, fill: if tfill == ink { brown } else { sand }, sub)
-    }
-  }),
-)
-
 #let arrow-right = box(outset: (x: 0.02em), text(font: display-font, size: 0.62em, fill: orange)[→])
-
-/// Extraction-ladder rung, adapted from `docs/report/architecture.typ` (`step-card`):
-/// number, technique, short description, and the speed/cost of the rung.
-#let rung(num, tech, desc, cost, speed, fill: sand) = box(
-  width: 100%,
-  fill: fill,
-  stroke: 1pt + ink,
-  inset: (x: 0.5em, y: 0.26em),
-  height: 1.7em,
-  align(left + horizon, grid(
-    columns: (1.5em, 1fr, auto),
-    gutter: 0.5em,
-    align: (center + horizon, left + horizon, right + horizon),
-    circle(
-      radius: 0.5em,
-      fill: ink,
-      text(font: display-font, size: 0.52em, fill: paper, str(num)),
-    ),
-    [
-      #text(font: body-font, size: 0.6em, weight: 800, fill: ink, tech) \
-      #text(size: 0.5em, fill: brown, desc)
-    ],
-    [
-      #text(font: display-font, size: 0.44em, fill: teal, speed) \
-      #text(font: display-font, size: 0.44em, fill: orange, cost)
-    ],
-  )),
-)
-
-/// "Falls through to the next rung" marker for the ladder.
-#let rung-arrow = align(center, box(height: 0.32em, text(font: display-font, size: 0.46em, fill: brown)[▼]))
 
 /* SLIDE CHROME */
 
