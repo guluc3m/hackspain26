@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, SINTETICO, type RuntimeConfig, type SyncStatus, type VlmStatus } from './api'
-import { irA, tab, tabs } from './nav'
+import { irA, pendientesRevision, tab, tabs } from './nav'
 import DashboardView from './views/DashboardView.vue'
 import IngestView from './views/IngestView.vue'
 import InvoicesView from './views/InvoicesView.vue'
@@ -60,23 +60,44 @@ async function cargarConfigInicial() {
     currentConfig.value = cfg
     confirmed.value = cfg.configured
     configError.value = ''
-    await Promise.all([fetchSyncStatus(), fetchVlmStatus()])
+    await Promise.all([fetchSyncStatus(), fetchVlmStatus(), fetchPendientes()])
   } catch (e: any) {
     // No se ocultan los fallos de carga con valores por defecto silenciosos.
     configError.value = `No se pudo cargar la configuración guardada: ${e?.message || e}`
   }
 }
 
+/** Atajo global: `R` salta a Revisión si hay pendientes. Ignora campos de texto
+   y atajos compuestos para no robar pulsaciones al usuario. */
+function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  const el = e.target as HTMLElement | null
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+  if ((e.key === 'r' || e.key === 'R') && pendientesRevision.value > 0) {
+    irA('review')
+  }
+}
 onMounted(() => {
   cargarConfigInicial()
+  window.addEventListener('keydown', onKeydown)
   pollTimer = setInterval(() => {
     fetchSyncStatus()
+    fetchPendientes()
     fetchVlmStatus().then(() => {
       const s = vlmStatus.value
       if (s && (s.state === 'downloading' || s.state === 'starting')) vigilarArranqueVlm()
     })
   }, 10_000)
 })
+
+/** Recuento de revisiones pendientes para el badge de la pestaña Revisión. */
+async function fetchPendientes() {
+  try {
+    pendientesRevision.value = (await api.revision()).items.length
+  } catch {
+    // Sin dato fresco se conserva el anterior: el badge nunca miente activamente.
+  }
+}
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
@@ -254,6 +275,11 @@ async function sincronizarAhora() {
         @click="irA(t.id)"
       >
         {{ t.label }}
+        <span
+          v-if="t.id === 'review' && pendientesRevision > 0"
+          class="tab-badge"
+          :aria-label="`${pendientesRevision} revisiones pendientes`"
+        >{{ pendientesRevision }}</span>
       </button>
     </nav>
     <div v-else class="startup-nav-title">
@@ -261,6 +287,17 @@ async function sincronizarAhora() {
     </div>
 
     <div class="topbar-right">
+      <!-- CTA directo a Revisión: visible en cualquier pestaña cuando hay pendientes -->
+      <button
+        v-if="confirmed && pendientesRevision > 0 && tab !== 'review'"
+        type="button"
+        class="cta-review"
+        :aria-label="`Ir a revisión: ${pendientesRevision} pendientes`"
+        title="Ir a Revisión (tecla R)"
+        @click="irA('review')"
+      >
+        Revisar {{ pendientesRevision }} pendiente{{ pendientesRevision === 1 ? '' : 's' }}
+      </button>
       <div
         class="modo"
         :class="statusBadgeClass"
@@ -405,6 +442,16 @@ nav { display: flex; gap: 2px; }
   gap: 10px;
 }
 
+.cta-review {
+  font-size: 12px;
+  padding: 5px 11px;
+  background: var(--gold);
+  color: var(--ink);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+}
+.cta-review:hover { background: #f3c94a; }
+
 .sync-btn {
   font-size: 12px;
   padding: 5px 11px;
@@ -446,6 +493,20 @@ nav { display: flex; gap: 2px; }
 .tab.active {
   color: var(--gold);
   border-bottom-color: var(--gold);
+}
+
+.tab-badge {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 6px;
+  padding: 1px 4px;
+  font-family: var(--body);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+  background: var(--gold);
+  color: var(--ink);
 }
 
 .config-btn {

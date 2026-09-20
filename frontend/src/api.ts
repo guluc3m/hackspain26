@@ -313,15 +313,6 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 let authKey: string | null = null
 
-/** Clave del runtime (`server_api_key`): una carga por llamada de fetch, cacheada. */
-async function authHeader(): Promise<Record<string, string>> {
-  if (authKey === null) {
-    authKey = SINTETICO ? '' : await request<{ server_api_key: string }>('/api/config', undefined, 'GET')
-      .then(cfg => cfg.server_api_key || '')
-      .catch(() => '')
-  }
-  return authKey ? { Authorization: `Bearer ${authKey}` } : {}
-}
 
 async function request<T>(path: string, body?: unknown, method = 'POST', inner = false): Promise<T> {
   // Resolución de la clave fuera del camino de request(): pedir /api/config con
@@ -343,6 +334,7 @@ async function request<T>(path: string, body?: unknown, method = 'POST', inner =
   return handleResponse<T>(await fetch(path, options))
 }
 
+/** Subida multipart: cada fichero va como parte `files` con su ruta relativa. */
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
   if (!SINTETICO && authKey === null) {
     await request('/api/config', undefined, 'GET', true).catch(() => undefined)
@@ -350,10 +342,6 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   return handleResponse<T>(await fetch(path, { method: 'POST', body: form, headers: authKey ? { Authorization: `Bearer ${authKey}` } : {} }))
 }
 
-/** Subida multipart: cada fichero va como parte `files` con su ruta relativa. */
-async function requestForm<T>(path: string, form: FormData): Promise<T> {
-  return handleResponse<T>(await fetch(path, { method: 'POST', body: form, headers: await authHeader() }))
-}
 
 const realApi: Api = {
   facturas: () => request('/api/facturas', undefined, 'GET'),

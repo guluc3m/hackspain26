@@ -18,6 +18,9 @@ export const tab = ref<Tab>(tabInicial())
 /** Filtro por nombre de factura (file_id) preseleccionado en Logs. */
 export const logsInvoice = ref('')
 
+/** Nº de revisiones pendientes (badge de la pestaña Revisión). */
+export const pendientesRevision = ref(0)
+
 /** Pestañas de la barra superior. */
 export const tabs: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },

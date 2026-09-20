@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, fmtHora, fmtValor, liderIndex, type Candidate, type InvoiceDetail } from '../api'
 import ResultBadge from './ResultBadge.vue'
 
@@ -12,6 +12,17 @@ const busy = ref(false)
 const motivo = ref('')
 const elegidos = ref<Record<string, number>>({}) // field_type -> índice del candidato elegido
 
+/** Atajos del drawer: `Enter` resuelve (equivale al botón primario), `Esc` cierra.
+    Solo actúan con el drawer abierto y sin modificadores que indiquen otra intención. */
+function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  if (!props.invoiceId || !detail.value) return
+  if (e.key === 'Escape') {
+    emit('close')
+  } else if (e.key === 'Enter' && !busy.value) {
+    resolver()
+  }
+}
 watch(
   () => props.invoiceId,
   async (id) => {
@@ -23,6 +34,9 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 async function load(id: string) {
   try {
@@ -75,8 +89,10 @@ async function resolver() {
       expected_decision_id: d.decision?.decision_id ?? ''
     })
     motivo.value = ''
+    // Resuelta con éxito: la lista del padre se refresca (`updated`) y el
+    // drawer se cierra solo; la acción terminó y no pide más clics.
     emit('updated')
-    await load(d.invoice.id)
+    emit('close')
   } catch (e) {
     // 409: la decisión cambió desde que se cargó. Se recarga conservando la
     // selección del revisor y se muestra el error para reintentar.
