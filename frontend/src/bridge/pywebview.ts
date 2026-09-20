@@ -14,6 +14,8 @@ export interface EstadoVigilancia {
   error: string
   processed: number
   pending: number
+  poll_interval: number
+  last_scan: number
   notifications: { available: boolean; detail: string }
 }
 

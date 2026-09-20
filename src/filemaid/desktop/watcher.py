@@ -111,6 +111,7 @@ class Watcher:
         self._pendientes: set[str] = set()
         self._intento: dict[str, float] = {}
         self._proximo_reconcile = 0.0
+        self._ultimo_escaneo = 0.0
         self._cargar()
 
     # -- estado persistido -------------------------------------------------
@@ -214,6 +215,8 @@ class Watcher:
                 "error": self._error,
                 "processed": self._processed,
                 "pending": len(self._pendientes) + len(self._jobs),
+                "poll_interval": self._poll_s,
+                "last_scan": self._ultimo_escaneo,
                 "notifications": self._notificador.estado(),
             }
 
@@ -231,8 +234,9 @@ class Watcher:
                 with self._lock:
                     self._error = f"{type(exc).__name__}: {exc}"
             self._stop.wait(self._poll_s)
-
     def _escanear_una_vez(self) -> None:
+        with self._lock:
+            self._ultimo_escaneo = time.time()
         if not self._scan_lock.acquire(blocking=False):
             return
         try:

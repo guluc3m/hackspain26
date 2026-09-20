@@ -325,7 +325,12 @@ onUnmounted(() => {
           <span v-if="watcher.running" class="muted"> · en ejecución</span>
         </dd>
         <dt>Procesadas</dt>
-        <dd>{{ watcher.processed }} · {{ watcher.pending }} pendientes</dd>
+        <dd>
+          {{ watcher.processed }} · {{ watcher.pending }} pendientes
+          <span v-if="watcher.last_scan > 0" class="muted">
+            · último sondeo {{ new Date(watcher.last_scan * 1000).toLocaleTimeString() }}
+          </span>
+        </dd>
         <dt>Notificaciones</dt>
         <dd>
           {{ watcher.notifications.available ? 'disponibles' : 'no disponibles' }}

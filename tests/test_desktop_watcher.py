@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -417,3 +418,86 @@ def test_notificador_sin_qt_degrada(monkeypatch):
     noti.preparar()
     assert noti.estado()["available"] is False
     assert noti.notificar("t", "c") is False
+
+
+class FakeIngestaLenta(FakeIngesta):
+    """Ingesta cuyo job permanece 'processing' hasta que se marca completado."""
+
+    def __init__(self, resultado: str = "ESCALAR") -> None:
+        super().__init__(resultado=resultado)
+        self.completados: set[str] = set()
+
+    def status(self, job_id: str) -> dict:
+        st = super().status(job_id)
+        if job_id in self.completados:
+            st["state"] = "complete"
+        else:
+            st["state"] = "processing"
+        return st
+
+
+def test_bucle_real_detecta_notifica_y_stop_limpio(tmp_path, cfg):
+    """E2E sin Qt: hilo real; PDF aparece -> ingesta -> ESCALAR -> notificación.
+
+    Comprueba además el cierre limpio: `stop()` termina el hilo y `estado()`
+    ya no lo reporta como activo.
+    """
+    carpeta = _carpeta(tmp_path)
+    destino = carpeta / "factura.pdf"
+    datos = PDF_REAL.read_bytes()
+    fake = FakeIngestaLenta(resultado="ESCALAR")
+    noti = FakeNotificador()
+    _activar(cfg, carpeta)
+    watcher = Watcher(
+        cfg,
+        noti,
+        servicio=fake,
+        poll_s=0.02,
+        settle_polls=2,
+        reconcile_s=0.0,
+    )
+    watcher.start()
+    try:
+        assert watcher.estado()["running"] is True
+        with destino.open("wb") as f:
+            f.write(datos[: len(datos) // 2])
+        time.sleep(0.1)  # unos sondeos: el parcial no se entrega
+        assert fake.submits == []
+        destino.write_bytes(datos)
+        # Estable -> ingesta; el job sigue 'processing' -> pendiente, sin notificar.
+        _esperar(lambda: len(fake.submits) == 1, timeout=5.0)
+        _esperar(lambda: watcher.estado()["pending"] == 1, timeout=5.0)
+        assert noti.mensajes == []
+
+        # El pipeline termina: job 'complete' con resultado ESCALAR -> notifica.
+        fake.completados.add(fake.submits[0]["job_id"])
+        _esperar(lambda: len(noti.mensajes) == 1, timeout=5.0)
+        assert "ESCALAR" in noti.mensajes[0][1]
+        _esperar(lambda: watcher.estado()["pending"] == 0, timeout=5.0)
+    finally:
+        watcher.stop()
+    assert watcher.estado()["running"] is False
+    assert not watcher._hilo.is_alive()  # cierre limpio: sin hilos vivos
+
+
+def _esperar(cond, timeout: float) -> None:
+    limite = time.monotonic() + timeout
+    while time.monotonic() < limite:
+        if cond():
+            return
+        time.sleep(0.01)
+    pytest.fail("condición no alcanzada en el tiempo esperado")
+
+
+def test_estado_expone_intervalo_y_ultimo_escaneo(tmp_path, cfg):
+    carpeta = _carpeta(tmp_path)
+    shutil.copyfile(PDF_REAL, carpeta / "factura.pdf")
+    fake = FakeIngesta()
+    _activar(cfg, carpeta)
+    watcher = _watcher(cfg, fake)
+    estado = watcher.estado()
+    assert estado["poll_interval"] == 3600.0
+    assert estado["last_scan"] == 0.0  # sin sondeo aún
+    for _ in range(3):
+        watcher.escanear()
+    assert watcher.estado()["last_scan"] > 0.0  # marca del sondeo manual
