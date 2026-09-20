@@ -32,7 +32,7 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 El vídeo lleva dos pistas, integradas por Remotion en el render:
 
 - **Voz** (volumen 1.0): narración en español generada con **piper** `es_ES-carlfm-x_low`, una por escena, colocada dentro de la `Sequence` de cada escena según la tabla de colocación de `narracion/SPEC.md` (duraciones reales: esc1 9,72 s … esc8 17,70 s). Los textos narrados son los de `narracion/guion_tts.md` (fuente de verdad, no reescribir). Los wavs servidos en el render viven en `public/narracion/esc{1..8}.wav` (copia de `narracion/esc{1..8}.wav`).
-- **Música** (volumen **0.07**, deliberadamente muy por debajo de la voz): pista **externa** servida en `public/music_yt.wav`, descargada de <https://www.youtube.com/watch?v=JMfYqpLLAnc> (solo audio) y normalizada a **180 s exactos**, 44,1 kHz estéreo PCM 16 bit, con fade-in de 1,5 s y fade-out de 3 s.
+- **Música** (volumen **0.14**, por debajo de la voz): pista **externa** servida en `public/music_yt.wav`, descargada de <https://www.youtube.com/watch?v=JMfYqpLLAnc> (solo audio) y normalizada a **180 s exactos**, 44,1 kHz estéreo PCM 16 bit, con fade-in de 1,5 s y fade-out de 3 s. El propio fichero está **normalizado en pico a −3,0 dBFS** (RMS −20,4 dB) para que a volumen 0.14 se oiga con presencia y sin recortar.
 
 > ⚠️ **Aviso de copyright**: `public/music_yt.wav` es **material de terceros con
 > copyright** (tema publicado en YouTube), no música propia del proyecto y no se

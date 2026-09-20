@@ -711,7 +711,7 @@ export const FilemaidVideo: React.FC = () => {
   return (
     <>
       {/* Pista externa (ver README → Audio), 180 s exactos ≈ 5400 frames, muy baja bajo la voz. */}
-      <Audio src={staticFile('music_yt.wav')} volume={0.07} />
+      <Audio src={staticFile('music_yt.wav')} volume={0.14} />
       <Portada />
       <Problema />
       <Producto />
