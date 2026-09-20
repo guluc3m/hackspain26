@@ -8,9 +8,11 @@
 
 ## Contexto
 
-Hardware real de esta máquina: 8 núcleos i5-12400, 16 GB RAM, sin GPU ni
-`/dev/dri`. Modelo local: PaddleOCR-VL 1.6 Q8 (0,94 GB) vía `llama-server`
-(llama.cpp, endpoint OpenAI-compatible en `127.0.0.1:8080`, temp 0), aprovisionado
+Hardware real de esta máquina (lscpu/free, 2026-09-20) [medido]: i5-12400 de
+6 núcleos / 12 hilos con **8 hilos online** (CPUs 2-5 y 8-11; 0-1 y 6-7
+offline), 16 GB RAM (13 disponibles), sin GPU ni `/dev/dri`. Modelo local:
+PaddleOCR-VL 1.6 Q8 (0,94 GB) vía `llama-server` (llama.cpp, 4 hilos, contexto
+8192, endpoint OpenAI-compatible en `127.0.0.1:8080`, temp 0), aprovisionado
 con `uv run scripts/setup_llama.sh` (DECISIONS.md D-002).
 
 Los escalones 5 y 7 (TypeSafe System One y VLM cloud) **no tienen clave API
@@ -65,11 +67,21 @@ Datos de `video/data_lote1.json` (corrida T14, runner-1.0.0):
 
 - El VLM local se invocó **28 veces** (solo las páginas que no resolvieron los
   escalones 1-3: 500 − 471 texto vectorial).
-- Latencia media **33,9 s**, latencia máxima **60,1 s** (timeout de 120 s del
-  rung no se alcanzó; una invocación alcanzó el `RUNNER_TIMEOUT` de 60 s).
+- Latencia media **33,9 s**, latencia máxima **60,1 s**. El timeout del rung
+  (120 s, `src/filemaid/extract/rungs/vlm_local.py`) no se alcanzó; el máximo
+  de 60,1 s coincide con los 20 archivos que el lote escaló como
+  `RUNNER_TIMEOUT:UNKNOWN` (razón registrada en el ledger, límite del runner,
+  no del rung).
 - Consistente con la medición puntual de 5 páginas (~33-35 s): la carga
   concurrente no distorsionó apreciablemente el resultado, porque el runner
   serializa las invocaciones al VLM (`rung4_serializado: true`).
+  `scripts/bench_vlm_local.py`, 3 corridas, 100 % de respuestas con OCR
+  utilizable): serial **p50 3 942 ms · p95 4 388 ms** (n=8) y rango
+  3,3-4,6 s entre corridas; concurrente c=2 p50 6 110 ms (n=5, 17-26
+  págs/min entre corridas). Confirma que el ~34 s anterior era contención de
+  CPU, no latencia del modelo: en reposo el escalón 4 es ~8× más rápido.
+  Detalle: `docs/benchmark_local_vs_remoto.md` y
+  `data/bench_vlm_local_{limpio,final}.json`.
 
 ### Escalones 5 y 7 [no medido] — sin clave en esta máquina
 

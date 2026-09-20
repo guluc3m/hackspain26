@@ -4,10 +4,14 @@ Mide latencia limpia (SIN carga del runner) del endpoint OpenAI-compatible de
 llama-server, exactamente como la invoca el escalón 4
 (`src/filemaid/extract/rungs/vlm_local.py`: prompt "OCR:", temperature 0,
 max_tokens 1024, imagen PNG base64 renderizada con pypdfium2 a escala 2.0).
-
 Dos fases:
-Uso:
-    uv run python scripts/bench_vlm_local.py [--url http://127.0.0.1:8080] \
+
+- Fase A (serial): N peticiones una a una, rotando las 3 primeras páginas
+  escaneadas del corpus (orden determinista), para latencia p50/p95.
+- Fase B (concurrente): M peticiones en paralelo con semáforo de C
+  (--concurrencia), para wall-clock y throughput equivalente. Con
+  `--concurrente 0` se omite.
+
         [--serial 8] [--concurrente 5] [--salida .sdd/metrics/vlm-local-latencia.json]
 
 No toca el proceso llama-server: solo le envía peticiones HTTP.
@@ -188,8 +192,12 @@ def main() -> None:
     print(f"fase A: {args.serial} peticiones seriales...")
     seriales = asyncio.run(fase_serial(url, pngs, args.serial))
 
-    print(f"fase B: {args.concurrente} peticiones con concurrencia {args.concurrencia}...")
-    conc = asyncio.run(fase_concurrente(url, pngs, args.concurrente, args.concurrencia))
+    if args.concurrente > 0:
+        print(f"fase B: {args.concurrente} peticiones con concurrencia {args.concurrencia}...")
+        conc = asyncio.run(fase_concurrente(url, pngs, args.concurrente, args.concurrencia))
+    else:
+        conc = {"peticiones": [], "wall_clock_ms": 0.0}
+        print("fase B: omitida (--concurrente 0)")
 
     lat_seriales = [r["latencia_ms"] for r in seriales]
     lat_conc = [r["latencia_ms"] for r in conc["peticiones"]]
@@ -197,20 +205,14 @@ def main() -> None:
 
     doc = {
         "generado": datetime.now(ZoneInfo("Europe/Madrid")).isoformat(timespec="seconds"),
-        "script": "scripts/bench_vlm_local.py",
-        "endpoint": url,
-        "modelo": "PaddleOCR-VL 1.6 Q8 (llama-server, 4 hilos, temp 0)",
-        "condicion": "SIN carga del runner (llama-server en reposo, solo este benchmark)",
-        "nota_bi-modal": (
-            "La fase serial es bi-modal: p50 ≈ 3,5 s pero p95 ≈ 34,9 s. Las 2 "
-            "peticiones lentas son el primer encuentro de cada imagen no vista "
-            "antes (procesamiento de visión del mmproj sin caché previa); las 6 "
-            "restantes reutilizan imagen vía prompt-cache del servidor "
-            "(usage.prompt_tokens_details.cached_tokens ≈ 1272/1273) y caen a "
-            "3,0-3,6 s. Verificación posterior: imagen repetida en servidor "
-            "caliente = 3,7 s con 1272/1273 tokens cacheados. El p95 de la fase "
-            "concurrente (4,4 s) confirma el estado estable: con las 3 imágenes "
-            "ya vistas, concurrencia 2 solo añade ~0,7 s de cola."
+        "nota_primer_encuentro": (
+            "Las peticiones 1-3 son primer encuentro de cada imagen (caché de "
+            "prompt vacía tras reiniciar llama-server); las restantes reutilizan "
+            "imagen vía prompt-cache (cached_tokens ≈ 1272/1273). En las últimas "
+            "corridas (2026-09-20) no hay diferencia estable entre ambos casos: "
+            "todas caen en 3,0-4,3 s. Los ~34 s/página del lote 1 fueron "
+            "contención de CPU con el runner activo, no latencia del modelo en "
+            "reposo (ver docs/benchmarks_extraccion.md)."
         ),
         "metodo": {
             "imagenes": [p.name for p in escaneos],
