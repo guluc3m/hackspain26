@@ -8,7 +8,7 @@ Desde `video/` (dependencias ya instaladas en `node_modules`):
 npm run render        # = npx remotion render src/index.tsx filemaid out/filemaid.mp4
 ```
 
-Salida: `video/out/filemaid.mp4` (180 s exactos).
+Salida: `video/out/filemaid.mp4` (180 s exactos). El MP4 final lleva **voz + música integrados** (etiquetas `<Audio>` en `src/FilemaidVideo.tsx`); no requiere ningún postproceso externo.
 
 Stills de verificación visual (uno por escena clave):
 
@@ -20,9 +20,39 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 
 (El compositor se llama `filemaid` y el punto de entrada `src/index.tsx`.)
 
+## Audio
+
+El vídeo lleva dos pistas, integradas por Remotion en el render:
+
+- **Voz** (volumen 1.0): narración en español generada con **piper** `es_ES-carlfm-x_low`, una por escena, colocada dentro de la `Sequence` de cada escena según la tabla de colocación de `narracion/SPEC.md` (duraciones reales: esc1 9,72 s … esc8 17,70 s). Los textos narrados son los de `narracion/guion_tts.md` (fuente de verdad, no reescribir). Los wavs servidos en el render viven en `public/narracion/esc{1..8}.wav` (copia de `narracion/esc{1..8}.wav`).
+- **Música** (volumen ≈ 0.10–0.14): pad ambiente suave, sin ritmo marcado que compita con la voz. 180 s exactos en `public/music.wav`, generada con `narracion/make_music.py` (solo stdlib).
+
+Regenerar la voz (piper con el modelo `es_ES-carlfm-x_low`):
+
+```sh
+# un wav por escena; ajusta --length-scale si el texto no cabe con holgura
+for i in 1 2 3 4 5 6 7 8; do
+  piper --model es_ES-carlfm-x_low \
+    --output_file "esc$i.wav" < "esc$i.txt"
+done
+```
+
+Regenerar la música y copiar los wavs a `public/` (ambos comandos desde `video/`, que es el cwd del que parte `make_music.py` para escribir `public/music.wav`):
+
+```sh
+python3 narracion/make_music.py        # escribe public/music.wav (180 s exactos, semilla fija: reproducible)
+cp narracion/esc{1..8}.wav public/narracion/
+```
+
+Comprobar duraciones antes de renderizar (la voz debe caber en su escena con ≥ 0,8 s de holgura):
+
+```sh
+for f in narracion/esc{1..8}.wav; do ffprobe -v error -show_entries format=duration -of csv=p=0 "$f"; done
+```
+
 ## Verificación del render final
 
-Fecha: 2026-09-20. Render completo con el código vigente en la rama
+Fecha: 2026-09-20 (render **sin audio**, previo a la integración de voz + música de esta rama; los stills y medidas de vídeo siguen siendo válidos). Render completo con el código vigente en la rama
 `feat/remotion-polish` (incluye el pulido de escenas de esta rama).
 
 Comando exacto (desde `video/`):
