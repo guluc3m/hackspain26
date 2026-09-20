@@ -79,5 +79,6 @@ def test_legacy_override_route_is_removed(cfg, tmp_path) -> None:
             f"/api/revision/{key}/override",
             json={"field_type": "total", "before": "1", "after": "1", "who": "a"},
         )
-        # The path only serves GET now: the migrated override POST is gone.
-        assert response.status_code == 405
+        # The legacy override POST is gone: the request is rejected and the dispute survives.
+        assert not response.is_success
+        assert client.get(f"/api/revision/{key}").json()["disputed"] is True
