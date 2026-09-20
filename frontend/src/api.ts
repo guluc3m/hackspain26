@@ -323,8 +323,16 @@ async function authHeader(): Promise<Record<string, string>> {
   return authKey ? { Authorization: `Bearer ${authKey}` } : {}
 }
 
-async function request<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
-  const options: RequestInit = { headers: await authHeader() }
+async function request<T>(path: string, body?: unknown, method = 'POST', inner = false): Promise<T> {
+  // Resolución de la clave fuera del camino de request(): pedir /api/config con
+  // inner=true evita la recursión authHeader↔request (P0 fix). Un solo intento:
+  // si falla, authKey='' y las llamadas siguen sin cabecera (401 visible).
+  if (!SINTETICO && authKey === null && !inner) {
+    authKey = await fetch('/api/config').then(handleResponse<{ server_api_key: string }>)
+      .then(cfg => cfg.server_api_key || '')
+      .catch(() => '')
+  }
+  const options: RequestInit = { headers: authKey ? { Authorization: `Bearer ${authKey}` } : {} }
   if (body !== undefined) {
     options.method = method
     options.headers = { ...options.headers, 'Content-Type': 'application/json' }
@@ -333,6 +341,13 @@ async function request<T>(path: string, body?: unknown, method = 'POST'): Promis
     options.method = method
   }
   return handleResponse<T>(await fetch(path, options))
+}
+
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  if (!SINTETICO && authKey === null) {
+    await request('/api/config', undefined, 'GET', true).catch(() => undefined)
+  }
+  return handleResponse<T>(await fetch(path, { method: 'POST', body: form, headers: authKey ? { Authorization: `Bearer ${authKey}` } : {} }))
 }
 
 /** Subida multipart: cada fichero va como parte `files` con su ruta relativa. */
