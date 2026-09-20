@@ -20,6 +20,12 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 
 (El compositor se llama `filemaid` y el punto de entrada `src/index.tsx`.)
 
+> **Artefactos trackeados a propósito**: `video/out/filemaid.mp4` y los wav de
+> `video/narracion/` + `video/public/` (voz y música) están versionados en git
+> por decisión del product owner aunque sean binarios generados. Los dos TTFs
+> que sirve el render viven en `video/public/fonts/` (copia byte a byte de
+> `frontend/public/fonts/`) y se registran desde `src/fonts.ts`.
+
 ## Audio
 
 El vídeo lleva dos pistas, integradas por Remotion en el render:
@@ -55,44 +61,55 @@ for f in narracion/esc{1..8}.wav; do ffprobe -v error -show_entries format=durat
 
 ## Verificación del render final
 
-Fecha: 2026-09-20 (render **sin audio**, previo a la integración de voz + música de esta rama; los stills y medidas de vídeo siguen siendo válidos). Render completo con el código vigente en la rama
-`feat/remotion-polish` (incluye el pulido de escenas de esta rama).
+Fecha: 2026-09-20. Render **final, con voz + música integradas**: es el MP4 que
+se entrega, `out/filemaid.mp4`.
 
-Comando exacto (desde `video/`):
+Comando exacto (desde `video/`), tiempo de pared **179,5 s**:
 
 ```sh
-npx remotion render src/index.tsx filemaid out/filemaid.mp4
+npx remotion render src/index.tsx filemaid out/filemaid.mp4 --concurrency 14
 ```
 
-Medidas de **aquel** render, el último sin audio (el MP4 vigente en
-`out/filemaid.mp4` ya lleva voz + música integradas: sus cifras se anotarán
-tras el próximo render):
+Medidas del MP4 entregado (ffprobe del binario incluido en
+`node_modules/@remotion/compositor-linux-x64-gnu/`):
 
-- Duración: **180,000000 s exactos** (5400 frames).
-- Resolución / fps: **1920×1080 @ 30 fps** (avg_frame_rate 30/1).
-- Tamaño: **8 603 731 bytes (~8,2 MB)**, < 20 MB.
-- sha256: `1c8fcf371d7dfc579e6b489638722704865bbefce6683ac7c00e09c9a873e4d3`.
+- Duración de vídeo: **5400 frames = 180,000000 s exactos** (el contenedor
+  reporta 180,053333 s: relleno del codificador AAC).
+- Resolución / fps: **h264 1920×1080 @ 30 fps** (avg_frame_rate 30/1); pista de
+  audio **aac** presente (voz 1.0 + música 0.12).
+- Tamaño: **16 603 446 bytes (~16,6 MB)**, < 20 MB.
+- sha256: `a5e63546866cf2b1955dc701be1ef277cdf19bfbe54a04745d20cc2c12655092`.
 
-Stills de verificación en `out/verify-escena{1..8}.png`, generados con
-`npx remotion still` 60 frames después del inicio de cada escena
-(frames 60 / 420 / 1110 / 1710 / 2610 / 3660 / 4260 / 4860), con las
-animaciones ya asentadas. Inspección visual frame a frame:
+Stills de verificación del último pase en `out/rt-<frame>.png`, generados con
+`npx remotion still`: las fronteras de cada tiempo narrativo (P→S→B/C) y los
+últimos 30 frames de cada escena, con las animaciones ya asentadas. Inspección
+visual frame a frame:
+
+Tipografías: los TTFs reales de la app (`frontend/public/fonts/Bungee-Regular.ttf`
+y `DMSans.ttf`) se copian a `video/public/fonts/` y se registran en `src/fonts.ts`
+con `delayRender`/`continueRender` + `document.fonts.load`, así que stills y MP4
+salen con **Bungee** (títulos, número, kickers) y **DM Sans** (cuerpo), no con el
+fallback del sistema.
 
 | Escena | Still | Verificado |
 |---|---|---|
-| 1 · Portada | `verify-escena1.png` | FILEMAID + chips FACTURA/DECISIÓN/TRAZA, sin solapes |
-| 2 · El problema | `verify-escena2.png` | 3 tarjetas (500/Excel/ERP 2009), badges PAGAR teal, NO_PAGAR rojo, ESCALAR naranja |
-| 3 · Producto | `verify-escena3.png` | 5 filas de features + screenshot dashboard, sin solapes |
-| 4 · Escalera | `verify-escena4.png` | Los 7 escalones con las columnas QUÉ CORRE / COSTE (la tabla no muestra latencias: 0 € en los escalones 1–4, pago por token en el 7) + el caveat de degradación |
-| 5 · Trazabilidad | `verify-escena5.png` + `verify-escena5b.png` (frame 2700) | Los 8 rule codes visibles en las 3 columnas; NO_PAGAR rojo, ESCALAR naranja |
-| 6 · ADRs | `verify-escena6.png` | Motor determinista + ADR-06 con 86 corregidos / 0 regresiones |
-| 7 · Resiliencia | `verify-escena7.png` | Drills PASS (provider-caído, backoff-429, crash-reanudación); ledger-corrupto entra con el stagger posterior |
-| 8 · Escala | `verify-escena8.png` | 120,1 s ≈ 4,162 files/s, 0,00 € cloud medido |
+| 1 · Portada | `rt-330.png` | El «500» con «facturas al mes, en PDF», FILEMAID, «las lee · las comprueba · decide», «y siempre enseña la prueba», chips FACTURA/DECISIÓN/TRAZA y el pie de créditos, sin solapes |
+| 2 · El problema | `rt-690.png` | Las 2 alternativas tachadas (LLM / OCR clásico) con chips PAGAR teal · NO_PAGAR rojo · ESCALAR naranja; norma «escalar antes que pagar» y tarjeta «precisión · rapidez · prueba» |
+| 3 · Producto | `rt-1470.png` | Los 5 pasos del flujo (watcher, lote 24/7, notificación, revisión, sync con el servidor) + captura rotando; titular a 74 px en una sola línea |
+| 4 · Escalera | `rt-2260.png` | Los 7 escalones con QUÉ CORRE / COSTE (la tabla no muestra latencias: 0 € en los escalones 1–4, pago por token en el 7), el pie «El VLM local (~4 GB RAM) solo arranca si el servidor está offline.» y el caveat de degradación |
+| 5 · Trazabilidad | `rt-3130.png` | Los 8 rule codes visibles en las 3 columnas, cada columna entrando con su caso: NO_PAGAR rojo, ESCALAR naranja, UNKNOWN naranja |
+| 6 · ADRs | `rt-3790.png` | MOTOR PURO + caja «misma entrada ⇒ misma salida · byte a byte»; ADR-06 con 86 corregidos / 0 regresiones y «8 decisiones escritas (ADRs)» |
+| 7 · Resiliencia | `rt-4770.png` | Los 4 drills PASS (provider-caído, backoff-429, crash-reanudación, ledger-corrupto) + el bloque CLIENTE/SERVIDOR (1500×440: watcher, escalera, motor, store local ⇄ replicación CouchDB, cola de revisión) y el cierre «caerse no es opción: degradar» |
+| 8 · Escala | `rt-5370.png` | Tabla de coste (94 % del corpus 0,00 €, 120 s para 500 PDFs, Cloud VLM 0,00 €, 10 000 facturas), «2 min / 0,00 €» y el cierre «Alberto duerme. Y paga lo justo.» |
 
-Nota sobre la escena 5: en el frame 2610 los rule codes aún están entrando
-(delay escalonado `40 + i*8 + j*4` desde el inicio de la escena); en el frame
-2700 (`verify-escena5b.png`) los 8 códigos de RULE_CODES están asentados en
-las tres columnas. Animación viva confirmada comparando ambos frames.
+Nota sobre la escena 5: las 3 columnas entran escalonadas al ritmo de la voz
+(`i*165` frames) y cada columna escalona sus 8 reglas (`j*7`); en `rt-3130.png`
+los 8 códigos de RULE_CODES están asentados en las tres columnas.
+
+Nota sobre la escena 7: el bloque CLIENTE/SERVIDOR entra dentro del tiempo B/C
+con `f` local propia; el contenido (watcher, escalera, motor, store local,
+replicación CouchDB, cola de revisión, histórico de overrides) está citado en
+`docs/capacidad_y_coste.md`, `docs/db-mig.md` y `src/filemaid/desktop/watcher.py`.
 
 ## Cómo se verificó
 
@@ -101,13 +118,14 @@ las tres columnas. Animación viva confirmada comparando ambos frames.
    180,000000 s, 1920×1080, avg_frame_rate 30/1.
 2. **sha256 + tamaño**: `sha256sum out/filemaid.mp4` y `stat -c %s`
    sobre el MP4 renderizado con el código vigente.
-3. **Stills por escena**: `npx remotion still` en los frames 60 / 420 /
-   1110 / 1710 / 2610 / 3660 / 4260 / 4860 (60 frames tras el inicio de
-   cada escena, animaciones asentadas) → `out/verify-escena{1..8}.png`,
-   más `out/verify-escena5b.png` (frame 2700) para la escena de
-   trazabilidad con los 8 rule codes ya entrados. Inspección visual de
-   cada still: sin solapes, colores de badge correctos, datos idénticos
-   a los ficheros `data_*.json`.
+3. **Stills de los tiempos narrativos**: `npx remotion still` en las
+   fronteras P→S→B/C de cada escena y en sus últimos 30 frames
+   (`out/rt-<frame>.png`), más los frames densos de la tabla de la
+   escalera, las 3 columnas de traza, los drills de resiliencia, la tabla
+   de coste y el diagrama CLIENTE/SERVIDOR. Inspección visual de cada
+   still: sin solapes ni recortes (el ink de cada bloque se midió contra
+   el área de contenido de 1740×960), colores de badge correctos, datos
+   idénticos a los ficheros `data_*.json`.
 4. **Cruce con la fuente de verdad**: cada cifra en pantalla se cotejó
    contra `data_lote1.json`, `data_dryrun.json`, `data_drills.json`,
    `data_impacto.json` y los tres casos reales de
