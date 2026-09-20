@@ -1,6 +1,6 @@
 # Auditoría de requisitos — Maisa «500 Sombras de Alberto»
 
-**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Commit auditado:** `19aebd8` (HEAD; re-auditoría VerifAuditoria sobre `19aebd8` confirma las medidas: los 3 commits posteriores a `7ace882` no tocan entregables)
+**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Commit auditado:** `8a5fe33` (HEAD; re-auditoría «Re-auditoría 2026-09-20» al final de este doc revalida las medidas sobre `8a5fe33`: los commits posteriores a `7ace882` solo tocan `frontend/src/api.ts`, `docs/report/escalabilidad_datos.typ` y este doc — ningún entregable)
 **Fecha:** 2026-09-20 · **Auditor:** AuditorReq (agente independiente). Reescritura completa del documento: todas las medidas de esta auditoría son propias, ejecutadas en esta sesión con `uv run python` (parseo programático, no muestreo a ojo).
 **Contraste externo:** la rúbrica y los requisitos se contrastaron línea a línea contra https://hackathon.maisa.ai/ (la web cargó completa en esta sesión, 386 líneas de contenido leído). Coincide con la rúbrica reflejada aquí: 100 pts + 10 bonus, desempates escalabilidad → resiliencia → bonus, commit de cierre domingo 11:00, defensa de 10 min (2 demo + 2 arquitectura/ADRs + 4 trazabilidad/escala/coste + 2 resiliencia).
 
@@ -130,4 +130,74 @@ En la copia del delivery-repo: mismos hashes sha256 → la validación es idént
 
 ---
 
-*Auditoría ejecutada el 2026-09-20 sobre `7ace882` por AuditorReq. Medidas propias de esta sesión: parseo programático de ambos JSONL (540/540 líneas válidas, 0 incidencias), cobertura exacta contra los directorios de PDFs, pypdf sobre `albertitos_plan.pdf` (15 págs, escalabilidad pág. 6, ADRs págs. 10–15, mitigación pág. 15), grep de ADRs y placeholders en `albertitos_plan.typ` (8 ADRs, 0 placeholders), lectura de ADR-05, verificación de `/home/deploy/delivery-repo` (raíz exacta, hashes, sin remote), lectura íntegra de `video/data_outcomes_lote1_NOTA.md`, parseo `mvhd` del vídeo (180,000 s, 8 597 508 bytes) y contraste de la rúbrica contra https://hackathon.maisa.ai/ (cargada completa). No se ejecutaron suites completas, formateadores ni lint (restricción de la asignación).*
+*Auditoría base ejecutada el 2026-09-20 sobre `7ace882` por AuditorReq. Medidas propias de esa sesión: parseo programático de ambos JSONL (540/540 líneas válidas, 0 incidencias), cobertura exacta contra los directorios de PDFs, pypdf sobre `albertitos_plan.pdf` (15 págs, escalabilidad pág. 6, ADRs págs. 10–15, mitigación pág. 15), grep de ADRs y placeholders en `albertitos_plan.typ` (8 ADRs, 0 placeholders), lectura de ADR-05, verificación de `/home/deploy/delivery-repo` (raíz exacta, hashes, sin remote), lectura íntegra de `video/data_outcomes_lote1_NOTA.md`, parseo `mvhd` del vídeo (180,000 s, 8 597 508 bytes) y contraste de la rúbrica contra https://hackathon.maisa.ai/ (cargada completa). No se ejecutaron suites completas, formateadores ni lint (restricción de la asignación). La revalidación independiente sobre `8a5fe33` está en la sección siguiente.*
+
+## 7. Re-auditoría 2026-09-20 (independiente, sobre `8a5fe33`)
+
+**Alcance:** revalidación completa del estado ACTUAL del repo (`8a5fe33`, árbol limpio, working tree sin modificaciones) y de la copia de entrega en `/home/deploy/delivery-repo`. Todas las medidas de esta sección son propias, ejecutadas en esta sesión.
+
+### 7.1 Parseo programático de los 2 JSONL en `/home/deploy/delivery-repo` [medido]
+
+Script `uv run python` (json.loads línea a línea + comparación contra `os.listdir` de los PDFs en disco del repo de solución):
+
+| Check | `outcomes.jsonl` | `outcomes_lote2.jsonl` |
+|---|---|---|
+| Filas / JSON válido | 500/500 | 40/40 |
+| Claves exactamente `{file_id, result}` | 500/500 | 40/40 |
+| `file_id` basename exacto terminado en `.pdf` | 500/500 | 40/40 |
+| `result ∈ {PAGAR, NO_PAGAR, ESCALAR}` | 500/500 | 40/40 |
+| Duplicados | 0 | 0 |
+| Cobertura vs PDFs en disco (missing/extra) | 0/0 (500 PDFs, todos `.pdf`, en `caja-de-alberto/facturas/`) | 0/0 (40 PDFs, todos `.pdf`, en `caja-de-alberto/facturas_primin/`) |
+| Distribución | PAGAR 433 / NO_PAGAR 22 / ESCALAR 45 | PAGAR 26 / NO_PAGAR 11 / ESCALAR 3 |
+| Solapamiento lote1 ∩ lote2 | — | **0** |
+
+**Incidencias: 0** (ni claves extra, ni file_ids con ruta, ni resultados fuera de dominio). Idéntico al resultado de la auditoría base sobre la copia del repo de solución.
+
+### 7.2 Hashes sha256 de la entrega [medido]
+
+```
+$ cd /home/deploy/delivery-repo && sha256sum *
+c64db1be58ea0d5d1939a325dcc3ee826712f7db4c7b7257a5d58b50d3466cc6  albertitos_plan.pdf
+67a1acea40b48813c60753d1da6d7adeb9492acda3c2132491a095b1403a0eb7  outcomes.jsonl
+34d55cb41c8bcece40e4e7c5e2fb75bf5c16b844d9ac766c215783e775d0fc4b  outcomes_lote2.jsonl
+```
+
+Los 3 coinciden con los esperados. Además, `sha256sum docs/report/albertitos_plan.pdf` en el repo de solución → `c64db1be…` **idéntico** al de la entrega (byte-idénticos). Estado git del delivery-repo: branch `master`, 4 commits, último `4fbb881`, working tree limpio. `git remote` → **0 líneas** (P0 sigue abierto, §7.4).
+
+### 7.3 Contraste requisito a requisito contra https://hackathon.maisa.ai/ [medido, web recargada esta sesión — 395 líneas]
+
+La web no ha cambiado desde la auditoría base: misma rúbrica (100 + 10), mismos plazos (cierre domingo 20 a las 11:00, lote 2 sábado 18:00, defensa 10 min: 2+2+4+2). Contraste de CADA requisito:
+
+| # | Requisito (web) | Evidencia en repo | Veredicto |
+|---|---|---|---|
+| 1 | Raíz con **exactamente** `outcomes.jsonl`, `outcomes_lote2.jsonl`, `albertitos_plan.pdf`, sin código/credenciales/ejecutables | `ls -A` delivery-repo: exactamente esos 3 ficheros + `.git/` [medido] | ✅ |
+| 2 | Contrato JSONL: `file_id` = nombre exacto del PDF, `result` ∈ {PAGAR, NO_PAGAR, ESCALAR}, un objeto por factura | §7.1: 540/540, 0 incidencias [medido] | ✅ |
+| 3 | Validación obligatoria: registro único por archivo de ambos lotes (referencia privada de la org) | Unicidad 540/540, cobertura exacta 500+40 [medido] | ✅ (aptitud final la decide la org; la estructura es perfecta) |
+| 4 | `albertitos_plan.pdf`: Arquitectura + **de 2 a 5 ADRs** con contexto/alternativas/decisión/consecuencias/evidencia | 15 págs [pypdf medido], **8 ADRs declarados** vs rango 2–5, mitigados por texto en pág. 15 | ⚠️ PARCIAL (hallazgo 3) |
+| 5 | Rúbrica — Producto/arquitectura/ADRs (35) | §2.1; PDF: «3 Escalabilidad y coste» en pág. 6 re-verificado con pypdf esta sesión | ✅ (con riesgo de conteo del #4) |
+| 6 | Rúbrica — Trazabilidad y observabilidad (20) | §2.2; señales `/api/salud`, `/api/jobs`, `/api/trazas`, `/api/reprocesar/{file_id}`; nota de provenance del lote 1 | ✅ |
+| 7 | Rúbrica — Escalabilidad y coste (25) | §2.3; sección 3 del PDF (pág. 6) + `docs/capacidad_y_coste.md` + `docs/benchmarks_extraccion.md` | ✅ |
+| 8 | Rúbrica — Resiliencia y recuperación (10) | §2.4; retry 429/5xx verificado por lectura; drills `backoff-429` y `crash-reanudacion` PASS | ✅ |
+| 9 | Rúbrica — Calidad de ejecución (10) | §2.5; `./run.sh`, desktop pywebview, watcher con notificación ESCALAR | ✅ |
+| 10 | Rúbrica — Bonus mejora adicional (+10) | §2.6; watcher + notificación ESCALAR, implementada y mostrada en el vídeo (8 597 508 B / 180 s) | ✅ |
+| 11 | Lote 2: +40 facturas | §7.1 fila lote2: 40/40, cobertura exacta [medido] | ✅ |
+| 12 | Lote 2: ERP actualizado | `erp_export_lote2.csv`, `pedidos_nuevos.csv`, `proveedores_nuevos.csv` presentes en `caja-de-alberto/` [medido]; sin cliente HTTP del ERP en `src/filemaid/` (hallazgo 5) | ✅ |
+| 13 | Lote 2: conservar el trabajo | Idempotencia + drill `crash-reanudacion` PASS | ✅ |
+| 14 | Lote 2: reprocesar lo afectado | Reprocesado del lote 1 tras ADR-06 (108 ficheros, 86 → PAGAR, 0 regresiones) | ✅ |
+| 15 | Lote 2: regla nueva (v4) | Borrador `borrador_v4` (`enabled: false`) en `master/rules.yaml`; activación pendiente del enunciado real | 🔄 PREPARADO |
+| 16 | **teamId + URL pública de GitHub** (paso 01 de la entrega) | `git remote` → 0 líneas; sin publicar; teamId no verificable | ❌ **P0 abierto** |
+| 17 | No subir código/credenciales/ejecutables al repo de entrega | Raíz exacta de 3 ficheros [medido] | ✅ |
+
+### 7.4 Hallazgos de la re-auditoría
+
+1. **P0 (sigue abierto) — Repo de entrega sin publicar**: `git remote` en `/home/deploy/delivery-repo` sigue devolviendo 0 líneas [medido esta sesión]. Sin push no hay URL pública que compartir; cierre domingo 11:00.
+2. **P0 (sigue abierto) — teamId no verificable**: la entrega exige teamId + URL; nada en el repo puede demostrarlo. Pendiente manual junto con el push.
+3. **PARCIAL (sin cambios) — 8 ADRs vs rango 2–5**: reconfirmado por lectura del `.typ`; mitigación en pág. 15 del PDF.
+4. **MENOR (sin cambios) — Códigos históricos** en ADR-05 y evidencia del lote 1; documentado en `video/data_outcomes_lote1_NOTA.md`.
+5. **MENOR (sin cambios) — Costura ERP sin cliente HTTP**: los CSV del lote 2 están en disco [re-confirmado], pero no hay cliente HTTP del ERP en `src/filemaid/`.
+6. **NUEVO INFO — Cambios en `8a5fe33` no afectan a entregables**: `git diff --stat 19aebd8..8a5fe33` = `frontend/src/api.ts` (fix P0 de auth del cliente), `docs/report/escalabilidad_datos.typ` (se elimina una línea comentada residual de T13/T14) y `docs/auditoria_requisitos.md` (corrección de paginación de ADRs: págs. 9–14 → 10–15). **Diferencia vs auditoría previa:** solo esta corrección de paginación; ningún número medido cambió.
+
+**Diferencias totales vs la auditoría previa:** ninguna en datos medidos. Únicas diferencias: (a) corrección de paginación del PDF (ADRs en págs. 10–15, no 9–14) ya incorporada; (b) commit auditado avanza de `19aebd8` a `8a5fe33` sin tocar entregables. Los 2 P0 (remote GitHub + teamId) permanecen abiertos y siguen siendo los únicos bloqueantes de la entrega.
+
+### 7.5 Estado de la checklist tras la re-auditoría
+
