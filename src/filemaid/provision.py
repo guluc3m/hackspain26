@@ -99,6 +99,33 @@ def missing_files() -> list[str]:
     ]
 
 
+def download_progress() -> dict[str, Any]:
+    """Observed download progress from bytes on disk, not invented values.
+
+    The setup helpers download to ``<name>.part`` and rename on success, so the
+    partial size is exactly what has landed. ``progress`` (0..1) is ``None``
+    while nothing partial is observable — e.g. the llama.cpp binary phase — so
+    the UI shows an indeterminate state instead of a fake 0 %.
+    """
+    total = sum(size for _name, size, _sha in MODEL_FILES)
+    done = 0
+    current: str | None = None
+    for name, size, _sha in MODEL_FILES:
+        final = models_dir() / name
+        part = models_dir() / f"{name}.part"
+        if part.is_file():
+            # A .part beats the final file: the helper re-downloads to .part
+            # when weights are corrupt, so the final copy there is stale.
+            done += min(part.stat().st_size, size)
+            current = name
+        elif final.is_file() and final.stat().st_size == size:
+            done += size
+    progress: float | None = round(done / total, 4) if done else None
+    if total and done >= total:
+        progress = 1.0
+    return {"progress": progress, "bytes_done": done, "bytes_total": total, "file": current}
+
+
 def verify_weights() -> list[str]:
     """Full sha256 verification of the weights; returns the names that mismatch."""
     bad: list[str] = []
@@ -190,6 +217,7 @@ class VlmProvisioner:
             "ready": ready,
             "detail": detail,
             "error": error,
+            **download_progress(),
             "model": str(gguf),
             "mmproj": str(mmproj),
             "binary": binary_path(),

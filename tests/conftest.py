@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from filemaid.config import AppConfig
+from filemaid.provision import MODEL_FILES
 from filemaid.rules.config import RuleConfig
 from filemaid.rules.master import MasterData, Pedido, Proveedor
 from filemaid.store.pouch import PouchStore
@@ -23,6 +24,7 @@ class FakeProvisioner:
         return self.status()
 
     def status(self) -> dict:
+        total = sum(size for _name, size, _sha in MODEL_FILES)
         return {
             "state": "ready" if self._ready else "idle",
             "downloaded": self._ready,
@@ -30,6 +32,10 @@ class FakeProvisioner:
             "ready": self._ready,
             "detail": "",
             "error": "",
+            "progress": 1.0 if self._ready else None,
+            "bytes_done": total if self._ready else 0,
+            "bytes_total": total,
+            "file": None,
             "model": "",
             "mmproj": "",
             "binary": None,

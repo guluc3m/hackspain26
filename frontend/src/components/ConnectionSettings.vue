@@ -35,7 +35,11 @@ const successMsg = ref('')
 const savedConfig = ref<RuntimeConfig | null>(null)
 const vlmStatus = ref<VlmStatus | null>(null)
 const vlmUnavailable = ref(false)
-let vlmTimer: ReturnType<typeof setInterval> | undefined
+let vlmTimer: ReturnType<typeof setTimeout> | undefined
+
+// Sondeo más rápido mientras descarga: la barra debe moverse, no saltar cada 5 s.
+const VLM_POLL_SLOW = 5_000
+const VLM_POLL_FAST = 1_500
 
 const isServerMode = computed(() => mode.value === 'server')
 const canSync = computed(() => savedConfig.value?.mode === 'server'
@@ -46,6 +50,21 @@ const vlmBusy = computed(() => {
   const s = vlmStatus.value?.state
   return s === 'downloading' || s === 'starting'
 })
+
+// Progreso de descarga medido por el backend (bytes en disco vs esperados).
+const vlmPercent = computed(() => {
+  const p = vlmStatus.value?.progress
+  return p == null ? null : Math.round(p * 100)
+})
+const vlmBytesText = computed(() => {
+  const s = vlmStatus.value
+  if (!s?.bytes_total) return ''
+  const mb = (n: number) => Math.round(n / (1024 * 1024))
+  return `${mb(s.bytes_done ?? 0)} / ${mb(s.bytes_total)} MB`
+})
+
+const isBusyState = (s: VlmStatus | null) =>
+  s?.state === 'downloading' || s?.state === 'starting'
 // Autoridad: el modo guardado y confirmado, no el toggle sin guardar de la UI.
 const localRequested = computed(() => {
   const s = savedConfig.value
@@ -68,14 +87,20 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  // Sondeo modesto mientras el panel está abierto: el progreso llega a
-  // listo/error sin depender de reabrir el modal.
-  vlmTimer = setInterval(cargarVlm, 5_000)
+  // Sondeo adaptativo mientras el panel está abierto: rápido en descarga,
+  // lento en reposo; el progreso llega a listo/error sin reabrir el modal.
+  sondearVlm()
 })
 
 onUnmounted(() => {
-  if (vlmTimer) clearInterval(vlmTimer)
+  if (vlmTimer) clearTimeout(vlmTimer)
 })
+
+/** Sondea el estado y reprograma el siguiente tick según ocupación. */
+async function sondearVlm() {
+  await cargarVlm()
+  vlmTimer = setTimeout(sondearVlm, isBusyState(vlmStatus.value) ? VLM_POLL_FAST : VLM_POLL_SLOW)
+}
 
 /** Hidrata los campos del formulario desde la configuración persistida. */
 function aplicar(cfg: RuntimeConfig) {
@@ -383,6 +408,27 @@ async function provisionar() {
           No se pudo consultar el estado del VLM local.
         </p>
         <template v-else-if="vlmStatus">
+          <template v-if="vlmBusy">
+            <div
+              v-if="vlmPercent != null"
+              class="vlm-bar"
+              role="progressbar"
+              :aria-valuenow="vlmPercent"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-label="Progreso de descarga del modelo VLM"
+            >
+              <span :style="{ width: vlmPercent + '%' }"></span>
+            </div>
+            <div v-else class="vlm-bar vlm-bar-indeterminate" aria-label="Descarga en curso">
+              <span></span>
+            </div>
+            <p class="help-text muted">
+              <template v-if="vlmPercent != null">{{ vlmPercent }}% · {{ vlmBytesText }}</template>
+              <template v-else>preparando la descarga…</template>
+              <template v-if="vlmStatus.file"> · {{ vlmStatus.file }}</template>
+            </p>
+          </template>
           <p v-if="!vlmReady && vlmStatus.local_required" class="help-text muted">
             Descargado: {{ vlmStatus.downloaded ? 'sí' : 'no' }} · En ejecución: {{ vlmStatus.running ? 'sí' : 'no' }}
           </p>
@@ -631,6 +677,30 @@ fieldset {
 
 .vlm-error-text {
   color: var(--bad-fg);
+}
+
+.vlm-bar {
+  height: 10px;
+  border: 1px solid var(--ink);
+  background: var(--sand);
+  margin: 8px 0;
+}
+
+.vlm-bar span {
+  display: block;
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.3s;
+}
+
+.vlm-bar-indeterminate span {
+  width: 30%;
+  animation: vlm-slide 1.2s infinite linear;
+}
+
+@keyframes vlm-slide {
+  from { margin-left: -30%; }
+  to { margin-left: 100%; }
 }
 
 .retry-btn {

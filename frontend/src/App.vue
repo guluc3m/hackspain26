@@ -128,7 +128,12 @@ const vlmBannerText = computed(() => {
   if (vlmUnavailable.value) return 'No se pudo consultar el estado del VLM local.'
   const s = vlmStatus.value
   if (!s) return ''
-  if (s.state === 'downloading') return 'Descargando el modelo VLM local…'
+  if (s.state === 'downloading') {
+    if (s.progress == null) return 'Descargando el modelo VLM local…'
+    const pct = Math.round(s.progress * 100)
+    const mb = (n: number | undefined) => Math.round((n ?? 0) / (1024 * 1024))
+    return `Descargando el modelo VLM local… ${pct}% · ${mb(s.bytes_done)} / ${mb(s.bytes_total)} MB`
+  }
   if (s.state === 'starting') return 'Iniciando el modelo VLM local…'
   if (s.state === 'error') return `El VLM local no está listo: ${s.error || s.detail || 'error'}`
   return 'El VLM local aún no está preparado.'
