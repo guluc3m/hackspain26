@@ -45,13 +45,21 @@ class AppConfig:
     def extraction_config(self) -> dict:
         raw = yaml.safe_load(self.extraction_config_path.read_bytes()) or {}
         settings = self.runtime_settings()
-        vlm_url = settings["vlm_url"]
+        mode = settings["mode"]
+        fallback = settings["local_vlm_fallback"]
+        standalone = mode == "standalone"
+        # Standalone always uses the local sidecar and never contacts a remote
+        # VLM, even if a stale endpoint was saved or exported in the env.
+        vlm_url = "" if standalone else settings["vlm_url"]
+        # Ephemeral secret consumed only by the remote VLM rung. It is never part
+        # of the config_version hash, the decision snapshot, evidence or logs.
+        vlm_api_key = "" if standalone else settings["server_api_key"]
         config = {
             "config_version": self.extraction_config_path.stem
             + ":"
             + hashlib.sha256(
                 self.extraction_config_path.read_bytes()
-                + repr((vlm_url, settings["vlm_model"])).encode()
+                + repr((mode, fallback, vlm_url, settings["vlm_model"])).encode()
             ).hexdigest()[:12],
             "llama_base_url": self.llama_base_url,
             "cloud_api_key": self.cloud_api_key,
@@ -63,6 +71,10 @@ class AppConfig:
             "render_scale": 2.0,
             **raw,
         }
+        config["mode"] = mode
+        config["local_vlm_fallback"] = fallback
+        config["remote_rungs_enabled"] = not standalone
         config["vlm_base_url"] = vlm_url
         config["vlm_model"] = settings["vlm_model"]
+        config["vlm_api_key"] = vlm_api_key
         return config

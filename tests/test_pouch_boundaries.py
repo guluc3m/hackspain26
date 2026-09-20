@@ -25,7 +25,9 @@ def test_large_fields_decision_and_event_roundtrip(tmp_path):
     )
     assert store.hydrate(store.get("fields:large"))["fields"][0]["values"][0]["value"] == large
     trace.event("item_error", {"error": large})
-    assert large in logs(store, invoice="exact ñ.pdf")["items"][0]["resumen"]
+    item = logs(store, invoice="exact ñ.pdf")["items"][0]
+    assert item["payload"]["error"] == large
+    assert item["summary"].startswith("error: ")
     for doc in (
         {"_id": "decision:bad", "kind": "decision", "decision": {"result": "INVALID"}},
         {"_id": ref, "_rev": stored["_rev"], "kind": "decision", "decision": {"result": "PAGAR"}},

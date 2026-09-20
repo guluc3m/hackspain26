@@ -1,7 +1,7 @@
 # CouchDB schema — artefactos de la arquitectura
 
 Mapeo de los artefactos definidos en `docs/report/architecture.typ` (y
-implementados en `src/albertitos/types.py` + `store/db.py`) a documentos
+implementados en `src/filemaid/types.py` + `store/db.py`) a documentos
 CouchDB. El documento escaneado y sus metadatos viven como documento +
 attachments.
 

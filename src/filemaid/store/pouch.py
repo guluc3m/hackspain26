@@ -3,14 +3,46 @@
 from __future__ import annotations
 
 import base64
-import fcntl
+import contextlib
+import errno
 import hashlib
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+if os.name == "nt":  # Windows: no fcntl; lock one byte via the CRT
+    import msvcrt
+
+    def _lock_file(handle: Any) -> None:
+        deadline = time.monotonic() + 300.0
+        while True:
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                # Only genuine contention is retried; anything else is a real error.
+                if exc.errno not in (errno.EACCES, errno.EDEADLOCK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("could not acquire PouchDB lock") from exc
+                time.sleep(0.1)
+
+    def _unlock_file(handle: Any) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock_file(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+
+    def _unlock_file(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 CHUNK_SIZE = 1024 * 1024
 INLINE_LIMIT = 256 * 1024
@@ -23,6 +55,26 @@ def canonical(value: Any) -> bytes:
 
 def file_key(file_id: str, sha256: str) -> str:
     return hashlib.sha256(canonical([file_id, sha256])).hexdigest()
+
+
+@contextlib.contextmanager
+def interprocess_lock(path: Path):
+    """Cross-process lock on a dedicated file (never the store lock itself).
+
+    Used to serialise a multi-step operation (e.g. a review resolution) without
+    holding the store lock across the whole pipeline, which would deadlock.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        _lock_file(handle)
+        try:
+            yield
+        finally:
+            _unlock_file(handle)
 
 
 def couchdb_url(value: str) -> str:
@@ -52,7 +104,13 @@ class PouchStore:
     def request(self, **request: Any) -> Any:
         self.root.mkdir(parents=True, exist_ok=True)
         with (self.root / "pouchdb.lock").open("a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            # msvcrt.locking needs a byte inside the file; a zero-length lock
+            # file would make the Windows lock region invalid.
+            lock.seek(0, os.SEEK_END)
+            if lock.tell() == 0:
+                lock.write(b"\0")
+                lock.flush()
+            _lock_file(lock)
             try:
                 proc = subprocess.run(
                     ["node", str(BRIDGE), str((self.root / "pouchdb").resolve())],
@@ -65,6 +123,8 @@ class PouchStore:
                 raise RuntimeError(
                     "PouchDB unavailable; install Node and npm ci in store/pouchdb"
                 ) from exc
+            finally:
+                _unlock_file(lock)
             try:
                 response = json.loads(proc.stdout)
             except ValueError as exc:
@@ -149,6 +209,24 @@ class PouchStore:
 
     def local_put(self, name: str, payload: dict) -> None:
         self.request(op="local_put", id=name, payload=payload)
+
+    def selection(self) -> dict:
+        """Withheld selection computed by the bridge from current documents."""
+        return self.request(op="selection")
+
+    def put_conditional(self, doc: dict, file_key: str, expected_decision_id: str) -> str:
+        """Immutable put guarded by the file's current latest decision (atomic).
+
+        The guard and the write happen inside one locked bridge operation, so a
+        scan ingested concurrently cannot be resolved by accident.
+        """
+        self.request(
+            op="put_conditional",
+            doc=doc,
+            file_key=file_key,
+            expected_decision_id=expected_decision_id,
+        )
+        return doc["_id"]
 
     def sync(self, remote_url: str, token: str = "") -> dict:
         url = couchdb_url(remote_url)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 
@@ -42,7 +43,12 @@ def test_scan_persists_complete_evidence_and_aliases(cfg, tmp_path):
     text = next(d for d in records if d["kind"] == "feature")["feature"]["data"]
     assert "FACTURA" in text and "121,00" in text
     input_artifact = next(d for d in records if d["kind"] == "artifact" and d["stage"] == "input")
-    export = next(d for d in records if d["kind"] == "artifact" and d["stage"] == "export")
+    # El export final se guarda una vez por lote, no una vez por scan.
+    export = next(
+        d
+        for d in store.list("artifact:batch-")
+        if d["kind"] == "artifact" and d["stage"] == "export"
+    )
     assert b"".join(store.read_artifact(export["_id"])) == outcomes.read_bytes()
     first.unlink()
     assert b"".join(store.read_artifact(input_artifact["_id"])) == source_bytes
@@ -133,3 +139,78 @@ def test_pouch_local_docs_cas(tmp_path):
     with pytest.raises(RuntimeError, match="Reserved"):
         store.local_put("test-key", {"_rev": "fake", "_id": "fake", "mode": "standalone"})
     assert store.local_get("test-key") == val2
+
+
+def test_incomplete_batch_emits_nothing_and_resumes_without_rerun(cfg, tmp_path, monkeypatch):
+    """Un fallo deja el lote incompleto; re-ejecutar reanuda y reutiliza decisiones."""
+    from filemaid.extract import ladder
+
+    lote = tmp_path / "lote"
+    lote.mkdir()
+    _make_text_pdf(lote / "a.pdf", TEXT)
+    _make_text_pdf(lote / "b.pdf", TEXT)
+    outcomes = tmp_path / "outcomes.jsonl"
+    pipe = Pipeline(cfg)
+    real_extract = ladder.extract_file
+
+    def fail_on_b(path, cache, config, pages_dir):
+        if path.name == "b.pdf":
+            raise RuntimeError("boom")
+        return real_extract(path, cache, config, pages_dir)
+
+    monkeypatch.setattr("filemaid.pipeline.extract_file", fail_on_b)
+    with pytest.raises(RuntimeError, match="lote incompleto"):
+        pipe.run_lote(lote, outcomes)
+    # Sin artefacto final parcial y sin marcador de finalización.
+    assert not outcomes.exists()
+    batch_id = pipe.last_batch_id
+    assert pipe.store.get(f"batch_result:{batch_id}") is None
+    persisted = [pipe.store.hydrate(d) for d in pipe.store.list("decision:")]
+    assert [d["file_id"] for d in persisted] == ["a.pdf"]  # solo a.pdf llegó a decidir
+    a_key = persisted[0]["file_key"]
+
+    monkeypatch.setattr("filemaid.pipeline.extract_file", real_extract)
+    decisions = pipe.run_lote(lote, outcomes)
+    assert {d.file_id for d in decisions} == {"a.pdf", "b.pdf"}
+    # a.pdf se reutiliza: no se re-extrae ni se duplica su scan.
+    assert len(pipe.store.list(f"scan:{a_key}:")) == 1
+    assert pipe.store.get(f"batch_result:{batch_id}") is not None
+
+    rows = [json.loads(line) for line in outcomes.read_text(encoding="utf-8").splitlines()]
+    assert [r["file_id"] for r in rows] == ["a.pdf", "b.pdf"]
+    assert all(set(r) == {"file_id", "result"} for r in rows)
+    assert all(r["result"] in {"PAGAR", "NO_PAGAR", "ESCALAR"} for r in rows)
+    # Re-ejecutar un lote completo re-emite lo mismo sin reprocesar.
+    again = pipe.run_lote(lote, outcomes)
+    assert {d.file_id for d in again} == {"a.pdf", "b.pdf"}
+    assert len(pipe.store.list(f"scan:{a_key}:")) == 1
+
+
+def test_sync_failure_after_decision_keeps_local_result(cfg, tmp_path, monkeypatch):
+    """Un fallo de sincronización remota no descarta la decisión local."""
+    from filemaid.runtime import RuntimeSettings
+
+    RuntimeSettings(cfg).save(
+        {
+            "mode": "server",
+            "sync_url": "http://127.0.0.1:65534/facturas",
+            "vlm_url": "https://vision.example/v1",
+            "server_api_key": "k",
+        }
+    )
+
+    def failure(self, remote_url, token=""):
+        raise RuntimeError("remote unavailable")
+
+    monkeypatch.setattr(PouchStore, "sync", failure)
+    lote = tmp_path / "lote"
+    lote.mkdir()
+    _make_text_pdf(lote / "a.pdf", TEXT)
+    outcomes = tmp_path / "outcomes.jsonl"
+    pipe = Pipeline(cfg)
+    decisions = pipe.run_lote(lote, outcomes)
+
+    assert len(decisions) == 1
+    assert outcomes.exists()
+    assert len(pipe.store.list("decision:")) == 1
+    assert pipe.store.get(f"batch_result:{pipe.last_batch_id}") is not None

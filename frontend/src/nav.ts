@@ -3,11 +3,13 @@
 
 import { ref } from 'vue'
 
-export type Tab = 'dashboard' | 'invoices' | 'logs'
+export type Tab = 'dashboard' | 'ingest' | 'invoices' | 'review' | 'logs'
+
+const TABS: Tab[] = ['dashboard', 'ingest', 'invoices', 'review', 'logs']
 
 function tabInicial(): Tab {
-  const h = window.location.hash.replace('#', '')
-  return h === 'invoices' || h === 'logs' ? h : 'dashboard'
+  const h = window.location.hash.replace('#', '') as Tab
+  return TABS.includes(h) ? h : 'dashboard'
 }
 
 /** Pestaña activa (barra superior y vistas). */
@@ -16,10 +18,15 @@ export const tab = ref<Tab>(tabInicial())
 /** Filtro por nombre de factura (file_id) preseleccionado en Logs. */
 export const logsInvoice = ref('')
 
+/** Nº de revisiones pendientes (badge de la pestaña Revisión). */
+export const pendientesRevision = ref(0)
+
 /** Pestañas de la barra superior. */
 export const tabs: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'ingest', label: 'Ingest' },
   { id: 'invoices', label: 'Invoices' },
+  { id: 'review', label: 'Review' },
   { id: 'logs', label: 'Logs' }
 ]
 

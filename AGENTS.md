@@ -58,7 +58,7 @@ interface ExtractionField {
 engine uses (and the review UI displays). Collapse only at the moment a rule needs a scalar,
 and record which candidate was chosen and why.
 
-## 3 · Extraction ladder (per page, in order)
+## 3 · Extraction ladder (7 rungs, per page, in order)
 
 Runs **per page**, not per file — a PDF may mix pages of different kinds.
 
@@ -74,14 +74,17 @@ Runs **per page**, not per file — a PDF may mix pages of different kinds.
    thresholds to stop here.
 4. **Local VLM** — PaddleOCR-VL Q8 via `llama-server` (OpenAI-compatible, temp 0). Same two-part
    confidence gate.
-5. **Cloud VLM (>25B, multimodal)** — the escalation path. Its reading is recorded as another
-   candidate value, **never** as an automatic answer.
+5. **TypeSafe System One Jev** — typed judgments over prior text; never OCR, never stops the ladder.
+6. **Firecrawl** — document parser fallback via `POST /v2/parse` (one-page PDF); skips cleanly
+   without `FIRECRAWL_API_KEY`.
+7. **Cloud VLM (>25B, multimodal, OpenAI-compatible)** — the escalation path. Its reading is
+   recorded as another candidate value, **never** as an automatic answer.
 
 Every rung records an `ExtractionFeature` with engine+version+latency+hash, and every rung is
 **skippable**: if a dependency is missing, record `skipped:<reason>` and fall through. A missing
 rung must degrade quality, never halt the batch.
 
-Rungs 2–5 each cache on `(page_sha256, extractor_version, config_version)` so a 24/7 re-run
+Rungs 2–7 each cache on `(page_sha256, extractor_version, config_version)` so a 24/7 re-run
 never re-bills a cloud call.
 
 ## 4 · Rules and the decision engine

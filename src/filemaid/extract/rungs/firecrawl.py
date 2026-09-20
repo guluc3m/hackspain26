@@ -23,7 +23,7 @@ from filemaid.store.trace import capture_artifact, capture_response
 from filemaid.types import ExtractionFeature
 
 from ..plausibility import text_is_plausible
-from .context import PageContext, threshold
+from .context import PageContext, remote_allowed, threshold
 
 NAME = "firecrawl"
 VERSION = "firecrawl-2"
@@ -59,6 +59,8 @@ def _get_setting(
 def extract(ctx: PageContext) -> ExtractionFeature:
     t0 = time.monotonic()
 
+    if not remote_allowed(ctx):
+        return _skip("standalone-no-remote", latency_ms=int((time.monotonic() - t0) * 1000))
     if ctx.page_image_sha is None:
         return _skip("no-page-image", latency_ms=int((time.monotonic() - t0) * 1000))
 

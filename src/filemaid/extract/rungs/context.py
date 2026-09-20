@@ -31,3 +31,8 @@ class PageContext:
 def threshold(ctx: PageContext, rung: str, key: str, default: float) -> float:
     """Lee rungs.<rung>.<key> de master/extraction.yaml con default."""
     return float(ctx.config.get("rungs", {}).get(rung, {}).get(key, default))
+
+
+def remote_allowed(ctx: PageContext) -> bool:
+    """Standalone sets remote_rungs_enabled=False: no rung may contact anything."""
+    return bool(ctx.config.get("remote_rungs_enabled", True))

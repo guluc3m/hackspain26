@@ -50,6 +50,21 @@ const porTipo = computed(() => {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])
 })
 
+// recuento global por resultado (derivado de las facturas ya cargadas)
+const porResultado = computed(() => {
+  const counts = { PAGAR: 0, NO_PAGAR: 0, ESCALAR: 0, pendiente: 0 }
+  for (const f of facturas.value) {
+    if (f.result === 'PAGAR') counts.PAGAR++
+    else if (f.result === 'NO_PAGAR') counts.NO_PAGAR++
+    else if (f.result === 'ESCALAR') counts.ESCALAR++
+    else counts.pendiente++
+  }
+  return counts
+})
+
+// disputadas: escaladas pendientes de revisión, retenidas sin sincronizar
+const disputadas = computed(() => facturas.value.filter((f) => f.disputed))
+
 async function aceptar(row: FacturaRow) {
   busyId.value = row.id
   try {
@@ -91,9 +106,16 @@ async function procesar(row: FacturaRow) {
       </p>
     </section>
 
-    <!-- bloque reservado para otra información -->
-    <section class="panel reserved">
-      <span class="muted">Reservado</span>
+    <!-- resumen por resultado (derivado de las facturas cargadas) -->
+    <section class="panel resumen">
+      <h3>Resumen</h3>
+      <div class="resumen-grid">
+        <div><span class="badge PAGAR">PAGAR</span><strong>{{ porResultado.PAGAR }}</strong></div>
+        <div><span class="badge NO_PAGAR">NO_PAGAR</span><strong>{{ porResultado.NO_PAGAR }}</strong></div>
+        <div><span class="badge ESCALAR">ESCALAR</span><strong>{{ porResultado.ESCALAR }}</strong></div>
+        <div><span class="badge pendiente">pendiente</span><strong>{{ porResultado.pendiente }}</strong></div>
+        <div><span class="badge disputa">retenidas</span><strong>{{ disputadas.length }}</strong></div>
+      </div>
     </section>
   </div>
 
@@ -133,16 +155,22 @@ async function procesar(row: FacturaRow) {
   gap: 12px;
   margin-bottom: 14px;
 }
-.big { font-size: 40px; font-weight: 700; margin: 4px 0; }
+.big {
+  font-family: var(--display);
+  font-size: 40px;
+  font-weight: 400;
+  margin: 4px 0;
+  color: var(--ink);
+}
 .pending ul { margin: 0; padding-left: 18px; }
 .tick { margin: 8px 0 0; font-size: 12px; }
-.reserved {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-style: dashed;
-  min-height: 140px;
-}
+.resumen-grid { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.resumen-grid div { display: flex; align-items: center; gap: 8px; }
+.resumen-grid strong { font-family: var(--display); font-size: 20px; font-weight: 400; }
 .table-panel { padding: 4px 8px; }
 .toolbar { margin-bottom: 10px; }
+
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; }
+}
 </style>

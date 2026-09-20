@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, type FacturaRow, type Resultado } from '../api'
 import { irALogsDe } from '../nav'
 import InvoiceDrawer from '../components/InvoiceDrawer.vue'
@@ -7,9 +7,11 @@ import InvoiceTable from '../components/InvoiceTable.vue'
 
 const facturas = ref<FacturaRow[]>([])
 const error = ref('')
-const filtro = ref<'todos' | Resultado | 'pendiente'>('todos')
+const filtro = ref<'todos' | Resultado | 'pendiente' | 'disputadas'>('todos')
 const busqueda = ref('')
 const drawerId = ref<string | null>(null)
+
+let timer: ReturnType<typeof setInterval> | undefined
 
 async function load() {
   try {
@@ -19,19 +21,26 @@ async function load() {
     error.value = String(e)
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  timer = setInterval(load, 10_000)
+})
+onUnmounted(() => clearInterval(timer))
 
 const opciones: { id: typeof filtro.value; label: string }[] = [
   { id: 'todos', label: 'Todos' },
   { id: 'PAGAR', label: 'PAGAR' },
   { id: 'NO_PAGAR', label: 'NO_PAGAR' },
   { id: 'ESCALAR', label: 'ESCALAR' },
+  { id: 'disputadas', label: 'Disputadas' },
   { id: 'pendiente', label: 'pendiente' }
 ]
 
 const visibles = computed(() =>
   facturas.value.filter((f) => {
-    if (filtro.value === 'pendiente') {
+    if (filtro.value === 'disputadas') {
+      if (!f.disputed) return false
+    } else if (filtro.value === 'pendiente') {
       if (f.result !== null) return false
     } else if (filtro.value !== 'todos' && f.result !== filtro.value) {
       return false
@@ -60,7 +69,7 @@ const visibles = computed(() =>
       </button>
     </div>
     <input v-model="busqueda" placeholder="buscar por nombre…" />
-    <button @click="load">Actualizar</button>
+    <!-- refresco automático cada 10 s; sin botón manual -->
   </div>
 
   <p v-if="error" class="error">{{ error }}</p>

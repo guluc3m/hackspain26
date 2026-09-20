@@ -3,8 +3,7 @@
 Lee PouchDB (decisions, rule_evaluations, fields, features) y recompute
 los breadcrumbs del colapso con `escoger` (puro y determinista: mismos
 candidatos + misma config ⇒ mismo audit). El HTML es estático y autocontenido:
-se abre con file:// sin servidor. `detalle.jsonl` acompaña en legible por
-máquina (una línea por factura).
+se abre con file:// sin servidor.
 """
 
 from __future__ import annotations
@@ -561,7 +560,7 @@ _INVOICE_TPL = """<!doctype html><html lang="es"><head><meta charset="utf-8">
 
 
 def write_report(store: PouchStore, cfg: AppConfig, run_id: str, out_dir: Path) -> Path:
-    """Escribe index.html + facturas/<scan_id>.html + detalle.jsonl."""
+    """Escribe index.html + facturas/<scan_id>.html."""
     env = Environment(autoescape=True)
     report = collect_run(store, cfg, run_id)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -572,27 +571,22 @@ def write_report(store: PouchStore, cfg: AppConfig, run_id: str, out_dir: Path) 
     (out_dir / "index.html").write_text(index, encoding="utf-8")
 
     tpl = env.from_string(_INVOICE_TPL)
-    with (out_dir / "detalle.jsonl").open("w", encoding="utf-8") as f:
-        for inv in report["invoices"]:
-            page = tpl.render(
-                inv=inv,
-                css=_CSS,
-                snapshot_json=json.dumps(
-                    inv["snapshot"], ensure_ascii=False, indent=2, sort_keys=True
-                ),
-                report_json=json.dumps(inv, ensure_ascii=False, indent=2, sort_keys=True),
-                generated_iso=report["generated_iso"],
+    for inv in report["invoices"]:
+        page = tpl.render(
+            inv=inv,
+            css=_CSS,
+            snapshot_json=json.dumps(
+                inv["snapshot"], ensure_ascii=False, indent=2, sort_keys=True
+            ),
+            report_json=json.dumps(inv, ensure_ascii=False, indent=2, sort_keys=True),
+            generated_iso=report["generated_iso"],
+        )
+        (facturas_dir / f"{inv['scan_id']}.html").write_text(page, encoding="utf-8")
+        if inv.get("scan_id"):
+            archive_output(
+                cfg.root, inv["scan_id"], facturas_dir / f"{inv['scan_id']}.html", "text/html"
             )
-            (facturas_dir / f"{inv['scan_id']}.html").write_text(page, encoding="utf-8")
-            f.write(json.dumps(inv, ensure_ascii=False, sort_keys=True) + "\n")
-            if inv.get("scan_id"):
-                archive_output(
-                    cfg.root, inv["scan_id"], facturas_dir / f"{inv['scan_id']}.html", "text/html"
-                )
     for inv in report["invoices"]:
         if inv.get("scan_id"):
             archive_output(cfg.root, inv["scan_id"], out_dir / "index.html", "text/html")
-            archive_output(
-                cfg.root, inv["scan_id"], out_dir / "detalle.jsonl", "application/x-ndjson"
-            )
     return out_dir

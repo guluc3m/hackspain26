@@ -1,95 +1,213 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api, SINTETICO, type RuntimeConfig, type SyncStatus } from './api'
-import { irA, tab, tabs } from './nav'
+import { api, SINTETICO, type RuntimeConfig, type SyncStatus, type VlmStatus } from './api'
+import { irA, pendientesRevision, tab, tabs } from './nav'
 import DashboardView from './views/DashboardView.vue'
+import IngestView from './views/IngestView.vue'
 import InvoicesView from './views/InvoicesView.vue'
+import ReviewView from './views/ReviewView.vue'
 import LogsView from './views/LogsView.vue'
 import ConnectionSettings from './components/ConnectionSettings.vue'
 
-// Estado de modo seleccionado en esta sesión de la aplicación:
-// En synthetic mode (MODE === 'syncth') se considera confirmado por defecto para que funcione autónomo de inmediato.
-// En modo real, se requiere selección explícita del usuario en cada arranque (montaje de la app).
-const confirmed = ref<boolean>(SINTETICO)
+// `confirmed` refleja el marcador `configured` persistido en la base de datos:
+// si ya hay un modo guardado, no se fuerza el selector en cada arranque.
+const confirmed = ref<boolean>(false)
 const showSettings = ref<boolean>(false)
+const configError = ref<string>('')
 
 const currentConfig = ref<RuntimeConfig>({
   mode: 'standalone',
   sync_url: '',
   vlm_url: '',
-  vlm_model: ''
+  vlm_model: '',
+  local_vlm_fallback: false,
+  server_api_key: '',
+  configured: false
 })
 
 const syncStatus = ref<SyncStatus | null>(null)
+const vlmStatus = ref<VlmStatus | null>(null)
+const vlmUnavailable = ref<boolean>(false)
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 async function fetchSyncStatus() {
-  if (SINTETICO) return
   try {
-    const s = await api.syncStatus()
-    syncStatus.value = s
+    syncStatus.value = await api.syncStatus()
   } catch (error) {
-    syncStatus.value = { ok: false, state: 'error', error: String(error) }
+    syncStatus.value = {
+      state: 'error',
+      pending: false,
+      ok: false,
+      error: String(error)
+    }
+  }
+}
+
+async function fetchVlmStatus() {
+  try {
+    vlmStatus.value = await api.vlmStatus()
+    vlmUnavailable.value = false
+  } catch {
+    // No se conserva un estado "listo" obsoleto: se marca como no disponible.
+    vlmStatus.value = null
+    vlmUnavailable.value = true
   }
 }
 
 async function cargarConfigInicial() {
-  if (SINTETICO) {
-    confirmed.value = true
-    return
-  }
   try {
     const cfg = await api.getConfig()
     currentConfig.value = cfg
-    await fetchSyncStatus()
-  } catch {
-    // Si no se puede contactar todavía, mantener defaults
+    confirmed.value = cfg.configured
+    configError.value = ''
+    await Promise.all([fetchSyncStatus(), fetchVlmStatus(), fetchPendientes()])
+  } catch (e: any) {
+    // No se ocultan los fallos de carga con valores por defecto silenciosos.
+    configError.value = `No se pudo cargar la configuración guardada: ${e?.message || e}`
   }
 }
 
+/** Atajo global: `R` salta a Revisión si hay pendientes. Ignora campos de texto
+   y atajos compuestos para no robar pulsaciones al usuario. */
+function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  const el = e.target as HTMLElement | null
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+  if ((e.key === 'r' || e.key === 'R') && pendientesRevision.value > 0) {
+    irA('review')
+  }
+}
 onMounted(() => {
   cargarConfigInicial()
-  pollTimer = setInterval(fetchSyncStatus, 10_000)
+  window.addEventListener('keydown', onKeydown)
+  pollTimer = setInterval(() => {
+    fetchSyncStatus()
+    fetchPendientes()
+    fetchVlmStatus().then(() => {
+      const s = vlmStatus.value
+      if (s && (s.state === 'downloading' || s.state === 'starting')) vigilarArranqueVlm()
+    })
+  }, 10_000)
 })
+
+/** Recuento de revisiones pendientes para el badge de la pestaña Revisión. */
+async function fetchPendientes() {
+  try {
+    pendientesRevision.value = (await api.revision()).items.length
+  } catch {
+    // Sin dato fresco se conserva el anterior: el badge nunca miente activamente.
+  }
+}
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (vlmFastTimer) clearInterval(vlmFastTimer)
 })
 
 function onConfirmed(saved: RuntimeConfig) {
   currentConfig.value = saved
   confirmed.value = true
   showSettings.value = false
+  configError.value = ''
   fetchSyncStatus()
+  fetchVlmStatus()
 }
 
 function onManualSync() {
   fetchSyncStatus()
 }
 
+const vlmNotReady = computed(() => {
+  if (!confirmed.value) return false
+  if (vlmUnavailable.value) return true
+  if (!vlmStatus.value) return false
+  return vlmStatus.value.local_required && !vlmStatus.value.ready
+})
+
+const vlmBannerText = computed(() => {
+  if (vlmUnavailable.value) return 'No se pudo consultar el estado del VLM local.'
+  const s = vlmStatus.value
+  if (!s) return ''
+  if (s.state === 'downloading') return 'Descargando el modelo VLM local…'
+  if (s.state === 'starting') return 'Iniciando el modelo VLM local…'
+  if (s.state === 'error') return `El VLM local no está listo: ${s.error || s.detail || 'error'}`
+  return 'El VLM local aún no está preparado.'
+})
+
+// El botón solo aparece cuando el VLM local es obligatorio (autónomo o
+// respaldo), no está listo y no hay preparación en curso (idle/error).
+// Nunca en modo remoto sin VLM local.
+const vlmCanStart = computed(() => {
+  const s = vlmStatus.value
+  if (!s) return false
+  return s.local_required && !s.ready && (s.state === 'idle' || s.state === 'error')
+})
+
+const vlmStarting = ref(false)
+let vlmFastTimer: ReturnType<typeof setInterval> | undefined
+
+/** Sondeo rápido mientras el modelo se descarga/arranca; se detiene al terminar. */
+function vigilarArranqueVlm() {
+  if (vlmFastTimer) return
+  vlmFastTimer = setInterval(async () => {
+    await fetchVlmStatus()
+    const s = vlmStatus.value
+    if (!s || (s.state !== 'downloading' && s.state !== 'starting')) {
+      if (vlmFastTimer) clearInterval(vlmFastTimer)
+      vlmFastTimer = undefined
+    }
+  }, 3_000)
+}
+
+async function startVlm() {
+  if (vlmStarting.value) return
+  vlmStarting.value = true
+  try {
+    vlmStatus.value = await api.vlmProvision()
+    vlmUnavailable.value = false
+    vigilarArranqueVlm()
+  } catch {
+    // El estado real se refleja en el siguiente sondeo; nunca se inventa "listo".
+    await fetchVlmStatus()
+  } finally {
+    vlmStarting.value = false
+  }
+}
+
 const statusBadgeText = computed(() => {
   if (SINTETICO) return 'sintético'
   if (!confirmed.value) return 'sin configurar'
   if (currentConfig.value.mode === 'server') {
-    if (syncStatus.value?.state === 'syncing') return 'sincronizando...'
-    if (syncStatus.value?.state === 'error') return 'error sync'
-    if (syncStatus.value?.state === 'synced') return 'servidor (sync ok)'
+    const s = syncStatus.value
+    if (s?.state === 'error') return 'error sync'
+    if (s?.state === 'syncing') return 'sincronizando...'
+    if (s?.state === 'pending' || s?.pending) return 'sync pendiente'
+    if (s?.state === 'synced') return 'servidor (sync ok)'
     return 'servidor'
+  }
+  if (vlmUnavailable.value) return 'VLM sin estado'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return vlmStatus.value.state === 'error' ? 'VLM error' : 'preparando VLM...'
   }
   return 'autónomo'
 })
 
 const statusBadgeTitle = computed(() => {
   if (SINTETICO) return 'Datos sintéticos de referencia (sin conexión real)'
-  if (!confirmed.value) return 'Modo de ejecución pendiente de seleccionar en esta sesión'
+  if (!confirmed.value) return 'Modo de ejecución pendiente de configurar'
   if (currentConfig.value.mode === 'server') {
     let msg = `Sincronizando con CouchDB: ${currentConfig.value.sync_url || '—'}`
-    if (syncStatus.value?.error) {
-      msg += `\nError: ${syncStatus.value.error}`
-    } else if (syncStatus.value?.state) {
-      msg += `\nEstado: ${syncStatus.value.state}`
+    const s = syncStatus.value
+    if (s?.error) {
+      msg += `\nError: ${s.error}`
+    } else if (s?.state) {
+      msg += `\nEstado: ${s.state}`
     }
     return msg
+  }
+  if (vlmUnavailable.value) return 'No se pudo consultar el estado del VLM local'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return `VLM local: ${vlmStatus.value.state}${vlmStatus.value.error ? `\nError: ${vlmStatus.value.error}` : ''}`
   }
   return 'Modo autónomo (local con PouchDB independiente)'
 })
@@ -98,12 +216,52 @@ const statusBadgeClass = computed(() => {
   if (SINTETICO) return 'badge-synthetic'
   if (!confirmed.value) return 'badge-unconfigured'
   if (currentConfig.value.mode === 'server') {
-    if (syncStatus.value?.state === 'error') return 'badge-error'
-    if (syncStatus.value?.state === 'synced') return 'badge-ok'
+    const s = syncStatus.value
+    if (s?.state === 'error') return 'badge-error'
+    if (s?.state === 'pending' || s?.pending) return 'badge-server'
+    if (s?.state === 'synced') return 'badge-ok'
     return 'badge-server'
+  }
+  if (vlmUnavailable.value) return 'badge-error'
+  if (vlmStatus.value && !vlmStatus.value.ready) {
+    return vlmStatus.value.state === 'error' ? 'badge-error' : 'badge-server'
   }
   return 'badge-standalone'
 })
+
+// --- Sync manual desde el topbar (misma acción que el botón de ConnectionSettings) ---
+const syncingManual = ref(false)
+const syncErrorMsg = ref('')
+const syncOkMsg = ref('')
+
+const syncConfigurado = computed(() =>
+  confirmed.value
+  && !SINTETICO
+  && currentConfig.value.mode === 'server'
+  && !!currentConfig.value.sync_url
+)
+
+// En curso si hay una petición manual activa o el sondeo ya ve "syncing".
+const syncEnCurso = computed(() =>
+  syncingManual.value || syncStatus.value?.state === 'syncing'
+)
+
+async function sincronizarAhora() {
+  if (syncEnCurso.value || !syncConfigurado.value) return
+  syncingManual.value = true
+  syncErrorMsg.value = ''
+  syncOkMsg.value = ''
+  try {
+    await api.sync()
+    await fetchSyncStatus()
+    syncOkMsg.value = 'Sincronización completada con éxito.'
+  } catch (e: any) {
+    await fetchSyncStatus()
+    syncErrorMsg.value = `Error de sincronización: ${e?.message || e}`
+  } finally {
+    syncingManual.value = false
+  }
+}
 </script>
 
 <template>
@@ -117,6 +275,11 @@ const statusBadgeClass = computed(() => {
         @click="irA(t.id)"
       >
         {{ t.label }}
+        <span
+          v-if="t.id === 'review' && pendientesRevision > 0"
+          class="tab-badge"
+          :aria-label="`${pendientesRevision} revisiones pendientes`"
+        >{{ pendientesRevision }}</span>
       </button>
     </nav>
     <div v-else class="startup-nav-title">
@@ -124,6 +287,17 @@ const statusBadgeClass = computed(() => {
     </div>
 
     <div class="topbar-right">
+      <!-- CTA directo a Revisión: visible en cualquier pestaña cuando hay pendientes -->
+      <button
+        v-if="confirmed && pendientesRevision > 0 && tab !== 'review'"
+        type="button"
+        class="cta-review"
+        :aria-label="`Ir a revisión: ${pendientesRevision} pendientes`"
+        title="Ir a Revisión (tecla R)"
+        @click="irA('review')"
+      >
+        Revisar {{ pendientesRevision }} pendiente{{ pendientesRevision === 1 ? '' : 's' }}
+      </button>
       <div
         class="modo"
         :class="statusBadgeClass"
@@ -131,6 +305,31 @@ const statusBadgeClass = computed(() => {
       >
         {{ statusBadgeText }}
       </div>
+      <!-- Sync manual sin abrir el modal: misma acción que el botón de configuración -->
+      <button
+        v-if="syncConfigurado"
+        type="button"
+        class="sync-btn"
+        :disabled="syncEnCurso"
+        aria-label="Sincronizar ahora con el servidor"
+        title="Sincronizar ahora con el servidor"
+        @click="sincronizarAhora"
+      >
+        {{ syncEnCurso ? 'sincronizando...' : 'Sync ahora' }}
+      </button>
+      <span
+        v-if="syncErrorMsg"
+        class="sync-feedback"
+        role="alert"
+        aria-live="assertive"
+      >{{ syncErrorMsg }}</span>
+
+      <span
+        v-else-if="syncOkMsg"
+        class="sync-feedback"
+        role="status"
+        aria-live="polite"
+      >{{ syncOkMsg }}</span>
 
       <!-- Botón de configuración siempre disponible -->
       <button
@@ -144,15 +343,18 @@ const statusBadgeClass = computed(() => {
       </button>
 
       <!-- Bloque reservado para el logo -->
-      <div class="logo-box" title="albertitos">
+      <div class="logo-box" title="filemaid">
         <img src="/logo.svg" alt="logo" />
       </div>
     </div>
   </header>
 
   <main>
-    <!-- Si la aplicación aún no ha confirmado el modo de esta sesión, mostramos el selector de inicio -->
+    <!-- Sin modo persistido en la base de datos, mostramos el selector de inicio -->
     <div v-if="!confirmed" class="startup-container">
+      <div v-if="configError" class="config-error" role="alert" aria-live="assertive">
+        {{ configError }}
+      </div>
       <ConnectionSettings
         :can-close="false"
         @confirmed="onConfirmed"
@@ -162,8 +364,22 @@ const statusBadgeClass = computed(() => {
 
     <!-- Vistas operativas normales cuando el modo está confirmado -->
     <template v-else>
+      <div v-if="vlmNotReady" class="vlm-banner" role="status" aria-live="polite">
+        <span class="vlm-banner-text">{{ vlmBannerText }}</span>
+        <button
+          v-if="vlmCanStart"
+          type="button"
+          class="primary vlm-start"
+          :disabled="vlmStarting"
+          @click="startVlm"
+        >
+          Start VLM
+        </button>
+      </div>
       <DashboardView v-if="tab === 'dashboard'" />
+      <IngestView v-else-if="tab === 'ingest'" />
       <InvoicesView v-else-if="tab === 'invoices'" />
+      <ReviewView v-else-if="tab === 'review'" />
       <LogsView v-else />
     </template>
   </main>
@@ -193,20 +409,31 @@ const statusBadgeClass = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  background: var(--ink);
+  color: var(--paper);
+  border-bottom: 3px solid var(--gold);
   padding: 0 20px;
+  gap: 16px;
 }
-nav { display: flex; gap: 4px; }
+nav { display: flex; gap: 2px; }
 .startup-nav-title {
   display: flex;
   align-items: center;
-  padding: 14px 0;
+  padding: 12px 0;
 }
 .app-title {
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.02em;
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+}
+.app-title::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  background: var(--gold);
 }
 
 .topbar-right {
@@ -215,107 +442,190 @@ nav { display: flex; gap: 4px; }
   gap: 10px;
 }
 
+.cta-review {
+  font-size: 12px;
+  padding: 5px 11px;
+  background: var(--gold);
+  color: var(--ink);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+}
+.cta-review:hover { background: #f3c94a; }
+
+.sync-btn {
+  font-size: 12px;
+  padding: 5px 11px;
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  border-radius: 0;
+}
+.sync-btn:hover { background: rgba(201, 161, 74, 0.14); }
+.sync-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: none;
+}
+
+.sync-feedback {
+  font-size: 11px;
+  max-width: 280px;
+  white-space: normal;
+  line-height: 1.3;
+}
+.sync-feedback[role='alert'] { color: #f0a79f; }
+.sync-feedback[role='status'] { color: #9fd6c9; }
+
 .tab {
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   border: none;
   border-radius: 0;
   background: none;
-  padding: 16px 12px 14px;
-  font-size: 15px;
-  color: var(--muted);
-  border-bottom: 2px solid transparent;
+  padding: 16px 13px 13px;
+  color: rgba(244, 236, 216, 0.68);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -3px;
 }
-.tab:hover { background: none; color: var(--text); }
+.tab:hover { background: rgba(244, 236, 216, 0.08); color: var(--paper); }
 .tab.active {
-  color: var(--text);
-  font-weight: 600;
-  border-bottom-color: var(--accent);
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.tab-badge {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 6px;
+  padding: 1px 4px;
+  font-family: var(--body);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+  background: var(--gold);
+  color: var(--ink);
 }
 
 .config-btn {
-  font-size: 13px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 4px;
+  font-size: 12px;
+  padding: 5px 11px;
+  border: 1px solid rgba(244, 236, 216, 0.5);
+  background: transparent;
+  color: var(--paper);
+  border-radius: 0;
 }
-.config-btn:hover {
-  background: #fafaf9;
-}
+.config-btn:hover { background: rgba(244, 236, 216, 0.12); }
 
 .logo-box {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  background: #1c3144;
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   flex: none;
 }
-.logo-box img { width: 30px; height: 30px; object-fit: contain; }
+.logo-box img { width: 28px; height: 28px; object-fit: contain; }
 
 .modo {
-  font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 10px;
-  background: var(--panel);
-  color: var(--muted);
+  font-family: var(--display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(244, 236, 216, 0.5);
+  border-radius: 0;
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--paper);
+  white-space: nowrap;
 }
-.modo.badge-synthetic {
-  color: var(--muted);
-}
-.modo.badge-unconfigured {
-  color: var(--warn-fg);
-  border-color: var(--warn-fg);
-  background: var(--warn-bg);
-}
-.modo.badge-server {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.modo.badge-standalone {
-  color: var(--muted);
-  border-color: var(--border);
-}
-.modo.badge-ok {
-  color: var(--ok-fg);
-  border-color: var(--ok-fg);
-  background: var(--ok-bg);
-}
-.modo.badge-error {
-  color: var(--bad-fg);
-  border-color: var(--bad-fg);
-  background: var(--bad-bg);
-}
+.modo.badge-synthetic { color: var(--slate); border-color: var(--slate); }
+.modo.badge-unconfigured { color: var(--gold); border-color: var(--gold); }
+.modo.badge-server { color: var(--slate); border-color: var(--slate); }
+.modo.badge-standalone { color: rgba(244, 236, 216, 0.8); }
+.modo.badge-ok { color: #9fd6c9; border-color: #9fd6c9; }
+.modo.badge-error { color: #f0a79f; border-color: #f0a79f; }
 
 main {
-  max-width: 1100px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 22px 20px 48px;
 }
 
 .startup-container {
-  padding-top: 30px;
+  padding-top: 26px;
 }
+
+.config-error {
+  max-width: 720px;
+  margin: 0 auto 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--red);
+  border-left: 5px solid var(--red);
+  font-size: 13px;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+.vlm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--orange);
+  background: var(--panel);
+  color: var(--warn-fg);
+  font-size: 13px;
+}
+.vlm-banner-text { flex: 1 1 320px; }
+.vlm-start { flex: none; }
 
 /* Modal backdrop & content */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(42, 23, 15, 0.55);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 28px 20px;
   z-index: 1000;
   overflow-y: auto;
 }
 
 .modal-content {
   width: 100%;
-  max-width: 680px;
+  max-width: 720px;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 0 12px;
+  }
+  nav {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .topbar-right {
+    order: 1;
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 8px 0;
+  }
+  .tab { padding: 12px 10px 10px; }
+  main { padding: 16px 12px 40px; }
 }
 </style>

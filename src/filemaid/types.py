@@ -38,6 +38,11 @@ UNKNOWN_NO_PARSEABLE = "NO_PARSEABLE"  # hay valor pero no se puede interpretar 
 UNKNOWN_CRUZ_NO_POSIBLE = "CRUZ_NO_POSIBLE"  # falta el dato con el que cruzar (maestro/ERP)
 UNKNOWN_OTRO = "OTRO"  # motivo sin categoría estable
 
+# Extractor name of a human review override. It is a normal candidate: it flows
+# through `escoger` (format tests, score threshold, rule min_confidence) and is
+# recorded in the rule's `chosen_candidates`, so the engine still decides.
+OVERRIDE_EXTRACTOR = "override"
+
 UNKNOWN_CODES = (
     UNKNOWN_SIN_CAMPO,
     UNKNOWN_SIN_CANDIDATO_VALIDO,

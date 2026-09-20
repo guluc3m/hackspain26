@@ -16,7 +16,7 @@ import httpx
 from filemaid.store.trace import capture_response
 from filemaid.types import ExtractionFeature
 
-from .context import PageContext
+from .context import PageContext, remote_allowed
 
 NAME = "typesafe_jev"
 VERSION = "typesafe_jev-2"
@@ -69,6 +69,8 @@ def _get_setting(
 def extract(ctx: PageContext) -> ExtractionFeature:
     t0 = time.monotonic()
 
+    if not remote_allowed(ctx):
+        return _skip(ctx, "standalone-no-remote", t0)
     if ctx.page_image_sha is None:
         return _skip(ctx, "no-page-image", t0)
     api_key = _get_setting(ctx, ("api_key", "typesafe_api_key"), "TYPESAFE_API_KEY")

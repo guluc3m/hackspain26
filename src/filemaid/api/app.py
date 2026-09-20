@@ -4,31 +4,40 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import shutil
 import tempfile
 import threading
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from filemaid import review
 from filemaid.config import AppConfig
+from filemaid.ingest import UploadTooLarge, get_ingestion, stream_uploads
 from filemaid.pipeline import Pipeline
+from filemaid.provision import get_provisioner
 from filemaid.rules.config import RuleConfig
 from filemaid.runtime import RuntimeSettings
 from filemaid.store import queries
 from filemaid.store.pouch import PouchStore
 
 
-class OverrideIn(BaseModel):
-    field_type: str
-    before: object
-    after: object
+class ResolveIn(BaseModel):
+    """Cuerpo estricto de POST /api/revision/{file_key}/resolve."""
+
+    model_config = ConfigDict(extra="forbid")
+
     who: str
-    rung: str = "review-ui"
     reason: str = ""
+    accepted: list[str] = Field(default_factory=list)
+    corrected: dict[str, object] = Field(default_factory=dict)
+    expected_decision_id: str
 
 
 class ConnectionIn(BaseModel):
@@ -36,51 +45,145 @@ class ConnectionIn(BaseModel):
     sync_url: str = Field(default="", max_length=2048)
     vlm_url: str = Field(default="", max_length=2048)
     vlm_model: str = Field(default="", max_length=256)
+    server_api_key: str = Field(default="", max_length=4096)
+    local_vlm_fallback: bool = False
+
+
+def _vlm_status(cfg: AppConfig, settings: RuntimeSettings) -> dict:
+    current = settings.get()
+    local_required = current["mode"] == "standalone" or current["local_vlm_fallback"]
+    local_fallback = current["local_vlm_fallback"]
+    probe = get_provisioner(cfg).status()
+    if not local_required:
+        state = "remote-only" if current["mode"] == "server" else "idle"
+    else:
+        state = probe["state"]
+    return {
+        **probe,
+        "mode": current["mode"],
+        "local_required": local_required,
+        "local_fallback": local_fallback,
+        "state": state,
+    }
 
 
 def create_app(cfg: AppConfig | None = None) -> FastAPI:
     cfg = cfg or AppConfig.load()
     pouch = PouchStore(cfg.root)
     settings = RuntimeSettings(cfg)
+    ingestion = get_ingestion(cfg)
     sync_lock = threading.RLock()
-    selected = threading.Event()
-    status: dict = {"ok": True, "state": "idle"}
+    wake = threading.Event()
+    inflight = threading.Event()
+
+    def _current_seq() -> object:
+        try:
+            return pouch.request(op="info").get("update_seq")
+        except Exception:
+            return None
+
+    def sync_status() -> dict:
+        current = settings.get()
+        stored = settings.sync_state()
+        if not current["configured"] or current["mode"] != "server":
+            return {
+                "ok": True,
+                "state": "standalone" if current["mode"] == "standalone" else "idle",
+                "error": "",
+                "pending": False,
+                "last_sync": stored["last_sync"],
+            }
+        seq = _current_seq()
+        # Pending is measured against the last SUCCESSFUL destination, so a new
+        # (never-synced) target is pending even if the local seq is unchanged.
+        same_remote = stored["synced_url"] == current["sync_url"]
+        pending = bool(not same_remote or (seq is not None and stored["last_seq"] != seq))
+        failed_current = stored["failed_url"] == current["sync_url"]
+        if inflight.is_set():
+            state = "syncing"
+        elif failed_current:
+            state = "error"
+        elif pending:
+            state = "pending"
+        else:
+            state = stored["state"]
+        return {
+            "ok": not failed_current,
+            "state": state,
+            "error": stored["error"] if failed_current else "",
+            "pending": pending,
+            "last_sync": stored["last_sync"] if same_remote else None,
+        }
 
     def synchronize(values: dict | None = None) -> dict:
         with sync_lock:
             values = values or settings.get()
             if values["mode"] != "server":
                 raise ValueError("Seleccione modo servidor para sincronizar")
-            status.update(ok=True, state="syncing", error=None)
+            previous = settings.sync_state()
+            inflight.set()
             try:
                 result = settings.sync(values)
             except Exception as exc:
-                status.update(ok=False, state="error", error=str(exc))
+                # Keep the last successful destination checkpoint; record the
+                # failed target separately so status shows error + pending.
+                settings.set_sync_state(
+                    state="error",
+                    ok=False,
+                    error=str(exc),
+                    last_sync=previous["last_sync"],
+                    last_seq=previous["last_seq"],
+                    synced_url=previous["synced_url"],
+                    failed_url=values["sync_url"],
+                )
                 raise
-            status.update(ok=True, state="synced", error=None)
+            finally:
+                inflight.clear()
+            # The bridge returns the sequence captured inside the locked sync,
+            # so a write after this point stays pending, never marked synced.
+            settings.set_sync_state(
+                state="synced",
+                ok=True,
+                error="",
+                last_sync=time.time(),
+                last_seq=result.get("seq"),
+                synced_url=values["sync_url"],
+                failed_url="",
+            )
             return {"ok": True, **result}
 
     async def sync_loop() -> None:
         while True:
             try:
                 current = await asyncio.to_thread(settings.get)
-                if selected.is_set() and current["mode"] == "server":
+                if current["configured"] and current["mode"] == "server":
                     await asyncio.to_thread(synchronize)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
-                status.update(ok=False, state="error", error=str(exc))
-            await asyncio.sleep(30)
+            except Exception:
+                pass
+            await asyncio.to_thread(wake.wait, 30)
+            wake.clear()
 
     @asynccontextmanager
     async def lifespan(_app):
+        current = await asyncio.to_thread(settings.get)
+        if current["configured"] and (
+            current["mode"] == "standalone" or current["local_vlm_fallback"]
+        ):
+            get_provisioner(cfg).ensure()
+        await asyncio.to_thread(ingestion.resume)
         task = asyncio.create_task(sync_loop())
         try:
             yield
         finally:
+            wake.set()  # release the loop's wait so shutdown is prompt
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+            # Cooperative stop: the worker finishes the in-flight item and exits;
+            # anything unfinished is re-enqueued on the next start.
+            await asyncio.to_thread(ingestion.stop, 3.0)
 
     app = FastAPI(title="filemaid", version="0.1.0", lifespan=lifespan)
 
@@ -95,20 +198,19 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
     @app.put("/api/config")
     def configure(body: ConnectionIn) -> dict:
         try:
-            values = settings.validate(body.model_dump())
-            # Never announce server mode before an actual successful exchange.
-            with sync_lock:
-                if values["mode"] == "server":
-                    synchronize(values)
-                saved = settings.save(values)
-                selected.set()
-                if saved["mode"] == "standalone":
-                    status.update(ok=True, state="standalone", error=None)
-                return saved
+            # Durable local save first: a remote outage must never discard the
+            # confirmed configuration. Sync/provision run in the background.
+            saved = settings.save(body.model_dump())
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(502, f"No se pudo configurar la conexión: {exc}") from exc
+        if saved["mode"] == "server":
+            wake.set()
+        if saved["mode"] == "standalone" or saved["local_vlm_fallback"]:
+            try:
+                get_provisioner(cfg).ensure()
+            except Exception:
+                pass
+        return saved
 
     @app.post("/api/sync")
     def sync_now() -> dict:
@@ -120,8 +222,22 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             raise HTTPException(502, f"Sincronización fallida: {exc}") from exc
 
     @app.get("/api/sync/status")
-    def sync_status() -> dict:
-        return dict(status)
+    def sync_status_route() -> dict:
+        return sync_status()
+
+    @app.get("/api/vlm/status")
+    def vlm_status_route() -> dict:
+        return _vlm_status(cfg, settings)
+
+    @app.post("/api/vlm/provision")
+    def vlm_provision_route() -> dict:
+        current = settings.get()
+        if not current["configured"]:
+            raise HTTPException(409, "Configure el modo antes de provisionar el VLM local")
+        if not (current["mode"] == "standalone" or current["local_vlm_fallback"]):
+            raise HTTPException(409, "El modo actual no requiere VLM local")
+        get_provisioner(cfg).ensure()
+        return _vlm_status(cfg, settings)
 
     @app.get("/api/facturas")
     def facturas() -> list[dict]:
@@ -134,19 +250,68 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             raise HTTPException(404, "factura no encontrada")
         return detail
 
-    @app.post("/api/revision/{file_key}/override")
-    def override(file_key: str, body: OverrideIn) -> dict:
-        if pouch.get(f"file:{file_key}") is None:
+    @app.get("/api/revision")
+    def revision() -> dict:
+        return {"items": review.list_disputed(pouch)}
+
+    @app.get("/api/revision/{file_key}")
+    def revision_detail(file_key: str) -> dict:
+        detail = review.review_detail(pouch, file_key)
+        if detail is None:
             raise HTTPException(404, "factura no encontrada")
-        queries.save_override(pouch, file_key, body.model_dump())
+        return detail
+
+    @app.post("/api/revision/{file_key}/resolve")
+    def revision_resolve(file_key: str, body: ResolveIn) -> dict:
+        try:
+            result = review.resolve_review(pouch, cfg, file_key, body.model_dump())
+        except KeyError as exc:
+            raise HTTPException(404, "factura no encontrada") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
         if settings.get()["mode"] == "server":
+            wake.set()
+        return result
+
+    @app.post("/api/ingest", status_code=202)
+    async def ingest(request: Request) -> dict:
+        """Subida multipart de PDFs/imágenes; acusa recibo tras persistir en PouchDB."""
+        incoming = cfg.root / "work" / "incoming" / uuid.uuid4().hex
+        incoming.mkdir(parents=True, exist_ok=True)
+        try:
             try:
-                synchronize()
-            except Exception as exc:
-                raise HTTPException(
-                    502, f"Override guardado localmente; sincronización pendiente: {exc}"
-                ) from exc
-        return {"ok": True}
+                streamed = await stream_uploads(
+                    request.stream(), request.headers.get("content-type", ""), incoming
+                )
+            except UploadTooLarge as exc:
+                raise HTTPException(413, str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            entries = [(item["rel_path"], item["path"]) for item in streamed["staged"]]
+            if not entries:
+                detail = "; ".join(item["reason"] for item in streamed["rejected"])
+                raise HTTPException(400, f"ningún fichero válido: {detail or 'sin ficheros'}")
+            try:
+                result = await asyncio.to_thread(ingestion.submit, entries, "upload", move=True)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            result["rejected"] = streamed["rejected"] + result["rejected"]
+            return result
+        finally:
+            shutil.rmtree(incoming, ignore_errors=True)
+
+    @app.get("/api/jobs")
+    def jobs() -> dict:
+        return ingestion.list_jobs()
+
+    @app.get("/api/jobs/{job_id}")
+    def job(job_id: str) -> dict:
+        state = ingestion.status(job_id)
+        if state is None:
+            raise HTTPException(404, "trabajo no encontrado")
+        return state
 
     @app.get("/api/reglas")
     def reglas() -> dict:
@@ -168,12 +333,14 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             storage = "ok"
         except RuntimeError:
             storage = "error"
+        current = settings.get()
         return {
             "tesseract": "ok" if shutil.which("tesseract") else "ausente",
-            "llama-server": "remoto" if settings.get()["mode"] == "server" else "local",
+            "llama-server": "remoto" if current["mode"] == "server" else "local",
             "cloud_vlm": "ok" if cfg.cloud_api_key else "sin-clave",
             "store": storage,
-            "sync": dict(status),
+            "sync": sync_status(),
+            "vlm": _vlm_status(cfg, settings),
         }
 
     @app.post("/api/reprocesar/{file_id}")

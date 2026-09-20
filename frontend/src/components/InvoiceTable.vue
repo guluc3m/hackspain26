@@ -48,6 +48,13 @@ const totalColumnas = computed(
           {{ row.folder ?? '—' }}
         </td>
         <td v-if="showGate">
+          <span
+            v-if="row.disputed"
+            class="badge disputa"
+            title="Retenida: no se sincroniza hasta resolver la revisión"
+          >
+            retenida
+          </span>
           <template v-if="row.result === 'ESCALAR'">
             <button
               class="primary"

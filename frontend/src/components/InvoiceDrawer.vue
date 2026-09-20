@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { api, fmtHora, fmtValor, type Candidate, type InvoiceDetail } from '../api'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { api, fmtHora, fmtValor, liderIndex, type Candidate, type InvoiceDetail } from '../api'
 import ResultBadge from './ResultBadge.vue'
 
 const props = defineProps<{ invoiceId: string | null }>()
@@ -12,19 +12,33 @@ const busy = ref(false)
 const motivo = ref('')
 const elegidos = ref<Record<string, number>>({}) // field_type -> índice del candidato elegido
 
+/** Atajos del drawer: `Enter` resuelve (equivale al botón primario), `Esc` cierra.
+    Solo actúan con el drawer abierto y sin modificadores que indiquen otra intención. */
+function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  if (!props.invoiceId || !detail.value) return
+  if (e.key === 'Escape') {
+    emit('close')
+  } else if (e.key === 'Enter' && !busy.value) {
+    resolver()
+  }
+}
 watch(
   () => props.invoiceId,
   async (id) => {
     detail.value = null
     error.value = ''
     elegidos.value = {}
+    motivo.value = ''
     if (id) await load(id)
   },
   { immediate: true }
 )
 
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
 async function load(id: string) {
-  error.value = ''
   try {
     detail.value = await api.factura(id)
   } catch (e) {
@@ -36,45 +50,55 @@ function candidatos(fieldType: string): Candidate[] {
   return detail.value?.fields[fieldType] ?? []
 }
 
-function lider(fieldType: string): number {
-  // candidato líder: mayor confianza (el motor colapsa solo al evaluar)
-  const cs = candidatos(fieldType)
-  let best = 0
-  cs.forEach((c, i) => {
-    if (c.confidence > cs[best].confidence) best = i
-  })
-  return best
-}
-
 function elegido(fieldType: string): number {
-  return elegidos.value[fieldType] ?? lider(fieldType)
+  return elegidos.value[fieldType] ?? liderIndex(candidatos(fieldType))
 }
 
-async function aplicar() {
+const tieneCorreccion = computed(() => {
+  if (!detail.value) return false
+  return Object.keys(detail.value.fields).some((f) => elegido(f) !== liderIndex(candidatos(f)))
+})
+
+/**
+ * Resuelve la revisión: confirma los campos cuyo candidato líder se mantiene
+ * (`accepted`) y corrige los que el revisor cambia (`corrected`). El backend
+ * recalcula la decisión de forma determinista; nunca se fuerza el pago.
+ */
+async function resolver() {
   if (!detail.value || busy.value) return
   busy.value = true
   error.value = ''
+  const d = detail.value
+  const accepted: string[] = []
+  const corrected: Record<string, unknown> = {}
+  for (const fieldType of Object.keys(d.fields)) {
+    const cs = candidatos(fieldType)
+    if (cs.length === 0) continue
+    const i = elegido(fieldType)
+    if (i === liderIndex(cs)) accepted.push(fieldType)
+    else corrected[fieldType] = cs[i]?.value
+  }
   try {
-    for (const fieldType of Object.keys(detail.value.fields)) {
-      const cs = candidatos(fieldType)
-      const i = elegido(fieldType)
-      const after = cs[i]?.value
-      const before = cs[lider(fieldType)]?.value
-      await api.override(detail.value.invoice.id, {
-        field_type: fieldType,
-        before,
-        after,
-        who: 'revisor',
-        rung: 'review-ui',
-        reason: motivo.value || (before === after ? 'confirmación en revisión' : 'corrección en revisión')
-      })
-    }
-    await api.reprocesar(detail.value.invoice.file_id, detail.value.invoice.id)
+    await api.resolve(d.invoice.id, {
+      who: 'revisor',
+      reason:
+        motivo.value ||
+        (Object.keys(corrected).length ? 'corrección en revisión' : 'confirmación en revisión'),
+      accepted,
+      corrected,
+      expected_decision_id: d.decision?.decision_id ?? ''
+    })
     motivo.value = ''
+    // Resuelta con éxito: la lista del padre se refresca (`updated`) y el
+    // drawer se cierra solo; la acción terminó y no pide más clics.
     emit('updated')
-    await load(detail.value.invoice.id)
+    emit('close')
   } catch (e) {
-    error.value = String(e)
+    // 409: la decisión cambió desde que se cargó. Se recarga conservando la
+    // selección del revisor y se muestra el error para reintentar.
+    const msg = String(e)
+    await load(d.invoice.id)
+    error.value = msg
   } finally {
     busy.value = false
   }
@@ -87,28 +111,25 @@ function safeParse(s: string): unknown {
     return s
   }
 }
-
-const tieneCorreccion = computed(() => {
-  if (!detail.value) return false
-  return Object.keys(detail.value.fields).some((f) => elegido(f) !== lider(f))
-})
 </script>
 
 <template>
   <div v-if="invoiceId" class="backdrop" @click.self="emit('close')">
-    <aside class="drawer">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-label="Revisión de factura">
       <div class="head">
         <h2 class="mono">{{ invoiceId }}</h2>
-        <button @click="emit('close')">Cerrar</button>
+        <button type="button" @click="emit('close')">Cerrar</button>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <template v-if="detail">
         <section class="panel">
           <div class="head-line">
             <strong class="mono">{{ detail.invoice.file_id }}</strong>
             <ResultBadge :result="detail.decision?.result ?? null" />
+            <span v-if="detail.disputed" class="badge disputa">retenida · sin sincronizar</span>
+            <span v-else-if="detail.review_state === 'resolved'" class="badge PASS">revisión resuelta</span>
           </div>
           <dl class="meta">
             <dt>UUID interno</dt><dd class="mono">{{ detail.invoice.id }}</dd>
@@ -121,6 +142,10 @@ const tieneCorreccion = computed(() => {
               <span v-if="detail.decision" class="muted">({{ fmtHora(detail.decision.timestamp) }})</span>
             </dd>
           </dl>
+          <p v-if="detail.decision?.result === 'ESCALAR'" class="muted aviso">
+            El resultado ESCALAR no autoriza el pago: la revisión solo confirma o corrige la
+            lectura y el motor vuelve a decidir.
+          </p>
         </section>
 
         <section class="panel">
@@ -143,12 +168,13 @@ const tieneCorreccion = computed(() => {
         <section class="panel">
           <h3>Campos y candidatos</h3>
           <p class="muted">
-            Todos los candidatos se conservan. Elige el correcto por campo; el override
-            afecta solo a la extracción y la decisión se recalcula con el mismo motor.
+            Todos los candidatos se conservan. Confirma el candidato correcto por campo; el
+            backend registra la procedencia y recalcula la decisión con el mismo motor.
           </p>
           <div v-for="(cs, fieldType) in detail.fields" :key="fieldType" class="campo">
             <div class="campo-head">
               <strong class="mono">{{ fieldType }}</strong>
+              <span v-if="elegido(String(fieldType)) !== liderIndex(cs)" class="badge ESCALAR">corregido</span>
             </div>
             <label v-for="(c, i) in cs" :key="c.extractor + i" class="candidato">
               <input
@@ -163,11 +189,25 @@ const tieneCorreccion = computed(() => {
           </div>
           <p v-if="Object.keys(detail.fields).length === 0" class="muted">sin campos extraídos</p>
           <div class="toolbar aplicar">
-            <input v-model="motivo" placeholder="motivo (opcional)" />
-            <button class="primary" :disabled="busy" @click="aplicar">
-              {{ tieneCorreccion ? 'Aplicar corrección y reprocesar' : 'Confirmar lectura y reprocesar' }}
+            <input v-model="motivo" aria-label="Motivo de la resolución" placeholder="motivo (opcional)" />
+            <button type="button" class="primary" :disabled="busy" @click="resolver">
+              {{ tieneCorreccion ? 'Aplicar corrección y recalcular' : 'Confirmar lectura y recalcular' }}
             </button>
           </div>
+        </section>
+
+        <section v-if="detail.resolution" class="panel">
+          <h3>Última resolución</h3>
+          <dl class="meta">
+            <dt>Quién</dt><dd>{{ detail.resolution.who }}</dd>
+            <dt>Cuándo</dt><dd>{{ fmtHora(detail.resolution.timestamp) }}</dd>
+            <dt>Motivo</dt><dd>{{ detail.resolution.reason }}</dd>
+            <dt>Confirmados</dt><dd class="mono">{{ detail.resolution.accepted.join(', ') || '—' }}</dd>
+            <dt>Corregidos</dt>
+            <dd class="mono">
+              {{ Object.entries(detail.resolution.corrected).map(([k, v]) => `${k}=${v}`).join(', ') || '—' }}
+            </dd>
+          </dl>
         </section>
 
         <section class="panel">
@@ -197,24 +237,25 @@ const tieneCorreccion = computed(() => {
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(42, 23, 15, 0.35);
   display: flex;
   justify-content: flex-end;
   z-index: 10;
 }
 .drawer {
-  width: min(560px, 100%);
+  width: min(600px, 100%);
   height: 100%;
   overflow-y: auto;
   background: var(--bg);
-  border-left: 1px solid var(--border);
+  border-left: 3px solid var(--ink);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.head { display: flex; justify-content: space-between; align-items: center; }
-.head-line { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.drawer .panel { overflow-x: auto; }
+.head-line { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .meta {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -223,15 +264,9 @@ const tieneCorreccion = computed(() => {
 }
 .meta dt { color: var(--muted); }
 .meta dd { margin: 0; overflow-wrap: anywhere; }
+.aviso { margin: 10px 0 0; }
 .campo { margin-bottom: 10px; }
-.campo-head { margin-bottom: 2px; }
+.campo-head { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
 .candidato { display: flex; gap: 8px; align-items: baseline; padding: 2px 0 2px 12px; }
 .aplicar { margin-top: 10px; }
-.raw pre {
-  background: var(--panel);
-  border: 1px solid var(--border-soft);
-  border-radius: 4px;
-  padding: 10px;
-  overflow-x: auto;
-}
 </style>

@@ -1,4 +1,9 @@
-"""Filemaid standalone VLM proxy server."""
+"""Filemaid VLM server: hosts the local PaddleOCR-VL Q8 sidecar.
+
+The server is always local: startup provisions (install + start + health-check)
+the local llama.cpp sidecar and refuses to serve if it is not ready. There is no
+remote-upstream mode; the client's optional local fallback is a separate concern.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,7 @@ import hmac
 import ipaddress
 import json
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -14,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from .llama_manager import get_manager
-from .runtime import endpoint
+from .provision import get_provisioner
 
 MAX_VLM_BODY_SIZE = 24 * 1024 * 1024
 MAX_CONCURRENT_VLM = 4
@@ -44,12 +50,11 @@ async def _read_bounded_body(request: Request, max_size: int) -> bytes:
     return b"".join(chunks)
 
 
-async def _forward_vlm(url: str, body: dict, key: str = "") -> Response:
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+async def _forward_vlm(url: str, body: dict) -> Response:
     try:
         async with (
             httpx.AsyncClient(timeout=VLM_TIMEOUT, follow_redirects=False) as client,
-            client.stream("POST", url, json=body, headers=headers) as response,
+            client.stream("POST", url, json=body) as response,
         ):
             if response.status_code >= 400:
                 raise HTTPException(response.status_code, "VLM upstream rejected request")
@@ -65,17 +70,25 @@ async def _forward_vlm(url: str, body: dict, key: str = "") -> Response:
         raise HTTPException(502, "VLM upstream unavailable") from exc
 
 
-def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
-    """Create FastAPI application hosting VLM proxy escalation."""
+def create_server(cfg: Any, server_token: str | None = None, provisioner: Any = None) -> FastAPI:
+    """Create the FastAPI app hosting the local VLM sidecar (mandatory at startup)."""
     token = (
         server_token if server_token is not None else os.environ.get("FILEMAID_SERVER_TOKEN", "")
     ).strip()
-
-    upstream_vlm_url = endpoint(os.environ.get("FILEMAID_SERVER_VLM_URL", ""), "VLM upstream")
-    upstream_vlm_key = os.environ.get("FILEMAID_SERVER_VLM_KEY", "").strip()
+    provisioner = provisioner or get_provisioner(cfg)
 
     vlm_semaphore = asyncio.Semaphore(MAX_CONCURRENT_VLM)
-    app = FastAPI(title="Filemaid Server", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        status = await asyncio.to_thread(provisioner.ensure, True)
+        if not status.get("ready"):
+            raise RuntimeError(
+                f"VLM local no disponible: {status.get('error') or status.get('detail') or 'no listo'}"
+            )
+        yield
+
+    app = FastAPI(title="Filemaid Server", version="0.1.0", lifespan=lifespan)
 
     @app.middleware("http")
     async def enforce_auth_and_fail_closed(request: Request, call_next):
@@ -107,8 +120,10 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
         return await call_next(request)
 
     @app.get("/healthz")
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    async def healthz() -> dict[str, Any]:
+        # Live probe (no model spin-up): reflects a stopped/crashed sidecar.
+        status = await asyncio.to_thread(provisioner.status)
+        return {"status": "ok", "vlm_ready": bool(status.get("ready"))}
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> Response:
@@ -124,27 +139,17 @@ def create_server(cfg: Any, server_token: str | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="Invalid JSON body") from None
 
         async with vlm_semaphore:
-            if upstream_vlm_url:
-                upstream_endpoint = (
-                    f"{upstream_vlm_url}/chat/completions"
-                    if upstream_vlm_url.endswith("/v1")
-                    else f"{upstream_vlm_url}/v1/chat/completions"
-                )
-                return await _forward_vlm(upstream_endpoint, body, upstream_vlm_key)
-            else:
-                # Local llama-server manager fallback run via to_thread
-                def _prepare_local_llama():
-                    mgr = get_manager(cfg)
-                    started = mgr.ensure_started()
-                    if started:
-                        mgr.touch()
-                    return started, mgr.base_url
+            # Forward to the healthy local sidecar (mandatory local VLM).
+            def _prepare_local_llama():
+                mgr = get_manager(cfg)
+                started = mgr.ensure_started()
+                if started:
+                    mgr.touch()
+                return started, mgr.base_url
 
-                started, base_url = await asyncio.to_thread(_prepare_local_llama)
-                if not started:
-                    raise HTTPException(status_code=503, detail="Local llama sidecar unavailable")
-
-                local_endpoint = f"{base_url}/v1/chat/completions"
-                return await _forward_vlm(local_endpoint, body)
+            started, base_url = await asyncio.to_thread(_prepare_local_llama)
+            if not started:
+                raise HTTPException(status_code=503, detail="Local llama sidecar unavailable")
+            return await _forward_vlm(f"{base_url}/v1/chat/completions", body)
 
     return app
