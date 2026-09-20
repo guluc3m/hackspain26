@@ -33,7 +33,7 @@ Regenerar la voz (piper con el modelo `es_ES-carlfm-x_low`):
 # un wav por escena; ajusta --length-scale si el texto no cabe con holgura
 for i in 1 2 3 4 5 6 7 8; do
   piper --model es_ES-carlfm-x_low \
-    --output_file "esc$i.wav" < "esc$i.txt"
+    --output_file "narracion/esc$i.wav" < "esc$i.txt"
 done
 ```
 
