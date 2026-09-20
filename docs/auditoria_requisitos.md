@@ -363,3 +363,89 @@ c64db1be58ea0d5d1939a325dcc3ee826712f7db4c7b7257a5d58b50d3466cc6  albertitos_pla
 - **Confianza en la rúbrica: ALTA** — todos los criterios con evidencia medida; único riesgo no nulo: el conteo de 8 ADRs vs 2-5 (mitigado dentro del propio PDF, pág. 15).
 - **Bloqueantes de entrega: los mismos 2 P0 operacionales** (push a GitHub + teamId). Ningún veredicto de rúbrica cambia respecto a §8, por lo que **la checklist de §6 sigue válida tal cual**: sus 2 primeros ítems (repo público + teamId) siguen siendo los únicos bloqueantes, y el ítem P2 («pág. 7» → «pág. 6») sigue aplicando para materiales de apoyo.
 - **Estado del repo de solución: LIMPIO** — `git status --short` vacío sobre `2159e0b`; no queda trabajo en curso que re-auditar.
+
+## 10. Re-auditoría 2026-09-20 (quinta pasada, sobre HEAD actual — ReauditorRequisitos5)
+
+**Alcance:** revalidación con medidas propias ejecutadas en esta sesión sobre el estado ACTUAL del repo, con commiteo EN PARALELO de otros agentes (vídeo, finetuning) durante la pasada. La web https://hackathon.maisa.ai/ fue recargada íntegra en esta sesión (395 líneas de contenido): rúbrica **sin cambios** — 100 pts + 10 bonus (35/20/25/10/10), desempates escalabilidad → resiliencia → bonus, lote 2 sábado 18:00 (+40 facturas, ERP actualizado, zip `lote-2-sorpresa-v3.2`), cierre domingo 11:00 con registro del commit, defensa 10 min (2 demo + 2 arquitectura/ADRs + 4 trazabilidad/escala/coste + 2 resiliencia), contrato JSONL `{"file_id":"...","result":"..."}` con `file_id` = nombre exacto del PDF, repo público de GitHub separado con exactamente los 3 ficheros + teamId.
+
+### 10.1 Estado del árbol [medido, con commiteo paralelo en curso]
+
+- Al INICIO de esta pasada: `git log -1` → `f3c0d5d` «Vídeo: re-render final con guion y README actualizados; FilemaidVideo ajustado» (2026-09-20 06:42:39 +0000), rama `feat/remotion-polish`. `git status --short` → `?? .local-informes/`, `?? docs/auditoria-requisitos.md`, `?? video/narracion/`, `?? video/public/` (trabajo de los agentes de vídeo aún sin commitear).
+- AL CIERRE de esta pasada: `git log -1` → `0573d80` «Vídeo: el snippet de regeneración de voz con piper escribe los wavs en narracion/, donde viven» (06:51:54). Durante la pasada aterrizaron 2 commits de los agentes de vídeo: `f7bb839` (06:51:20, gitignore de assets de narración + commit del contrato narrativo) y `0573d80` (06:51:54). `git status --short` final → **solo `?? docs/auditoria-requisitos.md`** (fichero de otra sesión; los directorios `video/narracion/` y `video/public/` quedaron cubiertos por el gitignore de `f7bb839`, y `.local-informes/` desapareció del listado).
+- Commits nuevos desde `2159e0b` (base de §9): `5f52151` (esta auditoría, §9), `cea047e` (benchmarks smoke), **`69165fc` (06:20:17 — ENTREGABLES: commitea `outcomes.jsonl` y `outcomes_lote2.jsonl` en la raíz del repo de solución)**, `f3c0d5d` (vídeo re-render), `f7bb839`, `0573d80`. Ningún commit toca `master/rules.yaml` ni `docs/report/*.typ` desde `961d308` (previo a §9): la sección `outcomes:` de rules.yaml y los 8 ADRs del .typ siguen intactos.
+- **CAMBIO operacional relevante [medido]:** los dos JSONL de la raíz están ahora **TRACKED** en el repo de solución (`git ls-files -v` → `H outcomes.jsonl`, `H outcomes_lote2.jsonl`, commiteados en `69165fc`). Esto corrige la nota de §8.3/§9.3 («entregables en `.gitignore:33-41`»): **solo `albertitos_plan.pdf` sigue ignorado** (`.gitignore:35`, verificado con `git check-ignore -v`) y vive solo en el delivery-repo. Los hashes de los JSONL commiteados coinciden byte a byte con los esperados y con el delivery-repo (§10.3), por lo que el cambio es inocuo para la entrega; la sincronización del PDF al delivery-repo sigue siendo **por copia**.
+- Tests: **41 ficheros en `tests/`** (uno más que en §9.1), **295 funciones `def test`** [grep, medido].
+
+### 10.2 Validación de los 2 JSONL de la raíz (parseo programático propio) [medido]
+
+Script `uv run python` (json.loads línea a línea + `os.listdir` de los PDFs en disco), misma metodología que §9.2:
+
+| Check | `outcomes.jsonl` | `outcomes_lote2.jsonl` |
+|---|---|---|
+| Líneas / JSON válido | 500/500 | 40/40 |
+| Claves exactamente `{file_id, result}` (0 extra) | 500/500 | 40/40 |
+| `file_id` basename exacto (sin `/` ni `\`, terminado en `.pdf`) | 500/500 | 40/40 |
+| `result ∈ {PAGAR, NO_PAGAR, ESCALAR}` | 500/500 | 40/40 |
+| Únicos / duplicados | 500 / 0 | 40 / 0 |
+| Cobertura vs PDFs en disco (missing/extra) | 0/0 (500 PDFs en `caja-de-alberto/facturas/`) | 0/0 (40 PDFs en `caja-de-alberto/facturas_primin/`) |
+| Distribución | **PAGAR 433 / NO_PAGAR 22 / ESCALAR 45** | **PAGAR 26 / NO_PAGAR 11 / ESCALAR 3** |
+
+Solapamiento lote1 ∩ lote2: **0**. Incidencias totales: **0**. **Quinta pasada consecutiva con resultado idéntico.**
+
+### 10.3 Entregables y hashes [medido]
+
+```
+$ sha256sum outcomes.jsonl outcomes_lote2.jsonl albertitos_plan.pdf          # raíz repo de solución
+67a1acea40b48813c60753d1da6d7adeb9492acda3c2132491a095b1403a0eb7  outcomes.jsonl
+34d55cb41c8bcece40e4e7c5e2fb75bf5c16b844d9ac766c215783e775d0fc4b  outcomes_lote2.jsonl
+c64db1be58ea0d5d1939a325dcc3ee826712f7db4c7b7257a5d58b50d3466cc6  albertitos_plan.pdf
+```
+
+- Los 3 hashes son **idénticos** en `/home/deploy/delivery-repo` [sha256sum en ambas copias] y coinciden con los esperados (`67a1acea…`, `34d55cb4…`, `c64db1be…`). Ningún commit desde `69165fc` ha vuelto a tocar los JSONL (`git log --all -- outcomes.jsonl` → solo `69165fc`).
+- Delivery-repo: `ls -A` → raíz con **EXACTAMENTE** `albertitos_plan.pdf`, `outcomes.jsonl`, `outcomes_lote2.jsonl` + `.git/`; 4 commits (último `4fbb881`), working tree limpio; **`git remote` → 0 líneas** (**P0 sigue abierto**, §10.7).
+
+### 10.4 albertitos_plan.pdf — contenido [medido con pypdf]
+
+- **15 páginas** [pypdf]. «Escalabilidad» en págs. 2, 6, 7, 8, 9 y 11; **«Escalabilidad y coste» + «Resiliencia» juntas en la pág. 6**; ADR-02 pág. 8; ADR-01 págs. 9, 13 y 15; ADR-06/07 pág. 13; **ADR-08 en pág. 14**; **mitigación del conteo de ADRs («adiciones incrementales») en la pág. 15**.
+- **8 ADRs declarados** [grep -c '#adr(' docs/report/albertitos_plan.typ → 8], **0 placeholders** `PENDIENTE-MEDICIÓN` [grep → 0]. Búsqueda adversarial de marcadores (`TODO`, `PLACEHOLDER`, `XXX`, `LOREM`) sobre el texto extraído: todas las coincidencias de «todo» son palabras españolas legítimas («método», «todos los candidatos», «mantener todo local»), **0 placeholders reales**. **Sigue PARCIAL por conteo** (web: «de 2 a 5 decisiones relevantes»), con la mitigación dentro del propio PDF.
+
+### 10.5 Bonus: vídeo — RE-RENDER NUEVO commiteado en `f3c0d5d`, README desincronizado [medido]
+
+- `video/out/filemaid.mp4` en disco: **16 644 134 bytes** (mtime 06:41:07), sha256 `45d05a4ffda15d22665fe6d15cc1069aeb906f2989bcfb69d22fdadd3f082c16` [stat + sha256sum]; commitado en `f3c0d5d` (blob Bin 8603731 → 16644134), árbol limpio en `video/` al cierre.
+- Átomo `mvhd` v0 [parseo propio con `uv run python`]: timescale 1000, duration **180 054 → 180,054 s** (ya no 180,000 s exactos: +54 ms, probable cola de audio; el «3 min» de la web sigue cubierto).
+- **DISCREPANCIA documental:** `video/README.md` (en HEAD `0573d80`) sigue declarando «180,000000 s exactos (5400 frames)», «8 603 731 bytes (~8,2 MB)» y «sha256 `1c8fcf371d7dfc57…`» — los 3 valores corresponden al render anterior (`c3d51cf`) y **no coinciden con el binario actual** (16 644 134 B / 180,054 s / `45d05a4f…`). Veredicto sobre el BONUS (mejora para Alberto: watcher + notificación ESCALAR con provenance y reintento): **CUMPLE igualmente** — la mejora sigue implementada (`src/filemaid/desktop/watcher.py`) y mostrada; la discrepancia es de documentación, no de rúbrica. NOTA: los agentes de vídeo siguen trabajando en paralelo; esta medida refleja el estado al cierre de mi pasada (HEAD `0573d80`) y puede cambiar bajo mí.
+- Drills [video/data_drills.json, medido]: 4/4 PASS (`rung5-provider-caido`, `backoff-429`, `crash-reanudacion`, `ledger-corrupto`).
+
+### 10.6 Rúbrica — veredicto por criterio (evidencia de esta sección)
+
+| Criterio | Veredicto | Evidencia clave (esta sección) |
+|---|---|---|
+| Producto, arquitectura y ADRs (35) | ✅ CUMPLE con ⚠️ riesgo de conteo | §10.4: 15 págs, escalabilidad+resiliencia pág. 6, 8 ADRs mitigados en pág. 15 |
+| Trazabilidad y observabilidad (20) | ✅ CUMPLE | §10.2: contrato 540/540; 8 reglas v3 y señales `/api/salud\|jobs\|trazas\|reprocesar` sin commits que las toquen; provenance lote 1 documentada (`video/data_outcomes_lote1_NOTA.md`) |
+| Escalabilidad y coste (25) | ✅ CUMPLE (reforzado) | PDF pág. 6 + `docs/capacidad_y_coste.md` + benchmarks local vs remoto commiteados (§9: p50 3,9 s en reposo; `cea047e` solo corrige `resumen()` y añade smoke) |
+| Resiliencia y recuperación (10) | ✅ CUMPLE | Drills 4/4 PASS [§10.5]; retry `_MAX_ATTEMPTS=3` + Retry-After en `cloud_vlm.py` (sin commits que lo toquen desde `65f3ce4`) |
+| Calidad de ejecución (10) | ✅ CUMPLE | 41 ficheros / 295 tests [§10.1]; watcher E2E (19 passed medidos en §9.5, ruta sin cambios desde entonces); UI pulida (`2159e0b`) |
+| Bonus mejora adicional (+10) | ✅ CUMPLE | Watcher + notificación ESCALAR, implementada y mostrada; vídeo re-render 180,054 s [§10.5] con README por resincronizar (hallazgo 3) |
+| Contrato JSONL y cobertura | ✅ CUMPLE | 540/540 filas válidas, 0 incidencias, cobertura exacta 500+40, 0 solapes [§10.2] |
+| Repo de entrega público + teamId | ❌ NO_CUMPLE | `git remote` → 0 líneas; teamId no verificable [§10.3] |
+| Lote 2 (+40 facturas, ERP, regla v4) | ✅ PREPARADO | 40/40 validadas [§10.2]; 3 CSV del lote 2 en disco; `borrador_v4` en `master/rules.yaml:78` con `enabled: false` (sin commits que lo toquen esta pasada); activación pendiente del enunciado |
+
+### 10.7 Hallazgos de esta pasada
+
+1. **P0 (abierto) — Repo de entrega sin publicar**: `git remote` en `/home/deploy/delivery-repo` sigue devolviendo 0 líneas [medido]. Cierre domingo 11:00. Acción: crear repo público, push, teamId en la descripción.
+2. **P0 (abierto) — teamId no verificable**: pendiente manual junto con el push.
+3. **MENOR (NUEVO) — README del vídeo desincronizado del binario tras `f3c0d5d`**: declara 180,000000 s / 8 603 731 B / sha256 `1c8fcf37…` frente a lo medido: 180,054 s / 16 644 134 B / sha256 `45d05a4f…` [§10.5]. No afecta a los 3 entregables de la raíz; corrígelos en el próximo commit de vídeo o documenta el render vigente.
+4. **INFO (NUEVO) — `outcomes*.jsonl` ahora tracked en el repo de solución** (`69165fc`): corrige la nota operacional de §8.3/§9.3; solo el PDF sigue ignorado (`.gitignore:35`) y se sincroniza al delivery-repo por copia. Los hashes commiteados son byte-idénticos a los esperados [§10.3], inocuo para la entrega.
+5. **PARCIAL (sin cambios) — 8 ADRs vs 2-5**: mitigado dentro del PDF (pág. 15).
+6. **MENOR (sin cambios) — Códigos históricos** en ADR-05 / evidencia lote 1 (`video/data_outcomes_lote1_NOTA.md`).
+7. **MENOR (sin cambios) — Costura ERP sin cliente HTTP** en `src/filemaid/` (los 3 CSV del lote 2 en disco).
+8. **INFO — Commiteo paralelo durante la auditoría**: HEAD avanzó de `f3c0d5d` a `0573d80` mientras medía (agentes de vídeo). Ninguno de los 6 commits nuevos desde `2159e0b` altera el contenido de los 3 entregables (hashes estables) ni `master/rules.yaml`. El estado `video/out/` incluye stills de verificación no trackeados (`adv-frame-*`, `corner-verify-*`), ignorable.
+
+### 10.8 Estado de confianza (veredicto global)
+
+**Los 3 entregables siguen en perfecto estado y son estables pese al commiteo paralelo.** Quinta verificación independiente con resultado idéntico: 540/540 filas JSONL válidas bajo el contrato exacto, cobertura 1:1 contra los 540 PDFs, 0 solapes, 0 duplicados, y hashes estables entre repo de solución (donde los JSONL están ahora commitados) y delivery-repo (`67a1acea…`, `34d55cb4…`, `c64db1be…` en ambas copias). El único movimiento de contenido detectado en la pasada es el re-render de vídeo de `f3c0d5d` (bonus, no entregable), con README pendiente de resincronizar.
+
+- **Confianza en los entregables (JSONL + PDF): ALTA** — quinta verificación independiente (base, §7, §8, §9, esta §10) con resultados idénticos y hashes estables.
+- **Confianza en la rúbrica: ALTA** — web recargada sin cambios; todos los criterios con evidencia medida; único riesgo no nulo: el conteo de 8 ADRs vs 2-5 (mitigado dentro del propio PDF, pág. 15).
+- **Bloqueantes de entrega: los mismos 2 P0 operacionales** (push a GitHub + teamId). Sin ellos antes del domingo 11:00, la entrega no puede ser validada por la organización aunque los ficheros son perfectos. La checklist de §6 sigue válida tal cual.
+- **Estado del repo de solución: LIMPIO salvo `docs/auditoria-requisitos.md`** (fichero de otra sesión, no mío); el trabajo de vídeo en paralelo quedó aterrizado en `f3c0d5d`/`f7bb839`/`0573d80` durante la pasada y ningún commit tocó entregables.
