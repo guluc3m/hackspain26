@@ -1,7 +1,7 @@
 # Auditoría de requisitos — Maisa «500 Sombras de Alberto»
 
-**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Base:** `65f3ce4` + trabajo en curso sin commit (vídeo y auditoría)
-**Fecha:** 2026-09-20 (00:15 UTC) · **Alcance:** re-auditoría con verificación adversarial (agente revisor independiente) y verificación puntual de comandos. Los tres entregables YA EXISTEN en la raíz y están validados en esta sesión.
+**Proyecto:** filemaid · **Repo:** `/home/deploy/hackspain26` · **Rama:** `feat/remotion-polish` · **Base:** `961d308` (HEAD de `feat/remotion-polish`)
+**Fecha:** 2026-09-20 (01:24 UTC, addendum AuditReviewer al final) · **Alcance:** re-auditoría con verificación adversarial (agente revisor independiente) y verificación puntual de comandos. Ver addendum «Re-auditoría 2026-09-20 (AuditReviewer)» al final del documento. Los tres entregables YA EXISTEN en la raíz y están validados en esta sesión.
 
 **Respecto a la auditoría anterior (commit `59489fa`)** han entrado 2 commits (`git log 59489fa..HEAD --oneline`): volcado de la escalabilidad al PDF + rule codes reales en el vídeo (`96eeeb9`) y **reintentos con Retry-After en el rung cloud** (`65f3ce4`) que concilia el ADR-05 con el drill `backoff-429`.
 
@@ -50,7 +50,7 @@ Procedimiento y comandos ejecutados íntegramente en esta sesión (Python + `pyp
 
 **Match muestreado contra PDFs reales** — 20 `file_id` elegidos uniformemente al azar por lote (`random.sample(seed=42)`), verificados como ficheros presentes y no vacíos en `caja-de-alberto/facturas/` y `caja-de-alberto/facturas_primin/` respectivamente: **20/20 y 20/20 presentes**. Muestras (5 primeras de cada una): lote 1 = `factura_0998.pdf`, `2026-03-21_P002.pdf`, `2026-01-25_P001.pdf`, `factura_4635.pdf`, `2026-07-04_P005.pdf`; lote 2 = `e02_P002.pdf`, `factura_1221.pdf`, `2026-08-09_P001.pdf`, `factura_6990.pdf`, `FA-7532_informática.pdf`.
 
-**`albertitos_plan.pdf`** — texto extraído con pypdf (16 págs, 139 577 bytes): la sección «3 Escalabilidad y coste» aparece en la **pág. 7** con 1 662 caracteres y abertura «La escalabilidad de filemaid no se afirma: se mide.», seguida de hardware, throughput por escalón, límites prácticos y coste con etiquetas medido/estimado; la mitigación del rango de ADRs (rango pedido 2–5) está en la **pág. 15** (numeración del render): «Los 8 ADRs anteriores son ADICIONES INCREMENTALES, no una lista cerrada: el jurado puede leer los ADR-01–05 como el núcleo arquitectónico y los ADR-06–08 como extensiones sobre decisiones concretas de la corrida real.» El `.typ` fuente declara **8 ADRs** (`grep -c '#adr(' docs/report/albertitos_plan.typ` → **8**), el máximo defendible del rango 2–5 + 3 extensiones sobre la corrida real, mitigado textualmente en el propio PDF.
+**`albertitos_plan.pdf`** — texto extraído con pypdf (16 págs, 139 577 bytes): la sección «3 Escalabilidad y coste» aparece en la **pág. 7** con 1 662 caracteres y abertura «La escalabilidad de filemaid no se afirma: se mide.», seguida de hardware, throughput por escalón, límites prácticos y coste con etiquetas medido/estimado; la mitigación del rango de ADRs (rango pedido 2–5) está en la **pág. 16** (numeración del render): «Los 8 ADRs anteriores son ADICIONES INCREMENTALES, no una lista cerrada: el jurado puede leer los ADR-01–05 como el núcleo arquitectónico y los ADR-06–08 como extensiones sobre decisiones concretas de la corrida real.» El `.typ` fuente declara **8 ADRs** (`grep -c '#adr(' docs/report/albertitos_plan.typ` → **8**), el máximo defendible del rango 2–5 + 3 extensiones sobre la corrida real, mitigado textualmente en el propio PDF.
 
 ### 1.4 Mejora bonus (+10) — identificada e implementada ✅
 
@@ -157,7 +157,7 @@ La página del reto exige: **repo público separado** con **exactamente 3 ficher
 | 9 | Bonus (+10) | ✅ Vídeo 180 s renderizado | ✅ Vídeo verificado escena a escena con 3 defectos de animación corregidos; re-render final pendiente |
 | 10 | Lote 2 sorpresa | ⚠️ Datos listos, sin ensayar | ✅ **Corrido y contrastado** (40/40); ❌ regla v4 sin borrador — hueco principal |
 
-**Lectura global:** la rúbrica está en el mejor estado registrado — todos los criterios con evidencia medible y los 3 entregables validados. Frentes abiertos: publicar el repo de entrega, borrar la regla v4 del sábado y re-render final del vídeo.
+**Lectura global:** la rúbrica está en el mejor estado registrado — todos los criterios con evidencia medible y los 3 entregables validados. Frentes abiertos: publicar el repo de entrega y ensayar la demo en vivo (el borrador de la regla v4 ya está en `master/rules.yaml` y el MP4 está re-renderizado; ver addendum).
 
 ---
 
@@ -181,6 +181,60 @@ La página del reto exige: **repo público separado** con **exactamente 3 ficher
 
 *Re-auditoría ejecutada el 2026-09-19 a las 23:50 UTC sobre el commit `65f3ce4` (árbol limpio salvo artefactos no trackeados: `video/out/`, `.cache/`, `.remotion/`, logs). Verificación principal: `git log/status`, `pypdf` sobre `docs/report/albertitos_plan.pdf` (16 págs, pág. 7 con escalabilidad), `pytest tests/test_openai_rung.py` (11 passed) y `tests/test_rules_engine.py` (17 passed), lectura completa de `src/filemaid/extract/rungs/cloud_vlm.py`, contrastes de conteos 500/40 y match `file_id`↔PDF, `ffprobe`/`mvhd` del vídeo (180 000 ms). Estado del lote 2 consultado en vivo al agente paralelo Lote2Runner por hub.*
 
-*Addendum de re-auditoría (2026-09-20, agente AuditWorker): muestreo adversarial completo registrado en §1.3 — 540/540 líneas JSON válidas, `file_id` basename exacto, 0 duplicados, match 20/20 por lote contra los directorios de facturas, y extracción pypdf del PDF (16 págs; escalabilidad en pág. 7; mitigación del rango 2–5 de ADRs en pág. 15). Bonus identificado e implementado: watcher de escritorio con notificación ESCALAR y reintento (§1.4). Checklist de entrega y pendientes explícitos en §4.*
+*Addendum de re-auditoría (2026-09-20, agente AuditWorker): muestreo adversarial completo registrado en §1.3 — 540/540 líneas JSON válidas, `file_id` basename exacto, 0 duplicados, match 20/20 por lote contra los directorios de facturas, y extracción pypdf del PDF (16 págs; escalabilidad en pág. 7; mitigación del rango 2–5 de ADRs en pág. 16). Bonus identificado e implementado: watcher de escritorio con notificación ESCALAR y reintento (§1.4). Checklist de entrega y pendientes explícitos en §4.*
 *Addendum borrador regla v4 (2026-09-20, agente Rule4Draft):* `master/rules.yaml` incorpora al final una sección raíz `borrador_v4:` DESHABILITADA (`enabled: false`) con la regla hipotética `PEDIDO_EN_REVISION` (FAIL → ESCALAR, jamás PAGAR; thresholds estilo v3: `min_confidence: 0.7`). Es YAML muerto a propósito: el motor no lee `borrador_v4`, y la activación efectiva exige (1) ADR, (2) clase + código en `src/filemaid/rules/rules.py` (`RULE_CODES`/`_RULE_IMPLS`), (3) mover thresholds/outcomes a las secciones vivas y añadir el código a `rules.enabled` tras medir. El caso de uso del sábado que lo motivaría: ERP actualizado con pedidos nuevos en `ABIERTO` (`pedidos_nuevos.csv`) y un asiento ya `PAGADA` (`AS-90001`, `PO-2026-0071`); el código `PEDIDO_EN_REVISION` existe solo en el histórico `runner-1.0.0` (`video/data_outcomes_lote1.jsonl`), no en las 8 reglas actuales.
 *Addendum provenance evidencia lote 1 (2026-09-20, agente ProvenanceFix):* el JSONL de evidencia `video/data_outcomes_lote1.jsonl` NO se regenera; se documenta en `video/data_outcomes_lote1_NOTA.md`. Motivo medido: el store local solo cubre 379/500 file_ids del lote 1 (419 únicos con 421 decisiones) y el lote 1 se corrió en otra máquina — regenerar exigiría ~121 extracciones VLM completas y arriesgaría la distribución 433/22/45 ya renderizada en el vídeo (ADR-06 cambió el motor tras la corrida). La NOTA contiene: advertencia de `engine_version` mixto (392×runner-1.0.0 + 108×runner-1.1.0, config v3.0-2026-09-19 uniforme), mapeo verificado de los 13 códigos históricos → los 8 actuales (`ORDER_AMOUNT_MATCHES` es alias interno del cruce de importe en `ORDER_BELONGS_TO_SUPPLIER`, `rules.py:120-139`; los otros 4 —`NO_EMBEDDED_INSTRUCTIONS`, `PROVEEDOR_FANTASMA`, `AMOUNT_OUTLIER`, `PEDIDO_EN_REVISION`— nunca existieron en el motor, revisión git histórica completa), veredictos medidos por código y justificación de la no-regeneración. Para la defensa: citar `RULE_CODES` como conjunto vigente y la NOTA si el jurado pregunta por los códigos históricos. El entregable `outcomes.jsonl` no se afecta (export solo escribe `file_id`+`result`).
+
+---
+
+## Addendum — Re-auditoría 2026-09-20 01:24 UTC (AuditReviewer)
+
+Re-auditoría independiente sobre el commit `961d308` (HEAD de `feat/remotion-polish`, árbol sucio solo con artefactos no trackeados). Todas las medidas de esta sección son propias, ejecutadas en esta sesión; la rúbrica se contrastó línea a línea contra https://hackathon.maisa.ai/ (100 pts + 10 bonus; desempates por escalabilidad → resiliencia → bonus; defensa de 10 min: 2 demo + 2 arquitectura/ADRs + 4 trazabilidad/escala/coste + 2 resiliencia/preguntas; commit de cierre domingo 11:00). La rúbrica coincide con la reflejada en este documento.
+
+### A.1 Verificación con comandos propios [medido]
+
+**JSONLs (script propio con `json.loads`, no muestreo):**
+
+| Check | `outcomes.jsonl` | `outcomes_lote2.jsonl` |
+|---|---|---|
+| Líneas | **500** | **40** |
+| JSON válido por línea | 500/500 | 40/40 |
+| `file_id` = basename exacto (sin `/`, `\`, prefijos) | 500/500 | 40/40 |
+| `result ∈ {PAGAR, NO_PAGAR, ESCALAR}` | 500/500 | 40/40 |
+| Campos extra distintos de `{file_id, result}` | 0 | 0 |
+| `file_id` únicos / duplicados | 500 / **0** | 40 / **0** |
+| Cobertura exacta (missing / extra contra el directorio) | ∅ / 0 vs 500 PDFs en `caja-de-alberto/facturas/` | ∅ / 0 vs 40 PDFs en `caja-de-alberto/facturas_primin/` |
+| Distribución [medido] | PAGAR **433** / NO_PAGAR **22** / ESCALAR **45** | PAGAR **26** / NO_PAGAR **11** / ESCALAR **3** |
+
+**`albertitos_plan.pdf`** (pypdf 6.19.0 en venv desechable bajo `.cache/pdfenv`, nunca `/tmp`): **16 páginas**, **139 577 bytes** [medido: `stat`]. La sección «3 Escalabilidad y coste» abre la **pág. 7** («La escalabilidad de filemaid no se afirma: se mide.», hardware, throughput por escalón, coste). La mitigación del rango de ADRs está en la **pág. 16**, no en la 15 como decían los addendums anteriores [corregido]: «Los 8 ADRs anteriores son ADICIONES INCREMENTALES, no una lista cerrada: el jurado puede leer los ADR-01–05 como el núcleo arquitectónico…». La palabra «escalabilidad» aparece en las págs. 2, 7, 8, 9, 10 y 12.
+
+**ADRs:** `grep -c '#adr(' docs/report/albertitos_plan.typ` → **8** [medido]. La página del reto pide 2–5; la objeción sigue mitigada por texto en el propio PDF (pág. 16). Riesgo residual si el jurado es estricto con el rango — decidir en la defensa si recortar la numeración o mantener la mitigación.
+
+**Resiliencia (código re-leído):** `src/filemaid/extract/rungs/cloud_vlm.py` mantiene `_MAX_ATTEMPTS = 3`, `_is_retryable()` (429 y 5xx reintentables; otros 4xx fallan sin reintento) y `_retry_delay_s()` (Retry-After con cap 30 s; si no, 1 s / 2 s / 4 s exponencial), con el bucle en `extract()` [medido: lectura]. `uv run pytest tests/test_openai_rung.py` → **11 passed** [medido, esta sesión]. Las afirmaciones de resiliencia de §2.4 siguen siendo ciertas.
+
+**Vídeo (bonus):** `video/out/filemaid.mp4` = **7 525 680 bytes, 180 000 ms exactos** [medido: átomo `mvhd` v0, timescale 1000, duración 180 000]. Mtime 00:33 — es el **re-render posterior a los fixes de animación**; el pendiente «re-render final del MP4» de §4/§6 está CERRADO. Falta la verificación visual de las 8 escenas sobre ESTE render si se quiere blindar (la anterior fue sobre el render previo).
+
+**Citas de `.sdd/metrics/`:** siguen resolviendo; `.sdd/metrics/drills.json` es **byte-idéntico** a `video/data_drills.json` [medido: `cmp`] y `drills.json`, `impacto-fix-colapso.json`, `perfil-carga.json` existen.
+
+### A.2 Estado de los pendientes de §4/§6
+
+| Pendiente | Estado tras esta re-auditoría |
+|---|---|
+| Repo público de entrega separado (P0) | ❌ **SIGUE ABIERTO** — único P0. No puede verificarse desde aquí; es acción manual del equipo. |
+| Regla v4 del sábado (P1) | ✅ **BORRADOR HECHO** — `master/rules.yaml:78` tiene la sección raíz `borrador_v4:` (`enabled: false`, código `PEDIDO_EN_REVISION`, FAIL → ESCALAR, `min_confidence: 0.7`), muerta a propósito hasta el sábado (ADR + clase en `RULE_CODES`/`_RULE_IMPLS` + activación en `rules.enabled`). Los datos que la motivan ya están fusionados y verificados: `master/pedidos.csv` (559 líneas) contiene los 40 pedidos nuevos (`PO-2026-05xx` ×41 coincidencias, estado ABIERTO, p. ej. `PO-2026-0500,A41220987,3139.66,PENDIENTE,no`) y el NIF de `proveedores_nuevos.csv` ya está en `master/proveedores.csv` [medido]. Queda activarla en vivo el sábado. |
+| Re-render final del MP4 (P2) | ✅ **HECHO** — ver A.1. |
+| Demo en vivo de una decisión end-to-end (P2) | ⏳ **SIGUE PENDIENTE** — no hay ensayo grabado ni evidencia nueva en el repo; sigue siendo tarea de defensa, no de repo. |
+| Conector maestro xlsx (P3) | ⏳ **SIGUE ABIERTO** — `src/filemaid/rules/master.py` solo lee `proveedores.csv`/`pedidos.csv` [medido]; sin `openpyxl`/xlsx en `src/filemaid/`. `FINAL_v7_DEFINITIVO_ahorasi.xlsx` existe en `caja-de-alberto/`. Opcional: si se cubre en la demo, explicar la costura manual Excel→CSV. |
+| Provenance del JSONL de evidencia del lote 1 (P1) | ✅ **RESUELTO POR DOCUMENTACIÓN** — `video/data_outcomes_lote1_NOTA.md` existe y el addendum ProvenanceFix lo describe; el entregable no se ve afectado (export = `{file_id, result}` verificado arriba: 0 campos extra). |
+
+### A.3 Checklist final de entrega (lo único que queda para el domingo 11:00)
+
+1. [ ] **P0 — Crear el repo público de GitHub separado** y copiar a su raíz EXACTAMENTE 3 ficheros: `outcomes.jsonl` (500 líneas, 433/22/45), `outcomes_lote2.jsonl` (40 líneas, 26/11/3), `albertitos_plan.pdf` (139 577 bytes, 16 págs). Nada más en la raíz (sin código, sin credenciales, sin README). Los 3 están gitignored aquí → **copiar artefactos, no confiar en git**.
+2. [ ] **P0 — teamId** en la descripción del repo de entrega y URL compartida con la organización ANTES de las 11:00.
+3. [ ] **P0 — Verificación post-copia**: `sha256sum` de los 3 ficheros origen vs destino + re-ejecutar el script de cobertura de A.1 contra los ficheros copiados.
+4. [ ] **P1 — Ensayo del lote 2 en vivo**: activar `borrador_v4` (ADR + código + `rules.enabled`), correr `make erp-lote2` e ingesta con maestros fusionados, y decidir qué reprocesar con la regla nueva.
+5. [ ] **P2 — Verificación visual del MP4 re-renderizado** (8 escenas con stills; la duración ya está medida: 180 000 ms).
+6. [ ] **P2 — Ensayar la demo de 10 min**: una decisión end-to-end en vivo (factura_8801 duplicada → NO_DOUBLE_PAYMENT:FAIL → NO_PAGAR), escalabilidad pág. 7, mitigación ADRs pág. 16, y el fallo de proveedor (drill `backoff-429`).
+7. [ ] **P3 — (Opcional)** conector xlsx o, como mínimo, la explicación de la costura Excel→CSV y del cliente ERP ausente (no hay cliente HTTP del ERP en `src/filemaid/` — decidir cómo se cuenta en la defensa).
+
+**Lectura del addendum:** los tres entregables están validados 1:1 con comandos propios y sin una sola incidencia de formato o cobertura; el re-render del vídeo y el borrador de la regla v4 cerraron desde la última auditoría. La única pieza binaria que queda es **publicar el repo de entrega** (P0, manual); el resto es ensayo de defensa.
