@@ -75,3 +75,10 @@ presentation/render.log
 /src/filemaid/store/pouchdb/node_modules/
 /.sdd/
 /src/filemaid/store/pouchdb/data/
+
+/.cache/
+/.remotion/
+/video/out/
+/lote1_run.log
+/libxkbcommon0_1.7.0-2_amd64.deb
+*.orig
