@@ -20,42 +20,44 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 
 (El compositor se llama `filemaid` y el punto de entrada `src/index.tsx`.)
 
-## Verificación del render
+## Verificación del render final
 
-Fecha: 2026-09-19.
+Fecha: 2026-09-20 (tras el fix de frame local en las escenas Producto y Traza,
+commit 961d308). Render completo con el código actual.
 
 Comando exacto (desde `video/`):
 
 ```sh
-npx remotion render src/index.tsx filemaid out/filemaid-verify.mp4
+npx remotion render src/index.tsx filemaid out/filemaid.mp4
 ```
 
-Medidas (leídas del átomo `mvhd` del MP4, sin ffmpeg en el sistema):
+Medidas (ffprobe de `node_modules/@remotion/compositor-linux-x64-gnu/`):
 
-- Duración: **180,00 s** exactos (timescale 1000, duration 180000; dentro de 180 ± 0,5 s).
-- Tamaño: 6 630 257 bytes (6,32 MB, > 5 MB).
-- sha256: `6d1947041ab43503a01d715400e75263784d95926588c5932d9e8a0dfea77dfd`.
+- Duración: **180,000000 s exactos** (5400 frames).
+- Resolución / fps: **1920×1080 @ 30 fps** (avg_frame_rate 30/1).
+- Tamaño: **8 554 641 bytes (~8,2 MB)**, < 20 MB.
+- sha256: `e661d1896b2fb337ee039f8f770e2666869213d40afa921297f3831eb7c7712c`.
 
-Stills de verificación en `out/`, uno por escena. Dos tandas: `-inicio` en el
-primer frame de cada escena (0, 360, 1050, 1650, 2550, 3600, 4200, 4800) y
-`-fade20` 20 frames después, ya que cada escena entra con un fade-in de
-opacidad 0→1 en sus primeros 14 frames (los `-inicio` son PNG totalmente
-transparentes: comportamiento esperado, no un defecto):
+Stills de verificación en `out/verify-escena{1..8}.png`, generados con
+`npx remotion still` 60 frames después del inicio de cada escena
+(frames 60 / 420 / 1110 / 1710 / 2610 / 3660 / 4260 / 4860), con las
+animaciones ya asentadas. Inspección visual frame a frame:
 
-| Escena | `-inicio` (frame) | `-fade20` (frame) |
+| Escena | Still | Verificado |
 |---|---|---|
-| portada | 0 | 20 |
-| problema | 360 | 380 |
-| producto | 1050 | 1070 |
-| escalera | 1650 | 1670 |
-| traza | 2550 | 2570 |
-| adrs | 3600 | 3620 |
-| resiliencia | 4200 | 4220 |
-| escala | 4800 | 4820 |
+| 1 · Portada | `verify-escena1.png` | FILEMAID + chips FACTURA/DECISIÓN/TRAZA, sin solapes |
+| 2 · El problema | `verify-escena2.png` | 3 tarjetas (500/Excel/ERP 2009), badges PAGAR teal, NO_PAGAR rojo, ESCALAR naranja |
+| 3 · Producto | `verify-escena3.png` | 5 filas de features + screenshot dashboard, sin solapes |
+| 4 · Escalera | `verify-escena4.png` | Escalones con latencias medidas (rung1 < 1 ms → VLM local ~1,7 s) |
+| 5 · Trazabilidad | `verify-escena5.png` + `verify-escena5b.png` (frame 2700) | Los 8 rule codes visibles en las 3 columnas; NO_PAGAR rojo, ESCALAR naranja |
+| 6 · ADRs | `verify-escena6.png` | Motor determinista + ADR-06 con 86 corregidos / 0 regresiones |
+| 7 · Resiliencia | `verify-escena7.png` | Drills PASS (provider-caído, backoff-429, crash-reanudación); ledger-corrupto entra con el stagger posterior |
+| 8 · Escala | `verify-escena8.png` | 120,1 s ≈ 4,162 files/s, 0,00 € cloud medido |
 
-Verificación visual (portada, traza, escala): texto legible sin cortes ni
-overflow, paleta papel crema con tinta oscura y acentos, sin gradientes ni
-elementos rotos.
+Nota sobre la escena 5: en el frame 2610 los rule codes aún están entrando
+(delay escalonado `40 + i*8 + j*4` desde el inicio de la escena); en el frame
+2700 (`verify-escena5b.png`) los 8 códigos de RULE_CODES están asentados en
+las tres columnas. Animación viva confirmada comparando ambos frames.
 
 ## Datos que usa
 
