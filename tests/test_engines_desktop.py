@@ -29,6 +29,8 @@ def test_api_expone_el_puente_de_vigilancia(cfg):
         "error",
         "processed",
         "pending",
+        "poll_interval",
+        "last_scan",
         "notifications",
     }
     assert estado["enabled"] is False
