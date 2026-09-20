@@ -710,8 +710,8 @@ export const FilemaidVideo: React.FC = () => {
   useFonts();
   return (
     <>
-      {/* Música de fondo suave (Worker B), 180 s exactos ≈ 5400 frames, bajo la voz. */}
-      <Audio src={staticFile('music.wav')} volume={0.12} />
+      {/* Pista externa (ver README → Audio), 180 s exactos ≈ 5400 frames, muy baja bajo la voz. */}
+      <Audio src={staticFile('music_yt.wav')} volume={0.07} />
       <Portada />
       <Problema />
       <Producto />

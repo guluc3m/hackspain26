@@ -21,7 +21,8 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 (El compositor se llama `filemaid` y el punto de entrada `src/index.tsx`.)
 
 > **Artefactos trackeados a propósito**: `video/out/filemaid.mp4` y los wav de
-> `video/narracion/` + `video/public/` (voz y música) están versionados en git
+> `video/narracion/` + `video/public/` (voz y música, incluida la pista externa
+> `public/music_yt.wav`) están versionados en git
 > por decisión del product owner aunque sean binarios generados. Los dos TTFs
 > que sirve el render viven en `video/public/fonts/` (copia byte a byte de
 > `frontend/public/fonts/`) y se registran desde `src/fonts.ts`.
@@ -31,7 +32,17 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 El vídeo lleva dos pistas, integradas por Remotion en el render:
 
 - **Voz** (volumen 1.0): narración en español generada con **piper** `es_ES-carlfm-x_low`, una por escena, colocada dentro de la `Sequence` de cada escena según la tabla de colocación de `narracion/SPEC.md` (duraciones reales: esc1 9,72 s … esc8 17,70 s). Los textos narrados son los de `narracion/guion_tts.md` (fuente de verdad, no reescribir). Los wavs servidos en el render viven en `public/narracion/esc{1..8}.wav` (copia de `narracion/esc{1..8}.wav`).
-- **Música** (volumen ≈ 0.10–0.14): pad ambiente suave, sin ritmo marcado que compita con la voz. 180 s exactos en `public/music.wav`, generada con `narracion/make_music.py` (solo stdlib).
+- **Música** (volumen **0.07**, deliberadamente muy por debajo de la voz): pista **externa** servida en `public/music_yt.wav`, descargada de <https://www.youtube.com/watch?v=JMfYqpLLAnc> (solo audio) y normalizada a **180 s exactos**, 44,1 kHz estéreo PCM 16 bit, con fade-in de 1,5 s y fade-out de 3 s.
+
+> ⚠️ **Aviso de copyright**: `public/music_yt.wav` es **material de terceros con
+> copyright** (tema publicado en YouTube), no música propia del proyecto y no se
+> reclama su autoría. Se usa como banda sonora de fondo del vídeo entregado;
+> antes de cualquier publicación o difusión externa hay que revisar la licencia
+> del tema original con su titular.
+
+El pad anterior (`narracion/make_music.py` → `public/music.wav`) **se conserva**
+en el repo (y sigue siendo reproducible con semilla fija), pero **ya no lo usa la
+composición**: `src/FilemaidVideo.tsx` monta únicamente `music_yt.wav`.
 
 Regenerar la voz (piper con el modelo `es_ES-carlfm-x_low`). El texto de cada
 escena no está en ficheros sueltos: vive en `narracion/guion_tts.md` (fuente de
@@ -46,10 +57,10 @@ for i in 1 2 3 4 5 6 7 8; do
 done
 ```
 
-Regenerar la música y copiar los wavs a `public/` (ambos comandos desde `video/`, que es el cwd del que parte `make_music.py` para escribir `public/music.wav`):
+Regenerar el pad antiguo y copiar los wavs a `public/` (ambos comandos desde `video/`, que es el cwd del que parte `make_music.py` para escribir `public/music.wav`). Del bloque solo se usa la voz: el pad **no** entra en el render actual:
 
 ```sh
-python3 narracion/make_music.py        # escribe public/music.wav (180 s exactos, semilla fija: reproducible)
+python3 narracion/make_music.py        # escribe public/music.wav (180 s exactos, semilla fija: reproducible) — ya NO lo usa la composición
 cp narracion/esc{1..8}.wav public/narracion/
 ```
 
@@ -64,7 +75,7 @@ for f in narracion/esc{1..8}.wav; do ffprobe -v error -show_entries format=durat
 Fecha: 2026-09-20. Render **final, con voz + música integradas**: es el MP4 que
 se entrega, `out/filemaid.mp4`.
 
-Comando exacto (desde `video/`), tiempo de pared **179,5 s**:
+Comando exacto (desde `video/`), tiempo de pared **179 s**:
 
 ```sh
 npx remotion render src/index.tsx filemaid out/filemaid.mp4 --concurrency 14
@@ -76,9 +87,13 @@ Medidas del MP4 entregado (ffprobe del binario incluido en
 - Duración de vídeo: **5400 frames = 180,000000 s exactos** (el contenedor
   reporta 180,053333 s: relleno del codificador AAC).
 - Resolución / fps: **h264 1920×1080 @ 30 fps** (avg_frame_rate 30/1); pista de
-  audio **aac** presente (voz 1.0 + música 0.12).
-- Tamaño: **16 603 446 bytes (~16,6 MB)**, < 20 MB.
-- sha256: `a5e63546866cf2b1955dc701be1ef277cdf19bfbe54a04745d20cc2c12655092`.
+  audio **aac** presente (voz 1.0 + música 0.07).
+- Sonoridad del mix (`volumedetect`): **mean −20,6 dB / max −2,7 dB**. En los
+  huecos sin voz la pista suena sola a **≈ −45 dB**, es decir **~27 dB por
+  debajo** de la voz (escenas medidas a ≈ −17 dB): la música queda claramente
+  subordinada a la narración. El pico lo marca la voz, no la música.
+- Tamaño: **16 605 156 bytes (~16,6 MB)**, < 20 MB.
+- sha256: `290a47a02438ed390932df01a3d5f9839b7d15630c71137ba0bad142bf15ad4a`.
 
 Stills de verificación del último pase en `out/rt-<frame>.png`, generados con
 `npx remotion still`: las fronteras de cada tiempo narrativo (P→S→B/C) y los
