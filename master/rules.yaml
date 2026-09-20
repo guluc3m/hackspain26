@@ -66,3 +66,22 @@ seleccion:
       format_tests: [AMOUNT_NON_NEGATIVE]
     iva_rate:
       format_tests: [AMOUNT_NON_NEGATIVE]
+# BORRADOR regla v4 (sábado) — DESHABILITADA. Caso de uso: con el ERP actualizado
+# (pedidos_nuevos.csv, pedidos en ABIERTO; AS-90001 ya PAGADA), Alberto añade la
+# regla PEDIDO_EN_REVISION: si el pedido citado pasa a EN_REVISION en el ERP, la
+# factura es duda razonable ⇒ ESCALAR (jamás PAGAR). Código real del histórico
+# runner-1.0.0 (video/data_outcomes_lote1.jsonl: PEDIDO_EN_REVISION:UNKNOWN).
+# El motor actual NO la soporta como datos: activarla exige ADR + código en
+# src/filemaid/rules/rules.py (RULE_CODES/_RULE_IMPLS); tras medir su efecto
+# sobre el lote, mover thresholds/outcomes a las secciones vivas, añadir el
+# código a rules.enabled y fijar min_confidence con la distribución medida.
+borrador_v4:
+  enabled: false
+  code: PEDIDO_EN_REVISION
+  descripcion: >-
+    FAIL si el pedido existe en el ERP pero su estado es EN_REVISION (no
+    ABIERTO/PENDIENTE); UNKNOWN si el pedido no está o la lectura es dudosa.
+  thresholds:
+    min_confidence: 0.7
+  outcomes:
+    on_fail: ESCALAR  # duda razonable: escalar antes que pagar; JAMÁS PAGAR

@@ -200,18 +200,21 @@ const Producto: React.FC = () => {
 
 // ── 4 · Escalera ─────────────────────────────────────────────────────────────
 const Escalera: React.FC = () => {
-  const f = useCurrentFrame();
+  // Frame local a la escena: los delays de rise() son relativos al inicio.
+  const f = useCurrentFrame() - SCENES.slice(0, 3).reduce((a, s) => a + s.frames, 0);
   return (
     <Escena idx={3}>
       <Frame>
         <SectionKicker n="ARQUITECTURA · EXTRACCIÓN" title="La escalera de confianza" />
         <div style={{ display: 'flex', gap: 40 }}>
           <div style={{ flex: 1.35 }}>
+            {/* Máx 5 bullets: escalones 1–4 primero, se desvanecen (405–425) mientras 5–7 entran (2 pasos, mismos boundaries). */}
             {ESCALERA.map((e, i) => (
               <div key={e.n} style={{
-                ...rise(f, 15 + i * 11), display: 'grid', gridTemplateColumns: '60px 1fr 220px',
+                ...rise(f, i < 4 ? 15 + i * 11 : 425 + (i - 4) * 18), display: 'grid', gridTemplateColumns: '60px 1fr 220px',
                 gap: 16, alignItems: 'center', background: i < 4 ? C.okBg : C.panel,
                 border: `2px solid ${C.ink}`, padding: '10px 18px', marginBottom: 8,
+                ...(i < 4 ? { opacity: interpolate(f, [405, 425], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) } : {}),
               }}>
                 <div style={{
                   fontFamily: DISPLAY, fontSize: 26, background: C.ink, color: C.paper,
@@ -263,11 +266,10 @@ const VerdictBadge: React.FC<{ result: string; size?: number }> = ({ result, siz
     </span>
   );
 };
-
-const Regla: React.FC<{ code: string; state: 'PASS' | 'FAIL' | 'UNKNOWN' }> = ({ code, state }) => {
+const Regla: React.FC<{ code: string; state: 'PASS' | 'FAIL' | 'UNKNOWN'; f: number; delay?: number }> = ({ code, state, f, delay = 0 }) => {
   const color = state === 'PASS' ? C.teal : state === 'FAIL' ? C.red : C.orange;
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 25, padding: '7px 14px', borderBottom: `1px solid ${C.borderSoft}` }}>
+    <div style={{ ...rise(f, delay), display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 25, padding: '7px 14px', borderBottom: `1px solid ${C.borderSoft}` }}>
       <span>{code}</span>
       <span style={{ color, fontWeight: 800 }}>{state}</span>
     </div>
@@ -275,7 +277,8 @@ const Regla: React.FC<{ code: string; state: 'PASS' | 'FAIL' | 'UNKNOWN' }> = ({
 };
 
 const Traza: React.FC = () => {
-  const f = useCurrentFrame();
+  // Frame local a la escena: los delays de rise() son relativos al inicio.
+  const f = useCurrentFrame() - SCENES.slice(0, 4).reduce((a, s) => a + s.frames, 0);
   // Los 8 rule_ids reales (RULE_CODES) con el estado que salió en la corrida
   // real: lo que no está en `notPass` del caso salió PASS.
   const estados = (caso: { file_id: string; result: string; notPass: readonly string[]; nota: string }) =>
@@ -295,7 +298,7 @@ const Traza: React.FC = () => {
               <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700 }}>{caso.file_id}</div>
               <div style={{ margin: '12px 0 8px' }}><VerdictBadge result={caso.result} size={34} /></div>
               <div style={{ border: `2px solid ${C.ink}`, background: C.panel }}>
-                {estados(caso).map((r) => <Regla key={r.code} code={r.code} state={r.state} />)}
+                {estados(caso).map((r, j) => <Regla key={r.code} code={r.code} state={r.state} f={f} delay={40 + i * 8 + j * 4} />)}
               </div>
               <div style={{ marginTop: 10, fontSize: 22, color: C.brown }}>{caso.nota}</div>
             </div>

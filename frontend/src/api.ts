@@ -311,11 +311,23 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
+let authKey: string | null = null
+
+/** Clave del runtime (`server_api_key`): una carga por llamada de fetch, cacheada. */
+async function authHeader(): Promise<Record<string, string>> {
+  if (authKey === null) {
+    authKey = SINTETICO ? '' : await request<{ server_api_key: string }>('/api/config', undefined, 'GET')
+      .then(cfg => cfg.server_api_key || '')
+      .catch(() => '')
+  }
+  return authKey ? { Authorization: `Bearer ${authKey}` } : {}
+}
+
 async function request<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
-  const options: RequestInit = {}
+  const options: RequestInit = { headers: await authHeader() }
   if (body !== undefined) {
     options.method = method
-    options.headers = { 'Content-Type': 'application/json' }
+    options.headers = { ...options.headers, 'Content-Type': 'application/json' }
     options.body = JSON.stringify(body)
   } else if (method !== 'POST') {
     options.method = method
@@ -325,7 +337,7 @@ async function request<T>(path: string, body?: unknown, method = 'POST'): Promis
 
 /** Subida multipart: cada fichero va como parte `files` con su ruta relativa. */
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
-  return handleResponse<T>(await fetch(path, { method: 'POST', body: form }))
+  return handleResponse<T>(await fetch(path, { method: 'POST', body: form, headers: await authHeader() }))
 }
 
 const realApi: Api = {
