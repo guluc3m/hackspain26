@@ -157,6 +157,9 @@ def percentil(valores: list[float], p: float) -> float:
 
 
 def resumen(vals: list[float]) -> dict:
+    if not vals:  # fase omitida (p. ej. --concurrente 0)
+        return {"n": 0, "media_ms": None, "p50_ms": None, "p95_ms": None,
+                "min_ms": None, "max_ms": None}
     return {
         "n": len(vals),
         "media_ms": round(statistics.fmean(vals), 1),
@@ -233,7 +236,8 @@ def main() -> None:
             "resumen": resumen(lat_conc),
             "wall_clock_ms": conc["wall_clock_ms"],
             "throughput_equiv_paginas_por_min": round(
-                len(lat_conc) / (conc["wall_clock_ms"] / 60000), 2),
+                len(lat_conc) / (conc["wall_clock_ms"] / 60000), 2)
+                if lat_conc else None,
         },
         "todas_devolvieron_ocr": todo_ok,
         "coste_eur": 0.0,
@@ -246,9 +250,9 @@ def main() -> None:
     print(f"escrito: {salida}")
     print(f"serial      p50={doc['serial']['resumen']['p50_ms']:.0f} ms  "
           f"p95={doc['serial']['resumen']['p95_ms']:.0f} ms  (n={len(lat_seriales)})")
-    print(f"concurren.  p50={doc['concurrente']['resumen']['p50_ms']:.0f} ms  "
-          f"p95={doc['concurrente']['resumen']['p95_ms']:.0f} ms  (n={len(lat_conc)}, "
-          f"c={args.concurrencia}, wall {conc['wall_clock_ms'] / 1000:.1f} s)")
+    print(f"concurren.  p50={doc['concurrente']['resumen']['p50_ms'] if lat_conc else '—'} "
+          f"p95={doc['concurrente']['resumen']['p95_ms'] if lat_conc else '—'} "
+          f"(n={len(lat_conc)}, c={args.concurrencia}, wall {conc['wall_clock_ms'] / 1000:.1f} s)")
 
 
 if __name__ == "__main__":
