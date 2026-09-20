@@ -39,6 +39,13 @@ async function load(reset = false) {
   }
 }
 
+/** Recarga con debounce al teclear: menos clics sin martillear la API. */
+let temporizador: ReturnType<typeof setTimeout> | undefined
+function cargarEnVivo() {
+  if (temporizador !== undefined) clearTimeout(temporizador)
+  temporizador = setTimeout(() => load(true), 250)
+}
+
 // llega de un botón «logs» de una factura: mismo sistema de filtro
 onMounted(() => {
   invoiceFiltro.value = logsInvoice.value
@@ -86,22 +93,26 @@ const hasta = () => Math.min(offset.value + (data.value?.items.length ?? 0), tot
       aria-label="Filtrar por nombre de factura"
       placeholder="factura (nombre de fichero)…"
       title="Solo las entradas de esta factura"
+      @input="cargarEnVivo"
     />
     <input
       v-model="q"
       aria-label="Buscar texto libre en las entradas"
       placeholder="buscar…"
+      @input="cargarEnVivo"
     />
-    <select v-model="eventType" aria-label="Filtrar por tipo de evento">
+    <select v-model="eventType" aria-label="Filtrar por tipo de evento" @change="load(true)">
       <option value="">todos los tipos</option>
       <option v-for="t in data?.types ?? []" :key="t" :value="t">{{ t }}</option>
     </select>
-    <select v-model.number="limit" aria-label="Entradas por página">
+    <select v-model.number="limit" aria-label="Entradas por página" @change="load(true)">
       <option :value="100">100 / pág.</option>
       <option :value="200">200 / pág.</option>
       <option :value="500">500 / pág.</option>
     </select>
-    <button type="submit" class="primary" :disabled="cargando">Buscar</button>
+    <noscript>
+      <button type="submit" class="primary" :disabled="cargando">Buscar</button>
+    </noscript>
     <button v-if="invoiceFiltro" type="button" class="link" @click="quitarFiltro">
       quitar filtro de factura
     </button>
