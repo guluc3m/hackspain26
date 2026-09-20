@@ -157,11 +157,11 @@ const Producto: React.FC = () => {
   const cap = CAPTURAS[idx];
   const capIn = fade(lf - idx * 200, 0, 14);
   const pasos = [
-    { icon: '📁', t: 'Watcher de carpeta', s: 'suelta PDFs → se ingesta sola' },
-    { icon: '🌙', t: 'Lote 24/7', s: 'sin prompts: nadie duerme con el proceso' },
-    { icon: '🔔', t: 'Notificación nativa', s: 'Qt al escritorio solo al ESCALAR' },
-    { icon: '🧾', t: 'Revisión humana', s: 'candidatos lado a lado, override con procedencia' },
-    { icon: '🔁', t: 'Sync CouchDB', s: 'replicación nativa, facturas disputadas retenidas' },
+    { n: '1', t: 'Watcher de carpeta', s: 'suelta PDFs → se ingesta sola', bonus: true, hl: false },
+    { n: '2', t: 'Lote 24/7', s: 'sin prompts: nadie duerme con el proceso', bonus: false, hl: false },
+    { n: '3', t: 'Notificación nativa', s: 'Qt al escritorio solo al ESCALAR', bonus: true, hl: true },
+    { n: '4', t: 'Revisión humana', s: 'candidatos lado a lado, override con procedencia', bonus: false, hl: false },
+    { n: '5', t: 'Sync CouchDB', s: 'replicación nativa, facturas disputadas retenidas', bonus: false, hl: false },
   ];
   return (
     <Escena idx={2}>
@@ -169,15 +169,30 @@ const Producto: React.FC = () => {
         <SectionKicker n="EL PRODUCTO" title="Una app de escritorio, no un script" />
         <div style={{ display: 'flex', gap: 30 }}>
           <div style={{ flex: 1 }}>
+            <div style={{ ...rise(f, 8), fontFamily: MONO, fontSize: 21, color: C.brown, letterSpacing: 2, marginBottom: 12 }}>
+              INGESTA → DECISIÓN → REVISIÓN → SYNC
+            </div>
             {pasos.map((p, i) => (
               <div key={p.t} style={{
-                ...rise(f, 20 + i * 16), display: 'flex', alignItems: 'center', gap: 18,
-                background: C.panel, border: `2px solid ${C.ink}`, padding: '12px 20px',
+                ...rise(f, 22 + i * 16), display: 'flex', alignItems: 'center', gap: 16,
+                background: C.panel, border: `2px solid ${C.ink}`, padding: '11px 18px',
                 marginBottom: 12,
               }}>
-                <div style={{ fontSize: 36 }}>{p.icon}</div>
-                <div style={{ fontFamily: DISPLAY, fontSize: 27, width: 400 }}>{p.t}</div>
-                <div style={{ fontSize: 24, color: C.brown }}>{p.s}</div>
+                <div style={{
+                  fontFamily: DISPLAY, fontSize: 22, background: C.ink, color: C.paper,
+                  width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>{p.n}</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 26, width: 360, flexShrink: 0 }}>{p.t}</div>
+                <div style={{
+                  fontSize: 23, flex: 1, ...(p.hl ? { color: C.orange, fontWeight: 700 } : { color: C.brown }),
+                }}>{p.s}</div>
+                {p.bonus && (
+                  <span style={{
+                    fontFamily: MONO, fontSize: 16, fontWeight: 700, letterSpacing: 1,
+                    background: C.gold, color: C.ink, padding: '3px 8px', flexShrink: 0,
+                  }}>BONUS</span>
+                )}
               </div>
             ))}
           </div>
@@ -208,25 +223,40 @@ const Escalera: React.FC = () => {
         <SectionKicker n="ARQUITECTURA · EXTRACCIÓN" title="La escalera de confianza" />
         <div style={{ display: 'flex', gap: 40 }}>
           <div style={{ flex: 1.35 }}>
-            {/* Máx 5 bullets: escalones 1–4 primero, se desvanecen (405–425) mientras 5–7 entran (2 pasos, mismos boundaries). */}
+            {/* Tabla de los 7 escalones: qué corre · velocidad · coste · % corpus, de un vistazo. */}
+            <div style={{
+              ...rise(f, 8), display: 'grid', gridTemplateColumns: '54px 1fr 150px 140px 110px',
+              gap: 14, padding: '0 18px 6px', fontFamily: MONO, fontSize: 16, color: C.brown, letterSpacing: 1,
+            }}>
+              <div />
+              <div>QUÉ CORRE</div>
+              <div style={{ textAlign: 'right' }}>VELOCIDAD</div>
+              <div style={{ textAlign: 'right' }}>COSTE</div>
+              <div style={{ textAlign: 'right' }}>CORPUS</div>
+            </div>
             {ESCALERA.map((e, i) => (
               <div key={e.n} style={{
-                ...rise(f, i < 4 ? 15 + i * 11 : 425 + (i - 4) * 18), display: 'grid', gridTemplateColumns: '60px 1fr 220px',
-                gap: 16, alignItems: 'center', background: i < 4 ? C.okBg : C.panel,
-                border: `2px solid ${C.ink}`, padding: '10px 18px', marginBottom: 8,
-                ...(i < 4 ? { opacity: interpolate(f, [405, 425], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) } : {}),
+                ...rise(f, 15 + i * 9), display: 'grid', gridTemplateColumns: '54px 1fr 150px 140px 110px',
+                gap: 14, alignItems: 'center', background: i < 4 ? C.okBg : C.panel,
+                border: `2px solid ${C.ink}`, padding: '7px 18px', marginBottom: 6,
               }}>
                 <div style={{
-                  fontFamily: DISPLAY, fontSize: 26, background: C.ink, color: C.paper,
-                  width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: DISPLAY, fontSize: 22, background: C.ink, color: C.paper,
+                  width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>{e.n}</div>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: 28 }}>{e.tech}</div>
-                  <div style={{ fontSize: 22, color: C.brown }}>{e.sub}</div>
+                  <div style={{ fontWeight: 800, fontSize: 24 }}>{e.tech}</div>
+                  <div style={{ fontSize: 18, color: C.brown }}>{e.sub}</div>
                 </div>
-                <div style={{ textAlign: 'right', fontFamily: MONO, fontSize: 22 }}>
-                  <div style={{ color: C.teal }}>{e.speed}</div>
-                  <div style={{ color: C.orange }}>{e.cost}</div>
+                <div style={{ textAlign: 'right', fontFamily: MONO, fontSize: 20, color: C.teal }}>{e.speed}</div>
+                <div style={{ textAlign: 'right', fontFamily: MONO, fontSize: 20, color: C.orange }}>{e.cost}</div>
+                <div style={{ textAlign: 'right' }}>
+                  {e.n === 1 ? (
+                    <span style={{
+                      fontFamily: MONO, fontSize: 18, fontWeight: 700,
+                      background: C.gold, color: C.ink, padding: '3px 7px', whiteSpace: 'nowrap',
+                    }}>{METRICS.textoUsablePct} %</span>
+                  ) : <span style={{ fontFamily: MONO, fontSize: 20, color: C.brown }}>—</span>}
                 </div>
               </div>
             ))}

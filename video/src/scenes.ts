@@ -63,12 +63,13 @@ export const METRICS = {
   vlmCloudMeanMs: 1555,
 } as const;
 
-// Escalera de extracción (docs/report/architecture.typ)
+// Escalera de extracción (docs/report/architecture.typ); velocidad del escalón 4
+// = MEDIDA en el lote 1 (data_lote1.json: 33,9 s/página), no la estimación de arquitectura.
 export const ESCALERA = [
   { n: 1, tech: 'Texto vectorial', sub: 'pypdf · filtro anti-mojibake', cost: '0 €', speed: '< 1 ms', pct: 94.2 },
   { n: 2, tech: 'Rasterizado + QR', sub: 'pypdfium2 + zxing · 300 DPI', cost: '0 €', speed: '~40 ms', pct: 5.8 },
   { n: 3, tech: 'Tesseract OCR', sub: 'doble puerta: word-conf + cobertura', cost: '0 €', speed: '~150 ms' },
-  { n: 4, tech: 'VLM local', sub: 'PaddleOCR-VL 1.6 Q8 · llama-server', cost: '0 €', speed: '~1,7 s' },
+  { n: 4, tech: 'VLM local', sub: 'PaddleOCR-VL 1.6 Q8 · llama-server', cost: '0 €', speed: '~34 s' },
   { n: 5, tech: 'TypeSafe System One', sub: 'decisiones tipadas paralelas', cost: '~0,04 $/Mtok', speed: '~560 ms' },
   { n: 6, tech: 'Firecrawl parse', sub: 'rescate de tablas complejas', cost: '1 credit', speed: '~1,2 s' },
   { n: 7, tech: 'Cloud VLM >25B', sub: 'último recurso · candidato, nunca respuesta', cost: 'pago token', speed: '~3 s' },
@@ -76,9 +77,9 @@ export const ESCALERA = [
 
 export const DRILLS = [
   { name: 'rung5-provider-caido', detail: 'proveedor caído → cola de revisión, el lote sigue' },
-  { name: 'backoff-429', detail: 'Retry-After respetado, 0 llamadas extra' },
+  { name: 'backoff-429', detail: '429×2 con Retry-After respetado → 3 llamadas exactas' },
   { name: 'crash-reanudacion', detail: 'crash al índice 2 → reanuda, 0 duplicados' },
-  { name: 'ledger-corrupto', detail: 'ledger dañado → store consistente' },
+  { name: 'ledger-corrupto', detail: 'líneas corruptas ignoradas, sin datos inventados' },
 ] as const;
 
 // 8 reglas reales — RULE_CODES en src/filemaid/rules/rules.py (orden alfabético)

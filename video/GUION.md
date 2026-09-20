@@ -22,7 +22,7 @@
 3. `IVA_CONSISTENT` — base + IVA = total (tolerancia 0,01 €).
 4. `NIF_IN_MASTER` — el NIF del proveedor está en el maestro.
 5. `NO_DOUBLE_PAYMENT` — el documento no es un duplicado ya pagado.
-6. `ORDER_BELONGS_TO_SUPPLIER` — el pedido existe, pertenece al proveedor y **el importe de la factura cuadra con el importe del pedido** (tolerancia 0,01 €; el cruce de importe vive dentro de esta regla, rules.py:94–152).
+6. `ORDER_BELONGS_TO_SUPPLIER` — el pedido existe, pertenece al proveedor y **el importe de la factura cuadra con el importe del pedido** (tolerancia 0,01 €; el cruce de importe vive dentro de esta regla, rules.py:94–146).
 7. `ORDER_PENDING` — el pedido está pendiente de pago (no ya servido/cerrado).
 8. `TOTALS_MUST_MATCH` — los totales declarados cuadran con la suma de líneas.
 

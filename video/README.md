@@ -22,8 +22,8 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 
 ## Verificación del render final
 
-Fecha: 2026-09-20 (tras el fix de frame local en las escenas Producto y Traza,
-commit 961d308). Render completo con el código actual.
+Fecha: 2026-09-20. Render completo con el código vigente en la rama
+`feat/remotion-polish` (incluye el pulido de escenas de esta rama).
 
 Comando exacto (desde `video/`):
 
@@ -35,8 +35,8 @@ Medidas (ffprobe de `node_modules/@remotion/compositor-linux-x64-gnu/`):
 
 - Duración: **180,000000 s exactos** (5400 frames).
 - Resolución / fps: **1920×1080 @ 30 fps** (avg_frame_rate 30/1).
-- Tamaño: **8 554 641 bytes (~8,2 MB)**, < 20 MB.
-- sha256: `e661d1896b2fb337ee039f8f770e2666869213d40afa921297f3831eb7c7712c`.
+- Tamaño: **8 603 731 bytes (~8,2 MB)**, < 20 MB.
+- sha256: `1c8fcf371d7dfc579e6b489638722704865bbefce6683ac7c00e09c9a873e4d3`.
 
 Stills de verificación en `out/verify-escena{1..8}.png`, generados con
 `npx remotion still` 60 frames después del inicio de cada escena
@@ -59,6 +59,26 @@ Nota sobre la escena 5: en el frame 2610 los rule codes aún están entrando
 2700 (`verify-escena5b.png`) los 8 códigos de RULE_CODES están asentados en
 las tres columnas. Animación viva confirmada comparando ambos frames.
 
+## Cómo se verificó
+
+1. **ffprobe del MP4 final** (binario incluido en
+   `node_modules/@remotion/compositor-linux-x64-gnu/`): duración
+   180,000000 s, 1920×1080, avg_frame_rate 30/1.
+2. **sha256 + tamaño**: `sha256sum out/filemaid.mp4` y `stat -c %s`
+   sobre el MP4 renderizado con el código vigente.
+3. **Stills por escena**: `npx remotion still` en los frames 60 / 420 /
+   1110 / 1710 / 2610 / 3660 / 4260 / 4860 (60 frames tras el inicio de
+   cada escena, animaciones asentadas) → `out/verify-escena{1..8}.png`,
+   más `out/verify-escena5b.png` (frame 2700) para la escena de
+   trazabilidad con los 8 rule codes ya entrados. Inspección visual de
+   cada still: sin solapes, colores de badge correctos, datos idénticos
+   a los ficheros `data_*.json`.
+4. **Cruce con la fuente de verdad**: cada cifra en pantalla se cotejó
+   contra `data_lote1.json`, `data_dryrun.json`, `data_drills.json`,
+   `data_impacto.json` y los tres casos reales de
+   `data_outcomes_lote1.jsonl`; las 8 reglas contra `RULE_CODES` de
+   `src/filemaid/rules/rules.py`.
+
 ## Datos que usa
 
 Todo lo que aparece en pantalla sale de ficheros medidos del repo; nada está inventado:
@@ -75,4 +95,4 @@ Las 8 reglas mostradas son exactamente `RULE_CODES` de `src/filemaid/rules/rules
 (DATE_VALID_NOT_FUTURE, IBAN_MATCHES_MASTER, IVA_CONSISTENT, NIF_IN_MASTER,
 NO_DOUBLE_PAYMENT, ORDER_BELONGS_TO_SUPPLIER, ORDER_PENDING, TOTALS_MUST_MATCH).
 El cruce de importe factura↔pedido vive dentro de `ORDER_BELONGS_TO_SUPPLIER`
-(rules.py:94–152). Detalle completo en `GUION.md`.
+(rules.py:94–146). Detalle completo en `GUION.md`.
