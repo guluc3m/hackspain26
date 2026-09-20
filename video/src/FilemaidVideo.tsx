@@ -86,7 +86,7 @@ const Portada: React.FC = () => {
           </div>
           <div style={{ width: 420, height: 10, background: C.gold, margin: '28px 0' }} />
           <div style={{ fontSize: 52, color: C.brown, opacity: fade(f, 25) }}>
-            De 500 facturas a una decisión
+            De 500 facturas a una decisión — para Alberto
           </div>
           <div style={{ marginTop: 70, opacity: fade(f, 55) }}>
             <Chip label="FACTURA" color={C.brown} bg={C.panel} />
