@@ -41,12 +41,32 @@ class ResolveIn(BaseModel):
 
 
 class ConnectionIn(BaseModel):
+    """Cuerpo de PUT /api/config.
+
+    Claves de los últimos peldaños de la escalera (Firecrawl, VLM cloud y
+    TypeSafe System One): son opcionales y valen en ambos modos, porque un
+    standalone es justo donde se quiere un respaldo cloud opcional.
+
+    - Campo ausente o "" → se conserva la clave guardada.
+    - La máscara devuelta por GET ("****abcd" o "••••abcd") → se conserva.
+    - Cualquier otro valor no vacío → reemplaza la clave.
+    - clear_keys=True → borra las tres de golpe.
+
+    Una clave ausente nunca es un error: el peldaño se omite (skipped:<motivo>).
+    server_api_key mantiene su comportamiento actual (token del sync nativo,
+    guardado tal cual).
+    """
+
     mode: str
     sync_url: str = Field(default="", max_length=2048)
     vlm_url: str = Field(default="", max_length=2048)
     vlm_model: str = Field(default="", max_length=256)
     server_api_key: str = Field(default="", max_length=4096)
     local_vlm_fallback: bool = False
+    firecrawl_api_key: str = Field(default="", max_length=4096)
+    cloud_vlm_api_key: str = Field(default="", max_length=4096)
+    typesafe_api_key: str = Field(default="", max_length=4096)
+    clear_keys: bool = False
 
 
 def _vlm_status(cfg: AppConfig, settings: RuntimeSettings) -> dict:
@@ -193,14 +213,16 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
 
     @app.get("/api/config")
     def connection() -> dict:
-        return settings.get()
+        # Las claves de los últimos peldaños salen siempre enmascaradas; el token
+        # del sync nativo (server_api_key) mantiene su contrato actual.
+        return settings.masked()
 
     @app.put("/api/config")
     def configure(body: ConnectionIn) -> dict:
         try:
             # Durable local save first: a remote outage must never discard the
             # confirmed configuration. Sync/provision run in the background.
-            saved = settings.save(body.model_dump())
+            saved = settings.save(settings.resolve_rung_keys(body.model_dump()))
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if saved["mode"] == "server":
@@ -210,7 +232,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
                 get_provisioner(cfg).ensure()
             except Exception:
                 pass
-        return saved
+        return settings.masked()
 
     @app.post("/api/sync")
     def sync_now() -> dict:

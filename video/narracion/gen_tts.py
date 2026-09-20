@@ -2,11 +2,17 @@
 """Genera la voz narrada del vídeo (esc1..esc8) con piper.
 
 Los textos salen de `guion_tts.md` (fuente de verdad narrativa: este script no
-los reescribe). El ritmo se autoregula por escena con `--length-scale` para que
-cada toma **llene** su escena: holgura objetivo 0,8–1,5 s, nunca menos de 0,5 s
-(límite duro) ni más de 2,0 s (aire muerto).
+los reescribe). Cada toma debe **llenar** su escena:
 
     presupuesto = frames/30 − VOZ_delay ;  holgura = presupuesto − toma
+
+Holgura objetivo 0,8–1,5 s; nunca >2,0 s (aire muerto) ni <0,5 s (límite duro).
+
+Medido: con la prosodia del modelo, la duración de piper es **estocástica**
+(desviación ≈0,57 s por toma) y `--length-scale` apenas manda (≈+2,5 % de 0,90 a
+1,12; sublineal fuera de ese rango). Por eso el script **mide la toma real** y
+repite la síntesis hasta que cae en el objetivo: `--length-scale` se ajusta como
+mando fino y el reparto real lo decide la longitud del texto.
 
 Escribe `video/narracion/escN.wav` y su copia byte-idéntica en
 `video/public/narracion/escN.wav` (la que sirve `staticFile`).
@@ -14,7 +20,8 @@ Escribe `video/narracion/escN.wav` y su copia byte-idéntica en
 Uso:
     python3 narracion/gen_tts.py                 # regenera las 8 tomas
     python3 narracion/gen_tts.py --only 3,5,7    # solo algunas escenas
-    python3 narracion/gen_tts.py --dry-run       # mide y reporta, no escribe
+    python3 narracion/gen_tts.py --dry-run       # sintetiza y mide, no escribe
+    python3 narracion/gen_tts.py --measure       # media/sd por escena (calibrar texto)
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ import hashlib
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -43,11 +51,12 @@ SCENE_IDS = ["portada", "problema", "producto", "escalera", "traza", "adrs", "re
 FRAMES = [360, 690, 600, 900, 1050, 600, 600, 600]
 VOZ_FRAMES = [30, 30, 36, 60, 75, 45, 30, 30]
 
-SLACK_MIN = 0.8
-SLACK_MAX = 1.5
-SLACK_HARD = 0.5
+SLACK_MIN = 0.8       # objetivo
+SLACK_MAX = 1.5       # objetivo
+SLACK_HARD = 0.5      # límite duro (nunca menos)
+SLACK_AIR = 2.0       # aire muerto (nunca más)
 SLACK_TARGET = (SLACK_MIN + SLACK_MAX) / 2
-LS_MIN, LS_MAX, LS_TOL = 0.90, 1.12, 0.005
+LS_MIN, LS_MAX, LS_STEP = 0.90, 1.12, 0.02
 
 HEADER = re.compile(r"^\*\*esc(\d+) \(([^)]*)\):\*\*\s*$")
 
@@ -84,59 +93,56 @@ def wav_seconds(path: Path) -> float:
 
 
 class Synth:
-    """piper envuelto: sintetiza a wav temporal y mide la duración."""
+    """Envuelve el CLI de piper: sintetiza a wav temporal y mide la duración."""
 
     def __init__(self, piper: str, model: Path, tmpdir: Path):
         self.piper = piper
         self.model = model
         self.tmpdir = tmpdir
-        self.cache: dict[tuple[int, float], tuple[float, Path]] = {}
+        self.rolls = 0
 
-    def at(self, idx: int, text: str, ls: float) -> tuple[float, Path]:
-        key = (idx, round(ls, 4))
-        if key in self.cache:
-            return self.cache[key]
-        out = self.tmpdir / f"esc{idx + 1}-ls{ls:.4f}.wav"
+    def roll(self, idx: int, text: str, ls: float) -> tuple[float, Path]:
+        self.rolls += 1
+        out = self.tmpdir / f"esc{idx + 1}-ls{ls:.2f}-r{self.rolls}.wav"
         cmd = [self.piper, "-m", str(self.model), "-f", str(out), "--length-scale", f"{ls:.4f}"]
         res = subprocess.run(cmd, input=text.encode("utf-8"), capture_output=True)
         if res.returncode != 0:
             raise SystemExit(f"piper falló (esc{idx + 1}, ls={ls}):\n{res.stderr.decode('utf-8', 'replace')}")
-        measured = (wav_seconds(out), out)
-        self.cache[key] = measured
-        return measured
+        return wav_seconds(out), out
 
 
-def fit(synth: Synth, idx: int, text: str, budget: float) -> tuple[float, float, Path, str]:
-    """Busca el `--length-scale` que deja la holgura más cerca del objetivo."""
-    d_slow, p_slow = synth.at(idx, text, LS_MAX)
-    slack_slow = budget - d_slow
-    if slack_slow > SLACK_MAX:
-        return LS_MAX, d_slow, p_slow, "AIRE"
+def fit(synth: Synth, idx: int, text: str, budget: float, rolls_max: int):
+    """Sintetiza hasta que la toma medida cae en la ventana de holgura."""
+    ls = 1.0
+    attempts: list[tuple[float, float, float]] = []
+    best = None  # (error vs objetivo, ls, dur, path, slack, dentro de la ventana)
+    for _ in range(rolls_max):
+        dur, path = synth.roll(idx, text, ls)
+        slack = budget - dur
+        attempts.append((ls, dur, slack))
+        in_window = SLACK_MIN <= slack <= SLACK_MAX
+        ok_hard = SLACK_HARD <= slack <= SLACK_AIR
+        cand = (abs(slack - SLACK_TARGET), ls, dur, path, slack, in_window)
+        if (in_window or ok_hard) and (best is None or cand[0] < best[0]):
+            best = cand
+        if in_window:
+            return ls, dur, path, slack, "OK", attempts
+        mean_slack = statistics.fmean(a[2] for a in attempts)
+        if mean_slack > SLACK_MAX and ls < LS_MAX:
+            ls = min(LS_MAX, ls + LS_STEP)
+        elif mean_slack < SLACK_MIN and ls > LS_MIN:
+            ls = max(LS_MIN, ls - LS_STEP)
 
-    d_fast, p_fast = synth.at(idx, text, LS_MIN)
-    slack_fast = budget - d_fast
-    if slack_fast < SLACK_HARD:
-        return LS_MIN, d_fast, p_fast, "FUERA"
+    if best is not None:
+        _, ls, dur, path, slack, _ = best
+        return ls, dur, path, slack, "WARN", attempts
 
-    lo, hi = LS_MIN, LS_MAX
-    while hi - lo > LS_TOL:
-        mid = (lo + hi) / 2
-        d_mid, _ = synth.at(idx, text, mid)
-        if budget - d_mid > SLACK_TARGET:
-            lo = mid
-        else:
-            hi = mid
-
-    best = None
-    for ls in (lo, hi, (lo + hi) / 2):
-        d, p = synth.at(idx, text, ls)
-        err = abs((budget - d) - SLACK_TARGET)
-        if best is None or err < best[3]:
-            best = (ls, d, p, err)
-    ls, d, p, _ = best
-    slack = budget - d
-    state = "OK" if SLACK_MIN <= slack <= SLACK_MAX else ("HOLGURA BAJA" if slack >= SLACK_HARD else "FUERA")
-    return ls, d, p, state
+    mean_slack = statistics.fmean(a[2] for a in attempts)
+    hint = "más largo" if mean_slack > SLACK_MAX else "más corto"
+    raise SystemExit(
+        f"esc{idx + 1}: no hay toma válida en {rolls_max} intentos (holgura media {mean_slack:+.3f} s, "
+        f"límites {SLACK_HARD}–{SLACK_AIR} s) — el texto debe ser {hint}"
+    )
 
 
 def sha256(path: Path) -> str:
@@ -147,17 +153,24 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def budgets() -> list[float]:
+    return [FRAMES[i] / FPS - VOZ_FRAMES[i] / FPS for i in range(8)]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", help="índices 1..8 separados por comas (por defecto: todas)")
-    ap.add_argument("--dry-run", action="store_true", help="mide y reporta sin escribir wavs")
+    ap.add_argument("--dry-run", action="store_true", help="sintetiza y mide, pero no escribe wavs")
+    ap.add_argument("--measure", action="store_true", help="solo calibración: media/sd de cada texto a --ls")
+    ap.add_argument("--ls", type=float, default=1.0, help="length-scale a usar en --measure")
+    ap.add_argument("--rolls", type=int, default=12, help="intentos máximos por escena")
     ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1), help="escenas en paralelo")
     ap.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     ap.add_argument("--piper", default=shutil.which("piper") or str(Path.home() / ".local/bin/piper"))
     args = ap.parse_args()
 
     if not Path(args.piper).exists():
-        raise SystemExit(f"no encuentro el binario de piper: {args.piper} (instala con `uv tool install piper-tts`)")
+        raise SystemExit(f"no encuentro el binario de piper: {args.piper} (`uv tool install piper-tts`)")
     if not args.model.exists():
         raise SystemExit(f"no encuentro el modelo: {args.model}")
 
@@ -172,50 +185,55 @@ def main() -> int:
         if bad:
             raise SystemExit(f"--only fuera de rango: {bad}")
 
-    synth = Synth(args.piper, args.model, Path(tempfile.mkdtemp(prefix="gen-tts-")))
-    budgets = [FRAMES[i] / FPS - VOZ_FRAMES[i] / FPS for i in range(8)]
-
+    tmpdir = Path(tempfile.mkdtemp(prefix="gen-tts-"))
+    synth = Synth(args.piper, args.model, tmpdir)
+    budget = budgets()
+    os.environ.setdefault("OMP_NUM_THREADS", "4")
     try:
-        os.environ.setdefault("OMP_NUM_THREADS", "4")
+        if args.measure:
+            k = max(2, args.rolls)
+
+            def calibrate(n: int):
+                return [synth.roll(n - 1, texts[n], args.ls)[0] for _ in range(k)]
+
+            with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+                samples = list(pool.map(calibrate, wanted))
+            print(f"{'#':>2}  {'escena':<11} {'palabras':>8} {'media s':>8} {'sd s':>6} {'presup. s':>9} {'holgura media s':>15}")
+            for n, ds in zip(wanted, samples):
+                b = budget[n - 1]
+                print(f"{n:>2}  {SCENE_IDS[n - 1]:<11} {len(texts[n].split()):>8} {statistics.fmean(ds):>8.3f} "
+                      f"{statistics.stdev(ds):>6.3f} {b:>9.2f} {b - statistics.fmean(ds):>15.3f}")
+            return 0
+
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            results = list(pool.map(lambda n: fit(synth, n - 1, texts[n], budgets[n - 1]), wanted))
+            results = list(pool.map(lambda n: fit(synth, n - 1, texts[n], budget[n - 1], args.rolls), wanted))
 
         if not args.dry_run:
             NARR.mkdir(parents=True, exist_ok=True)
             PUBLIC.mkdir(parents=True, exist_ok=True)
 
-        rows = []
-        for n, (ls, dur, tmp, state) in zip(wanted, results):
-            idx = n - 1
-            budget = budgets[idx]
-            slack = budget - dur
+        print(f"{'#':>2}  {'escena':<11} {'palabras':>8} {'ls':>5} {'toma s':>8} {'presup. s':>9} "
+              f"{'holgura s':>9} {'intentos':>8}  estado")
+        bad = []
+        for n, (ls, dur, tmp, slack, state, attempts) in zip(wanted, results):
             if not args.dry_run:
-                dst = NARR / f"esc{n}.wav"
-                pub = PUBLIC / f"esc{n}.wav"
+                dst, pub = NARR / f"esc{n}.wav", PUBLIC / f"esc{n}.wav"
                 shutil.copyfile(tmp, dst)
                 shutil.copyfile(tmp, pub)
                 if sha256(dst) != sha256(pub):
                     raise SystemExit(f"esc{n}: las copias de narracion/ y public/ no coinciden")
-            rows.append((n, ls, dur, budget, slack, state))
-
-        print(f"{'#':>2}  {'escena':<11} {'palabras':>8} {'ls':>6} {'toma s':>8} {'presup. s':>9} {'holgura s':>9}  estado")
-        for n, ls, dur, budget, slack, state in rows:
-            print(f"{n:>2}  {SCENE_IDS[n - 1]:<11} {len(texts[n].split()):>8} {ls:>6.3f} {dur:>8.3f} {budget:>9.2f} {slack:>9.3f}  {state}")
-        if not args.dry_run:
-            print(f"\nescrito {len(rows)} toma(s) en {NARR} y {PUBLIC} (byte-idénticas)")
-        else:
-            print("\n(dry-run: no se escribió nada)")
-
-        bad = [r for r in rows if r[5] == "FUERA"]
+            print(f"{n:>2}  {SCENE_IDS[n - 1]:<11} {len(texts[n].split()):>8} {ls:>5.2f} {dur:>8.3f} "
+                  f"{budget[n - 1]:>9.2f} {slack:>9.3f} {len(attempts):>8}  {state}")
+            if state == "WARN":
+                bad.append(n)
+        print(f"\n{synth.rolls} síntesis en total; "
+              f"{'dry-run: no se escribió nada' if args.dry_run else f'escrito en {NARR} y {PUBLIC} (byte-idénticas)'}")
         if bad:
-            for n, _, dur, budget, slack, _ in bad:
-                need = "más corto" if slack < 0 else "más largo"
-                print(f"ERROR esc{n}: toma {dur:.3f} s, presupuesto {budget:.2f} s, holgura {slack:.3f} s "
-                      f"(límite duro {SLACK_HARD} s) — el texto debe ser {need}", file=sys.stderr)
-            return 1
+            print(f"AVISO: esc{','.join(map(str, bad))} quedaron fuera de la ventana 0,8–1,5 s "
+                  f"(dentro del límite duro {SLACK_HARD}–{SLACK_AIR} s)", file=sys.stderr)
         return 0
     finally:
-        shutil.rmtree(synth.tmpdir, ignore_errors=True)
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 if __name__ == "__main__":

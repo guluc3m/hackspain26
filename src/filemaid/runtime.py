@@ -23,7 +23,31 @@ _DEFAULT = {
     "vlm_model": "",
     "server_api_key": "",
     "local_vlm_fallback": False,
+    # Claves opcionales de los últimos peldaños de la escalera (Firecrawl, VLM
+    # cloud, TypeSafe System One). A diferencia de los endpoints remotos sí son
+    # significativas en ambos modos: standalone es justo donde se quiere un
+    # respaldo cloud opcional. Nunca entran en versiones, evidencias ni trazas.
+    "firecrawl_api_key": "",
+    "cloud_vlm_api_key": "",
+    "typesafe_api_key": "",
 }
+
+# Claves de los últimos peldaños: se guardan aquí, nunca se replican (_local/*).
+RUNG_KEYS = ("firecrawl_api_key", "cloud_vlm_api_key", "typesafe_api_key")
+
+_MASK_PREFIX = "****"
+_MASK_PREFIX_UNICODE = "••••"
+
+
+def mask_secret(value: str) -> str:
+    """Máscara ASCII segura para JSON: solo los 4 últimos caracteres, nunca la clave."""
+    return f"{_MASK_PREFIX}{value[-4:]}" if value else ""
+
+
+def is_masked_secret(value: str) -> bool:
+    """Máscara devuelta por la lectura de la API (ASCII o con puntos suspensivos)."""
+    value = value.strip()
+    return value.startswith(_MASK_PREFIX) or value.startswith(_MASK_PREFIX_UNICODE)
 
 
 def endpoint(value: str, name: str) -> str:
@@ -62,13 +86,52 @@ class RuntimeSettings:
             "vlm_model": saved.get("vlm_model", ""),
             "server_api_key": saved.get("server_api_key", ""),
             "local_vlm_fallback": bool(saved.get("local_vlm_fallback", False)),
+            **{key: str(saved.get(key, "") or "") for key in RUNG_KEYS},
             "configured": True,
         }
         return self._coerce(values)
 
+    def masked(self) -> dict:
+        """Lectura para la API: las claves de los últimos peldaños nunca salen en claro.
+
+        Devuelve el mismo documento que ``get()`` con cada clave sustituida por su
+        máscara (``""`` si no hay nada guardado) más el booleano ``<key>_set`` que
+        permite a la UI decir "hay clave" sin conocer el valor.
+        """
+        values = self.get()
+        for key in RUNG_KEYS:
+            secret = str(values.get(key) or "")
+            values[key] = mask_secret(secret)
+            values[f"{key}_set"] = bool(secret)
+        return values
+
+    def resolve_rung_keys(self, values: dict) -> dict:
+        """Semántica de PUT /api/config para las claves de los últimos peldaños.
+
+        Campo ausente o ``""`` y la máscara que devuelve ``masked()`` conservan la
+        clave guardada; cualquier otro valor no vacío la reemplaza;
+        ``clear_keys=True`` borra las tres de una vez.
+        """
+        stored = self.get()
+        merged = {key: value for key, value in values.items() if key != "clear_keys"}
+        clear = bool(values.get("clear_keys"))
+        for key in RUNG_KEYS:
+            raw = str(merged.get(key) or "").strip()
+            if clear:
+                merged[key] = ""
+            elif raw and not is_masked_secret(raw):
+                merged[key] = raw
+            else:
+                merged[key] = stored.get(key, "")
+        return merged
+
     @staticmethod
     def _coerce(values: dict) -> dict:
-        """Standalone never keeps remote endpoints, model or server key."""
+        """Standalone never keeps remote endpoints, model or server key.
+
+        The optional last-rung API keys are the exception: they mean the same in
+        both modes, so coercion always preserves them.
+        """
         if values["mode"] == "standalone":
             values["sync_url"] = ""
             values["vlm_url"] = ""
@@ -82,6 +145,8 @@ class RuntimeSettings:
         if mode not in {"standalone", "server"}:
             raise ValueError("Seleccione standalone o server")
         vlm_model = str(values.get("vlm_model", "")).strip()
+        # Optional in both modes: an absent key means "rung skipped", never an error.
+        rung_keys = {key: str(values.get(key, "") or "").strip() for key in RUNG_KEYS}
         if mode == "standalone":
             return {
                 "mode": "standalone",
@@ -90,6 +155,7 @@ class RuntimeSettings:
                 "vlm_model": "",
                 "server_api_key": "",
                 "local_vlm_fallback": False,
+                **rung_keys,
             }
         sync_url = str(values.get("sync_url", "")).strip()
         if not sync_url:
@@ -108,6 +174,7 @@ class RuntimeSettings:
             "vlm_model": vlm_model,
             "server_api_key": server_api_key,
             "local_vlm_fallback": bool(values.get("local_vlm_fallback", False)),
+            **rung_keys,
         }
 
     def save(self, values: dict) -> dict:

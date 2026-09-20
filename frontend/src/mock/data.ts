@@ -791,6 +791,12 @@ let mockConfig: RuntimeConfig = {
   vlm_model: '',
   local_vlm_fallback: false,
   server_api_key: '',
+  firecrawl_api_key: '',
+  cloud_vlm_api_key: '',
+  typesafe_api_key: '',
+  firecrawl_api_key_set: false,
+  cloud_vlm_api_key_set: false,
+  typesafe_api_key_set: false,
   configured: true
 }
 let mockSyncStatus: SyncStatus = {
@@ -799,6 +805,35 @@ let mockSyncStatus: SyncStatus = {
   last_sync: null,
   ok: true,
   error: null
+}
+
+// Claves de los últimos peldaños: el mock guarda el valor en claro y sirve la
+// máscara, igual que el backend (nunca devuelve el secreto al leer).
+let mockRungKeys = {
+  firecrawl_api_key: '',
+  cloud_vlm_api_key: '',
+  typesafe_api_key: ''
+}
+
+function conClavesEnmascaradas(cfg: RuntimeConfig): RuntimeConfig {
+  const mask = (value: string) => (value ? `****${value.slice(-4)}` : '')
+  return {
+    ...cfg,
+    firecrawl_api_key: mask(mockRungKeys.firecrawl_api_key),
+    firecrawl_api_key_set: mockRungKeys.firecrawl_api_key !== '',
+    cloud_vlm_api_key: mask(mockRungKeys.cloud_vlm_api_key),
+    cloud_vlm_api_key_set: mockRungKeys.cloud_vlm_api_key !== '',
+    typesafe_api_key: mask(mockRungKeys.typesafe_api_key),
+    typesafe_api_key_set: mockRungKeys.typesafe_api_key !== ''
+  }
+}
+
+/** Vacío o máscara conservan la clave guardada; clear_keys borra las tres. */
+function resolverClaveGuardada(guardada: string, entrada: string | undefined, clear: boolean): string {
+  if (clear) return ''
+  const raw = (entrada || '').trim()
+  if (!raw || raw.startsWith('****') || raw.startsWith('••••')) return guardada
+  return raw
 }
 // Estado VLM sintético: la referencia local se declara lista sin verificación
 // real (no hay modelo ni binario en modo sintético).
@@ -834,9 +869,15 @@ export const mockApi = {
   salud: async () => SALUD,
   logs: async (params: { q?: string; event_type?: string; invoice?: string; limit?: number; offset?: number }) =>
     logs(params),
-  getConfig: async () => ({ ...mockConfig }),
+  getConfig: async () => conClavesEnmascaradas({ ...mockConfig }),
   saveConfig: async (cfg: RuntimeConfigInput) => {
     const standalone = cfg.mode === 'standalone'
+    const clear = cfg.clear_keys === true
+    mockRungKeys = {
+      firecrawl_api_key: resolverClaveGuardada(mockRungKeys.firecrawl_api_key, cfg.firecrawl_api_key, clear),
+      cloud_vlm_api_key: resolverClaveGuardada(mockRungKeys.cloud_vlm_api_key, cfg.cloud_vlm_api_key, clear),
+      typesafe_api_key: resolverClaveGuardada(mockRungKeys.typesafe_api_key, cfg.typesafe_api_key, clear)
+    }
     mockConfig = {
       mode: cfg.mode,
       sync_url: standalone ? '' : cfg.sync_url,
@@ -844,6 +885,12 @@ export const mockApi = {
       vlm_model: standalone ? '' : cfg.vlm_model,
       local_vlm_fallback: standalone ? false : cfg.local_vlm_fallback,
       server_api_key: standalone ? '' : cfg.server_api_key,
+      firecrawl_api_key: '',
+      cloud_vlm_api_key: '',
+      typesafe_api_key: '',
+      firecrawl_api_key_set: false,
+      cloud_vlm_api_key_set: false,
+      typesafe_api_key_set: false,
       configured: true
     }
     mockSyncStatus = {

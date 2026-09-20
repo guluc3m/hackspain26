@@ -174,11 +174,29 @@ export interface RuntimeConfig {
   local_vlm_fallback: boolean
   /** Clave de API del servidor (solo modo servidor); nunca se muestra ni se registra. */
   server_api_key: string
+  /**
+   * Claves de los últimos peldaños (Firecrawl, VLM cloud y TypeSafe System One):
+   * opcionales y válidas en ambos modos, guardadas solo en este dispositivo.
+   * Al leer llegan enmascaradas ("****abcd"); vacío = sin clave (peldaño omitido).
+   */
+  firecrawl_api_key: string
+  cloud_vlm_api_key: string
+  typesafe_api_key: string
+  /** Derivados por el backend: hay clave guardada, sin revelar el valor. */
+  firecrawl_api_key_set: boolean
+  cloud_vlm_api_key_set: boolean
+  typesafe_api_key_set: boolean
   /** Derivado por el backend desde la base de datos; nunca autoridad del payload. */
   configured: boolean
 }
 
-/** Payload de PUT /api/config: `configured` lo deriva el backend. */
+/**
+ * Payload de PUT /api/config: `configured` lo deriva el backend.
+ *
+ * Claves de los últimos peldaños: campo ausente o vacío y la máscara que
+ * devuelve GET conservan la clave guardada; cualquier otro valor no vacío la
+ * reemplaza; `clear_keys: true` borra las tres. `server_api_key` se guarda tal cual.
+ */
 export interface RuntimeConfigInput {
   mode: 'standalone' | 'server'
   sync_url: string
@@ -186,6 +204,10 @@ export interface RuntimeConfigInput {
   vlm_model: string
   local_vlm_fallback: boolean
   server_api_key: string
+  firecrawl_api_key?: string
+  cloud_vlm_api_key?: string
+  typesafe_api_key?: string
+  clear_keys?: boolean
 }
 
 export type VlmState = 'idle' | 'downloading' | 'starting' | 'ready' | 'error' | 'remote-only'

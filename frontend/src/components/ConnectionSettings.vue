@@ -25,6 +25,12 @@ const vlmUrl = ref('')
 const vlmModel = ref('')
 const localVlmFallback = ref(false)
 const serverApiKey = ref('')
+// Claves de los últimos peldaños: se escriben solo si el usuario teclea algo; el
+// campo vacío conserva la clave ya guardada (nunca se reenvía la máscara).
+const firecrawlApiKey = ref('')
+const cloudVlmApiKey = ref('')
+const typesafeApiKey = ref('')
+const clearKeys = ref(false)
 
 const loading = ref(true)
 const saving = ref(false)
@@ -110,6 +116,20 @@ function aplicar(cfg: RuntimeConfig) {
   vlmModel.value = cfg.vlm_model || ''
   localVlmFallback.value = cfg.local_vlm_fallback === true
   serverApiKey.value = cfg.server_api_key || ''
+  // Las claves nunca se rehidratan en claro (llegan enmascaradas): el campo
+  // queda vacío y muestra la máscara guardada como placeholder.
+  firecrawlApiKey.value = ''
+  cloudVlmApiKey.value = ''
+  typesafeApiKey.value = ''
+  clearKeys.value = false
+}
+
+/** Marca las tres claves para borrar: se aplica al guardar, junto al resto. */
+function marcarBorradoClaves() {
+  firecrawlApiKey.value = ''
+  cloudVlmApiKey.value = ''
+  typesafeApiKey.value = ''
+  clearKeys.value = true
 }
 
 async function cargarVlm() {
@@ -144,6 +164,17 @@ async function guardar() {
   }
 
   saving.value = true
+  // Las claves de los últimos peldaños valen en ambos modos y solo cambian si
+  // el usuario teclea algo (vacío = conservar) o marca Borrar claves.
+  const clavesRemotas: Pick<
+    RuntimeConfigInput,
+    'firecrawl_api_key' | 'cloud_vlm_api_key' | 'typesafe_api_key' | 'clear_keys'
+  > = {
+    firecrawl_api_key: firecrawlApiKey.value.trim(),
+    cloud_vlm_api_key: cloudVlmApiKey.value.trim(),
+    typesafe_api_key: typesafeApiKey.value.trim(),
+    clear_keys: clearKeys.value
+  }
   // En autónomo se limpian los campos remotos y el fallback: siempre local.
   const payload: RuntimeConfigInput = isServerMode.value
     ? {
@@ -152,7 +183,8 @@ async function guardar() {
         vlm_url: vlmUrl.value.trim(),
         vlm_model: vlmModel.value.trim(),
         local_vlm_fallback: localVlmFallback.value,
-        server_api_key: serverApiKey.value.trim()
+        server_api_key: serverApiKey.value.trim(),
+        ...clavesRemotas
       }
     : {
         mode: 'standalone',
@@ -160,7 +192,8 @@ async function guardar() {
         vlm_url: '',
         vlm_model: '',
         local_vlm_fallback: false,
-        server_api_key: ''
+        server_api_key: '',
+        ...clavesRemotas
       }
 
   try {
@@ -381,6 +414,85 @@ async function provisionar() {
             </span>
           </span>
         </label>
+      </fieldset>
+
+      <!-- Escalones remotos opcionales: valen en ambos modos, solo en este dispositivo -->
+      <fieldset class="endpoints-fieldset">
+        <legend class="section-legend">Escalones remotos (últimos peldaños)</legend>
+        <p class="offline-note muted">
+          Claves opcionales de los últimos peldaños de la escalera: TypeSafe System One
+          (5), Firecrawl (6) y VLM cloud (7). Un peldaño sin clave se omite; con clave
+          se intenta como lectura candidata antes de degradar. Se guardan solo en este
+          dispositivo; no se sincronizan ni aparecen en evidencias.
+        </p>
+
+        <div class="field-group">
+          <label for="input-typesafe-api-key">TypeSafe System One (peldaño 5)</label>
+          <input
+            id="input-typesafe-api-key"
+            v-model="typesafeApiKey"
+            type="password"
+            :placeholder="savedConfig?.typesafe_api_key || 'sin clave (peldaño omitido)'"
+            :disabled="saving || syncing"
+            aria-describedby="typesafe-api-key-help"
+            autocomplete="off"
+          />
+          <span id="typesafe-api-key-help" class="help-text muted">
+            <template v-if="savedConfig?.typesafe_api_key_set">
+              Guardada: <span class="mono">{{ savedConfig?.typesafe_api_key }}</span> ·
+            </template>
+            Se guarda solo en este dispositivo; no se sincroniza ni aparece en evidencias.
+          </span>
+        </div>
+
+        <div class="field-group">
+          <label for="input-firecrawl-api-key">Firecrawl (peldaño 6)</label>
+          <input
+            id="input-firecrawl-api-key"
+            v-model="firecrawlApiKey"
+            type="password"
+            :placeholder="savedConfig?.firecrawl_api_key || 'sin clave (peldaño omitido)'"
+            :disabled="saving || syncing"
+            aria-describedby="firecrawl-api-key-help"
+            autocomplete="off"
+          />
+          <span id="firecrawl-api-key-help" class="help-text muted">
+            <template v-if="savedConfig?.firecrawl_api_key_set">
+              Guardada: <span class="mono">{{ savedConfig?.firecrawl_api_key }}</span> ·
+            </template>
+            Se guarda solo en este dispositivo; no se sincroniza ni aparece en evidencias.
+          </span>
+        </div>
+
+        <div class="field-group">
+          <label for="input-cloud-vlm-api-key">VLM cloud (peldaño 7)</label>
+          <input
+            id="input-cloud-vlm-api-key"
+            v-model="cloudVlmApiKey"
+            type="password"
+            :placeholder="savedConfig?.cloud_vlm_api_key || 'sin clave (peldaño omitido)'"
+            :disabled="saving || syncing"
+            aria-describedby="cloud-vlm-api-key-help"
+            autocomplete="off"
+          />
+          <span id="cloud-vlm-api-key-help" class="help-text muted">
+            <template v-if="savedConfig?.cloud_vlm_api_key_set">
+              Guardada: <span class="mono">{{ savedConfig?.cloud_vlm_api_key }}</span> ·
+            </template>
+            Se guarda solo en este dispositivo; no se sincroniza ni aparece en evidencias.
+          </span>
+        </div>
+
+        <div class="keys-actions">
+          <button
+            type="button"
+            class="retry-btn"
+            :disabled="saving || syncing"
+            @click="marcarBorradoClaves"
+          >
+            {{ clearKeys ? 'Claves marcadas; guarde para borrarlas' : 'Borrar claves' }}
+          </button>
+        </div>
       </fieldset>
 
       <!-- Estado del VLM local -->
@@ -707,6 +819,11 @@ fieldset {
   margin-top: 8px;
   font-size: 12px;
   padding: 4px 10px;
+}
+
+.keys-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .message-box {

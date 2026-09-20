@@ -5,7 +5,8 @@ import InvoiceDrawer from '../components/InvoiceDrawer.vue'
 
 const items = ref<ReviewItem[]>([])
 const error = ref('')
-const cargando = ref(false)
+const cargando = ref(false) // petición en vuelo (primera carga o refresco de 10 s)
+const cargado = ref(false) // la primera carga ya resolvió: la tabla tiene datos reales
 const drawerId = ref<string | null>(null)
 const busyKey = ref<string | null>(null)
 
@@ -20,6 +21,7 @@ async function load() {
     error.value = String(e)
   } finally {
     cargando.value = false
+    cargado.value = true
   }
 }
 
@@ -52,12 +54,22 @@ async function confirmar(it: ReviewItem) {
   </p>
 
   <div class="toolbar">
-    <span class="muted">{{ items.length }} pendiente(s)</span>
+    <span v-if="cargado" class="muted">{{ items.length }} pendiente(s)</span>
+    <span v-else class="cargando" aria-live="polite">
+      <span class="spinner mini"></span> Cargando revisiones…
+    </span>
+    <span v-if="cargando && cargado" class="refresco" aria-live="polite">
+      <span class="spinner mini"></span> actualizando…
+    </span>
   </div>
 
   <p v-if="error" class="error" role="alert">{{ error }}</p>
 
-  <div class="panel table-panel">
+  <div
+    class="panel table-panel"
+    :class="{ recargando: cargando && cargado }"
+    :aria-busy="cargando"
+  >
     <table>
       <thead>
         <tr>
@@ -89,9 +101,21 @@ async function confirmar(it: ReviewItem) {
             <button type="button" @click="drawerId = it.file_key">Revisar</button>
           </td>
         </tr>
-        <tr v-if="items.length === 0">
+        <tr v-if="cargado && items.length === 0">
           <td colspan="6" class="muted">sin disputas pendientes</td>
         </tr>
+        <!-- primera carga: filas de esqueleto con la geometría real de la tabla;
+             el panel nunca se queda vacío ni anuncia «sin disputas» sin saberlo -->
+        <template v-if="!cargado">
+          <tr v-for="n in 3" :key="`esqueleto-${n}`" class="esqueleto-fila" aria-hidden="true">
+            <td><span class="esqueleto esq-fichero"></span></td>
+            <td><span class="esqueleto esq-badge"></span></td>
+            <td><span class="esqueleto esq-badge"></span></td>
+            <td><span class="esqueleto esq-motivo"></span></td>
+            <td><span class="esqueleto esq-desde"></span></td>
+            <td><span class="esqueleto esq-acciones"></span></td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
@@ -102,5 +126,18 @@ async function confirmar(it: ReviewItem) {
 <style scoped>
 .intro { margin: 0 0 12px; max-width: 760px; }
 .toolbar { margin-bottom: 10px; }
+.toolbar .cargando { padding: 0; }
 .table-panel { padding: 4px 8px; }
+
+/* Refresco (10 s o tras confirmar): la tabla sigue visible, solo se atenúa el
+   cuerpo; la cabecera y el alto del panel se conservan. */
+.table-panel.recargando tbody { opacity: 0.5; }
+
+/* Primera carga: barras de esqueleto con el ancho de cada columna. */
+.esqueleto-fila .esqueleto { vertical-align: middle; }
+.esq-fichero { width: 70%; }
+.esq-badge { width: 62px; }
+.esq-motivo { width: 55%; }
+.esq-desde { width: 84px; }
+.esq-acciones { width: 150px; }
 </style>

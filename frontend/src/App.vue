@@ -22,6 +22,12 @@ const currentConfig = ref<RuntimeConfig>({
   vlm_model: '',
   local_vlm_fallback: false,
   server_api_key: '',
+  firecrawl_api_key: '',
+  cloud_vlm_api_key: '',
+  typesafe_api_key: '',
+  firecrawl_api_key_set: false,
+  cloud_vlm_api_key_set: false,
+  typesafe_api_key_set: false,
   configured: false
 })
 

@@ -27,13 +27,16 @@ El vídeo lleva dos pistas, integradas por Remotion en el render:
 - **Voz** (volumen 1.0): narración en español generada con **piper** `es_ES-carlfm-x_low`, una por escena, colocada dentro de la `Sequence` de cada escena según la tabla de colocación de `narracion/SPEC.md` (duraciones reales: esc1 9,72 s … esc8 17,70 s). Los textos narrados son los de `narracion/guion_tts.md` (fuente de verdad, no reescribir). Los wavs servidos en el render viven en `public/narracion/esc{1..8}.wav` (copia de `narracion/esc{1..8}.wav`).
 - **Música** (volumen ≈ 0.10–0.14): pad ambiente suave, sin ritmo marcado que compita con la voz. 180 s exactos en `public/music.wav`, generada con `narracion/make_music.py` (solo stdlib).
 
-Regenerar la voz (piper con el modelo `es_ES-carlfm-x_low`):
+Regenerar la voz (piper con el modelo `es_ES-carlfm-x_low`). El texto de cada
+escena no está en ficheros sueltos: vive en `narracion/guion_tts.md` (fuente de
+verdad, no reescribir), en el párrafo que sigue a cada cabecera `**escN …:**`.
 
 ```sh
 # un wav por escena; ajusta --length-scale si el texto no cabe con holgura
 for i in 1 2 3 4 5 6 7 8; do
-  piper --model es_ES-carlfm-x_low \
-    --output_file "narracion/esc$i.wav" < "esc$i.txt"
+  awk -v n="$i" '$0 ~ "^\\*\\*esc" n " " {on=1; next} /^\*\*esc/{on=0} on{print}' \
+      narracion/guion_tts.md | sed '/^$/d' \
+    | piper --model es_ES-carlfm-x_low --output_file "narracion/esc$i.wav"
 done
 ```
 
@@ -61,7 +64,9 @@ Comando exacto (desde `video/`):
 npx remotion render src/index.tsx filemaid out/filemaid.mp4
 ```
 
-Medidas (ffprobe de `node_modules/@remotion/compositor-linux-x64-gnu/`):
+Medidas de **aquel** render, el último sin audio (el MP4 vigente en
+`out/filemaid.mp4` ya lleva voz + música integradas: sus cifras se anotarán
+tras el próximo render):
 
 - Duración: **180,000000 s exactos** (5400 frames).
 - Resolución / fps: **1920×1080 @ 30 fps** (avg_frame_rate 30/1).
@@ -78,7 +83,7 @@ animaciones ya asentadas. Inspección visual frame a frame:
 | 1 · Portada | `verify-escena1.png` | FILEMAID + chips FACTURA/DECISIÓN/TRAZA, sin solapes |
 | 2 · El problema | `verify-escena2.png` | 3 tarjetas (500/Excel/ERP 2009), badges PAGAR teal, NO_PAGAR rojo, ESCALAR naranja |
 | 3 · Producto | `verify-escena3.png` | 5 filas de features + screenshot dashboard, sin solapes |
-| 4 · Escalera | `verify-escena4.png` | Escalones con latencias medidas (rung1 < 1 ms → VLM local ~1,7 s) |
+| 4 · Escalera | `verify-escena4.png` | Los 7 escalones con las columnas QUÉ CORRE / COSTE (la tabla no muestra latencias: 0 € en los escalones 1–4, pago por token en el 7) + el caveat de degradación |
 | 5 · Trazabilidad | `verify-escena5.png` + `verify-escena5b.png` (frame 2700) | Los 8 rule codes visibles en las 3 columnas; NO_PAGAR rojo, ESCALAR naranja |
 | 6 · ADRs | `verify-escena6.png` | Motor determinista + ADR-06 con 86 corregidos / 0 regresiones |
 | 7 · Resiliencia | `verify-escena7.png` | Drills PASS (provider-caído, backoff-429, crash-reanudación); ledger-corrupto entra con el stagger posterior |

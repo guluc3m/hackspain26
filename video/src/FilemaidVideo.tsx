@@ -233,7 +233,7 @@ const Problema: React.FC = () => {
           }
           b={
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 66, lineHeight: 1.25 }}>
+              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 57, lineHeight: 1.25 }}>
                 «Ante duda razonable, escalar antes que pagar.»
               </div>
               <div style={{
@@ -308,7 +308,7 @@ const Producto: React.FC = () => {
                       width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0, alignSelf: 'center',
                     }}>{i + 1}</div>
-                    <div style={{ fontFamily: DISPLAY, fontSize: 28, width: 420, flexShrink: 0 }}>{p.t}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: 25, width: 420, flexShrink: 0 }}>{p.t}</div>
                     <div style={{ fontSize: 25, color: i === 2 ? C.orange : C.brown, ...(i === 2 ? { fontWeight: 700 } : {}) }}>{p.s}</div>
                   </div>
                 ))}
@@ -325,7 +325,7 @@ const Producto: React.FC = () => {
           }
           b={
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 78, textAlign: 'center' }}>
+              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 74, textAlign: 'center' }}>
                 Tú solo miras cuando algo huele raro.
               </div>
               <div style={{
@@ -489,7 +489,7 @@ const Traza: React.FC = () => {
           }
           b={
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 80, textAlign: 'center' }}>
+              <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 72, textAlign: 'center' }}>
                 Nada se inventa. Todo se puede auditar.
               </div>
               <div style={{ ...rise(f, tB + 55), marginTop: 50, display: 'flex', gap: 18 }}>
@@ -523,7 +523,7 @@ const Adrs: React.FC = () => {
           f={f} tS={tS} tB={tB} len={len}
           p={
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <div style={{ fontFamily: DISPLAY, fontSize: 84, textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ fontFamily: DISPLAY, fontSize: 80, textAlign: 'center', lineHeight: 1.2 }}>
                 Una IA que decide distinto cada vez<br />no es pagable.
               </div>
             </div>
@@ -688,7 +688,7 @@ const Escala: React.FC = () => {
                 Más volumen: concurrencia · nuevo formato: un extractor y nada más.
               </div>
               <div style={{
-                opacity: cierreIn, marginTop: 64, fontFamily: DISPLAY, fontSize: 96,
+                opacity: cierreIn, marginTop: 64, fontFamily: DISPLAY, fontSize: 87,
                 transform: `scale(${cierre})`, transformOrigin: 'left center',
               }}>
                 Alberto duerme. <span style={{ color: C.teal }}>Y paga lo justo.</span>

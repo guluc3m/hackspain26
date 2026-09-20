@@ -54,26 +54,48 @@ class AppConfig:
         # Ephemeral secret consumed only by the remote VLM rung. It is never part
         # of the config_version hash, the decision snapshot, evidence or logs.
         vlm_api_key = "" if standalone else settings["server_api_key"]
+        # Optional keys of the last rungs: the device-local value wins, the env
+        # var stays as the external fallback (tests/CI). They are secrets: only
+        # their presence, never the value, reaches config_version below.
+        firecrawl_api_key = settings["firecrawl_api_key"] or self.firecrawl_api_key
+        cloud_api_key = settings["cloud_vlm_api_key"] or self.cloud_api_key
+        typesafe_api_key = settings["typesafe_api_key"] or self.typesafe_api_key
+        # A configured key enables its rung even in standalone: the user asked for
+        # that optional cloud reading from the settings screen. The rungs keep
+        # degrading to skipped:<reason> when their key is missing.
+        remote_rungs_enabled = not standalone or bool(
+            firecrawl_api_key or cloud_api_key or typesafe_api_key
+        )
         config = {
             "config_version": self.extraction_config_path.stem
             + ":"
             + hashlib.sha256(
                 self.extraction_config_path.read_bytes()
-                + repr((mode, fallback, vlm_url, settings["vlm_model"])).encode()
+                + repr(
+                    (
+                        mode,
+                        fallback,
+                        vlm_url,
+                        settings["vlm_model"],
+                        bool(firecrawl_api_key),
+                        bool(cloud_api_key),
+                        bool(typesafe_api_key),
+                    )
+                ).encode()
             ).hexdigest()[:12],
             "llama_base_url": self.llama_base_url,
-            "cloud_api_key": self.cloud_api_key,
+            "cloud_api_key": cloud_api_key,
             "typesafe_api_url": self.typesafe_api_url,
-            "typesafe_api_key": self.typesafe_api_key,
+            "typesafe_api_key": typesafe_api_key,
             "typesafe_model": self.typesafe_model,
             "firecrawl_api_url": self.firecrawl_api_url,
-            "firecrawl_api_key": self.firecrawl_api_key,
+            "firecrawl_api_key": firecrawl_api_key,
             "render_scale": 2.0,
             **raw,
         }
         config["mode"] = mode
         config["local_vlm_fallback"] = fallback
-        config["remote_rungs_enabled"] = not standalone
+        config["remote_rungs_enabled"] = remote_rungs_enabled
         config["vlm_base_url"] = vlm_url
         config["vlm_model"] = settings["vlm_model"]
         config["vlm_api_key"] = vlm_api_key
