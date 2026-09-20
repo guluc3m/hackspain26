@@ -1,9 +1,17 @@
 // 500 Sombras de Alberto — defensa (10 min) · guluc3m
-// Compilar:  typst compile --font-path ../docs/report/fonts slides.typ
+// Compilar:  typst compile --root .. --font-path ../report/fonts slides.typ
+// Los diagramas son los mismos del informe (docs/report/diagram/): tamaños en
+// em, así que escalan con el texto de la diapositiva (envolver en text(size:)).
 // Guion: 01 demo y contexto · 02 arquitectura y ADRs ·
 //        03 trazabilidad, escala y coste · 04 resiliencia y preguntas
 
 #import "theme.typ": *
+#import "../report/diagram/arquitectura-general.typ": arquitectura-general
+#import "../report/diagram/escalera-confianza.typ": escalera-confianza
+#import "../report/diagram/colapso-candidatos.typ": colapso-candidatos
+
+// Destino del enlace de la demo (imagen clicable de la primera diapositiva).
+#let demo-url = "https://hackathon.maisa.ai/"
 
 #show: hs-theme.with(aspect-ratio: "16-9")
 
@@ -30,123 +38,30 @@
 /* ═══ 01 · DEMO Y CONTEXTO ═════════════════════════════════ */
 
 = 01 · Demo y contexto
-Se enseña en vivo; aquí, el marco
 
-== El reto de Alberto
+==
 
-#grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: .7em,
-  align: top,
-  card([ENTRADA], [500 PDFs: nativos y escaneados], accent: teal),
-  card([MAESTRO], [proveedores, pedidos y normas], accent: slate),
-  card([SISTEMA], [ERP legado de 2009], accent: orange),
-)
+#align(center)[
+  #link(demo-url)[
+    #image("img/demo.jpg", height: 18em)
+  ]
+]
 
-#v(.9em)
-#text(size: .84em)[Leer cada factura y decidir si se puede pagar — con *evidencia en cada paso* y sin que el lote se detenga jamás.]
-
-#v(.7em)
-#quote[Ante duda razonable, escalar antes que pagar.]
-
-== Tres resultados, una doctrina
-
-#grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: .8em,
-  align: top,
-  card([PAGAR], [Todas las reglas PASS. Trazable.], accent: teal),
-  card([NO\_PAGAR], [Negativo definitivo: nadie lo revierte.], accent: red),
-  card([ESCALAR], [Duda razonable o evidencia incompleta: decide una persona.], accent: gold),
-)
-
-#v(.8em)
-#text(size: .82em)[La frontera NO\_PAGAR / ESCALAR no está cableada: es *configuración versionada* (`outcomes.on_fail`), y cada decisión guarda el resultado resuelto por regla.]
-
-#v(.5em)
-#text(size: .74em, fill: brown)[Una regla *nunca* puede resolver PAGAR; el motor rechaza esa config al cargarla.]
-
-== Demo en vivo
-
-#grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: .7em,
-  align: top,
-  card([LOTE], [500 PDFs → `outcomes.jsonl` en ~2 min], accent: teal),
-  card([REVISIÓN], [candidatos lado a lado, desacuerdo resaltado], accent: gold),
-  card([TRAZA], [una fila de evidencia por etapa], accent: slate),
-)
-
-#v(.9em)
-#align(center)[#chip([EN VIVO · iniciar.sh], fill: gold, size: .8em)]
-
-#v(.6em)
-#align(center)[#text(size: .8em, fill: brown)[Un solo paso: levanta la UI, carga el maestro y reanuda donde se quedó.]]
 
 /* ═══ 02 · ARQUITECTURA Y ADRs ═════════════════════════════ */
 
 = 02 · Arquitectura y ADRs
-Dos fases, decisiones trazables
 
 == Arquitectura general
 
-#grid(
-  columns: (1fr, auto, 1fr, auto, 1fr, auto, 1fr, auto, 1fr),
-  align: horizon,
-  fbox([PDF], sub: [input]),
-  arrow-right,
-  fbox([EXTRACCIÓN], sub: [features crudas], fill: slate),
-  arrow-right,
-  fbox([PARSER], sub: [campos + candidatos], fill: slate),
-  arrow-right,
-  fbox([MOTOR], sub: [reglas puras], fill: gold),
-  arrow-right,
-  fbox([RESULTADO], sub: [JSONL], fill: teal, tfill: paper),
-)
+#text(size: .54em)[#arquitectura-general()]
 
-#v(.6em)
-#align(center)[#text(font: body-font, size: .68em, fill: brown)[#sym.arrow.b  evidencia + snapshot de configuración  #sym.arrow.b]]
+#v(.4em)
+#text(size: .68em, fill: brown)[Se pueden añadir reglas sin modificar la extracción, y un tipo de archivo sin tocar el motor. Además, cada peldaño se puede omitir y la caché es por página.]
 
-#v(.6em)
-#grid(
-  columns: (1fr, auto, 1.25fr, auto, 1fr),
-  align: horizon,
-  fbox([EVIDENCIA + SNAPSHOT], sub: [cada etapa], fill: sand),
-  arrow-right,
-  fbox([STORE], sub: [PouchDB local · réplica CouchDB], fill: ink, tfill: paper),
-  arrow-right,
-  fbox([UI], sub: [operación y revisión], fill: sand),
-)
+== Pasos para la extracción
 
-#v(.7em)
-#text(size: .74em, fill: brown)[Añadir una regla no toca la extracción; añadir un tipo de archivo no toca el motor. Cada peldaño es *omisible* (`skipped:<razón>`) y la caché es por página.]
-
-== La escalera de extracción · 7 peldaños, por página
-
-#grid(
-  columns: (1fr, 1fr),
-  gutter: (.9em, 0pt),
-  [
-    #align(left)[#chip([LOCAL · 0 €], fill: sand)]
-    #v(.35em)
-    #rung(1, [Texto vectorial], [pypdf · filtro anti-mojibake], [0 €], [< 1 ms], fill: rgb("#e8f5e9"))
-    #rung-arrow
-    #rung(2, [Raster + QR], [pypdfium2 + zxing · 300 DPI], [0 €], [~40 ms], fill: rgb("#f1f8e9"))
-    #rung-arrow
-    #rung(3, [Tesseract OCR], [doble puerta: conf + cobertura], [0 €], [~150 ms], fill: rgb("#fffde7"))
-    #rung-arrow
-    #rung(4, [VLM local], [PaddleOCR-VL Q8 · temp 0], [0 €], [~1,7 s], fill: rgb("#fff8e1"))
-  ],
-  [
-    #align(right)[#chip([NUBE · ESCALADA], fill: slate)]
-    #v(.35em)
-    #rung(5, [TypeSafe System One], [decisiones tipadas (jev-latest)], [0,04 \$/Mtok], [~560 ms], fill: rgb("#e1f5fe"))
-    #rung-arrow
-    #rung(6, [Firecrawl Parse], [tablas complejas → Markdown], [1 crédito], [~1,2 s], fill: rgb("#ede7f6"))
-    #rung-arrow
-    #rung(7, [Cloud VLM >25B], [último recurso · candidato], [pago/token], [~3 s], fill: rgb("#fbe9e7"))
-  ],
-)
+#text(size: .72em)[#escalera-confianza()]
 
 == Features crudas, campos con candidatos
 
@@ -167,7 +82,10 @@ Dos fases, decisiones trazables
 )
 
 #v(.6em)
-#text(size: .82em)[Un campo *nunca* se colapsa en el store. El escalar se elige solo en la regla que lo consume, y queda registrado *cuál* y *por qué*.]
+#text(size: .82em)[Un campo *nunca* se colapsa en el store. El escalar se elige solo en la regla que lo consume, y queda registrado *cuál* y *por qué*:]
+
+#v(.4em)
+#text(size: .78em)[#colapso-candidatos()]
 
 #v(.45em)
 #text(size: .74em, fill: brown)[Parser multilingüe (7 idiomas) · inmune a trampas OCR · prioriza el NIF del proveedor sobre el CIF del cliente.]
@@ -176,73 +94,90 @@ Dos fases, decisiones trazables
 
 #grid(
   columns: (1.05fr, 1fr),
-  gutter: .9em,
-  align: top,
+  gutter: (.9em, 0pt),
+  align: bottom,
   [
-    #text(weight: 800)[8 reglas en código, *código estable*:]
-    #v(.35em)
-    #codepanel[
-      TOTALS\_MUST\_MATCH · NIF\_IN\_MASTER · IVA\_CONSISTENT \
-      ORDER\_PENDING · ORDER\_BELONGS\_TO\_SUPPLIER · NO\_DOUBLE\_PAYMENT \
-      IBAN\_MATCHES\_MASTER · DATE\_VALID\_NOT\_FUTURE
+    Reglas en código, con _thresholds_ configurables
+    #v(-.35em)
+    #codepanel(size: .5em)[
+      NIF\_IN\_MASTER · IBAN\_MATCHES\_MASTER \
+      ORDER\_BELONGS\_TO\_SUPPLIER · ORDER\_PENDING \
+      NO\_DOUBLE\_PAYMENT · IVA\_CONSISTENT \
+      TOTALS\_MUST\_MATCH · DATE\_VALID\_NOT\_FUTURE
     ]
-    #v(.55em)
-    - *PASS / FAIL / UNKNOWN* con motivo y valores consumidos.
-    - Umbrales por campo/extractor (`min_confidence`): config, no código.
-    - `UNKNOWN` ⇒ duda ⇒ ESCALAR; `FAIL` ⇒ `outcomes.on_fail`.
+    #v(.45em)
+    #text(size: .85em)[
+      - `FAIL` ⇒ outcome *más restrictivo* (`NO_PAGAR` / `ESCALAR`, dependiente de la regla).
+      - `UNKNOWN` (o sin reglas) ⇒ *ESCALAR*: duda razonable.
+      - Todas `PASS` ⇒ *PAGAR*
+    ]
   ],
   [
+    #text(size: .8em, weight: 800)[Salida: *evaluación + snapshot*]
+    #v(-.1em)
     ```json
     {
+      "result": "ESCALAR",
       "rule_verdicts": [
-        {"rule": "TOTALS_MUST_MATCH", "verdict": "PASS"},
-        {"rule": "NIF_IN_MASTER", "verdict": "UNKNOWN"}
+        {"rule": "TOTALS_MUST_MATCH", "verdict": "PASS", "values": {...}},
+        {"rule": "NIF_IN_MASTER", "verdict": "UNKNOWN", "reason": "sin candidato"}
       ],
-      "rule_outcomes": {"NIF_IN_MASTER": "ESCALAR"}
+      "snapshot": {"rule_set": "v1", "thresholds": {...},
+                   "extractors": {...}, "master_sha256": "9f2c…"}
     }
     ```
+    #v(.35em)
+    #text(size: .68em, fill: brown)[Umbrales, reglas habilitadas y: *configuración versionada*. El maestro se sella por *sha256*; el ERP, por interfaz intercambiable.]
   ],
 )
 
-#v(.6em)
-#align(center)[#text(weight: 800, size: .85em)[Mismos campos + misma config ⇒ misma salida, byte a byte.]]
+#v(.35em)
+#align(center)[#text(weight: 800, size: .85em)[Mismos campos + misma config ⇒ misma decisión.]]
 
-== Ocho ADRs (1/2) · decisión y extracción
+== Cuatro ADRs (1/2) · motor y extracción
 
 #grid(
   columns: (1fr, 1fr),
   gutter: (.7em, .42em),
   align: top,
-  card([ADR-01 · Motor determinista], [Reglas en código; umbrales y política como configuración versionada.], accent: gold),
-  card([ADR-02 · Extracción en dos bloques], [Features crudas → parser con candidatos; umbrales calibrados con el corpus.], accent: gold),
-  card([ADR-03 · Pipeline desacoplada], [Colas por bloque; el ERP solo por costura de adaptador.], accent: gold),
-  card([ADR-04 · Trazabilidad en BD], [PouchDB local + réplica CouchDB; decisiones inmutables.], accent: gold),
+  card([ADR-01 · Motor de reglas determinista], [
+    Reglas en código, *puras y deterministas*; umbrales y política como configuración versionada, con *snapshot* en cada decisión.
+    Añadir una regla no toca la extracción; cambiar la política exige ADR.
+  ], accent: gold),
+  card([ADR-02 · Extracción en dos bloques], [
+    *Features* tipadas + parser que produce campos con *valores múltiples* (extractor y confianza).
+    Umbrales del peldaño 3 calibrados con el corpus: el *94,2 %* resuelve por texto.
+  ], accent: gold),
 )
 
 #v(.45em)
 #text(size: .72em, fill: brown)[Cada ADR lleva contexto, alternativas, decisión, consecuencias y *evidencia medida*. Detalle en `albertitos_plan.pdf`.]
 
-== Ocho ADRs (2/2) · operación y política
+== Cuatro ADRs (2/2) · pipeline y almacén
 
 #grid(
   columns: (1fr, 1fr),
   gutter: (.7em, .42em),
   align: top,
-  card([ADR-05 · Rung 5 cloud + revisión], [La lectura cloud es otro candidato, nunca respuesta; la cola no bloquea el lote.], accent: gold),
-  card([ADR-06 · Todos los candidatos], [Las reglas evalúan `values[]` con provenance; la auditoría cazó 87 falsos NO\_PAGAR.], accent: gold),
-  card([ADR-07 · App de escritorio], [pywebview, no Electron: la misma UI Vue en ventana nativa Linux/Windows/Mac.], accent: gold),
-  card([ADR-08 · `outcomes.on_fail`], [La frontera NO\_PAGAR/ESCALAR es datos por regla; una regla nunca paga.], accent: gold),
+  card([ADR-03 · Pipeline desacoplada], [
+    Colas entre extracción, parser y decisión: cada bloque escala y falla por separado.
+    El ERP, solo por *costura de adaptador*; reanudación *sin duplicados*.
+  ], accent: gold),
+  card([ADR-04 · Almacén PouchDB + CouchDB], [
+    PouchDB embebido como única persistencia, con adjuntos fragmentados y *replicación nativa* a CouchDB.
+    Sin *joins* ni transacciones: consistencia por IDs deterministas y conflictos *fail-closed*.
+  ], accent: gold),
 )
 
 #v(.45em)
-#text(size: .72em, fill: brown)[El lote 2 traerá la regla v4 cargada como *datos*, sin tocar el motor.]
+#text(size: .72em, fill: brown)[El histórico y los candidatos viven en el almacén; la regla v4 del lote 2 llega como *datos*, sin tocar el motor.]
 
 /* ═══ 03 · TRAZABILIDAD, ESCALA Y COSTE ════════════════════ */
 
 = 03 · Trazabilidad, escala y coste
 El estado vive en disco; los números, medidos
 
-== Todo deja rastro
+==
 
 - Cada factura tiene un *UUID*; `file_id` es el nombre exacto del PDF.
 - *PouchDB local (LevelDB)*: decisiones inmutables, candidatos sin colapsar, adjuntos fragmentados. En servidor, réplica nativa *PouchDB ↔ CouchDB*; la config local no se replica.
@@ -286,7 +221,7 @@ El estado vive en disco; los números, medidos
 )
 
 #v(.6em)
-#text(size: .78em)[UI + 2 runners en paralelo: peor *p95 7,7 ms*, ~*109 archivos/s por runner*, 0 incidencias. Hardware medido: *8 núcleos · 12 GB*.]
+#text(size: .78em)[UI + 2 runners en paralelo: peor *p95 7,7 ms*, ~*109 archivos/s por runner*, 0 incidencias. Hardware medido: *4 núcleos · 8q GB*.]
 
 == Coste: hagamos las cuentas
 
@@ -327,7 +262,7 @@ El estado vive en disco; los números, medidos
 #v(.7em)
 #card([LA AUDITORÍA ENCONTRÓ LA TRAMPA], [
   El motor colapsaba `total` al *primer* candidato — «Subtotal» en vez de «TOTAL A PAGAR»:
-  *87 NO\_PAGAR eran falsos*. ADR-06: ahora las reglas evalúan *todos* los candidatos con provenance.
+  *87 NO\_PAGAR eran falsos*. ADR-02: ahora las reglas evalúan *todos* los candidatos con provenance.
   Reprocesado: `347 + 86 = 433` PAGAR y `108 − 86 = 22` NO\_PAGAR, *0 regresiones*. *86,6 %* PAGAR automático.
 ], accent: orange)
 

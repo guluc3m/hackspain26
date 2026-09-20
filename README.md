@@ -4,47 +4,17 @@ Sistema de decisión para las facturas de Alberto: lee PDFs, extrae campos y dec
 si cada factura se puede pagar — `PAGAR`, `NO_PAGAR` o `ESCALAR` — con evidencia
 y trazabilidad en cada paso.
 
+<div align="center">
+
+![Demo screenshot](docs/slides/img/demo.jpg)
+
+</div>
+
 ```
 PDF ──▶ EXTRACCIÓN ──▶ FEATURES ──▶ PARSER ──▶ CAMPOS ──▶ MOTOR DE REGLAS ──▶ RESULTADO
                                                                │
                                                      evidencia + config ──▶ STORE ──▶ UI
 ```
-
-## Estructura
-
-```
-src/filemaid/
-  types.py          contrato: ExtractionFeature, ExtractionField, Decision...
-  config.py         rutas de estado (data/, nunca /tmp) y config de extracción
-  pipeline.py       worker: lote idempotente y resumable (clave: sha+stage+version+config)
-  run.py            CLI: run | emit | serve | reprocess | clean
-  desktop/          ventana nativa (pywebview): selector de carpeta y vigilante
-  extract/          escalera de 7 escalones por página, cache y plausibilidad
-    rungs/          1 texto (pypdf) · 2 raster+QR (pypdfium2+zxing) · 3 tesseract
-                    4 VLM local (llama-server, temp 0) · 5 TypeSafe (solo juicios)
-                    6 Firecrawl · 7 VLM cloud (solo candidato)
-  parse/            features → campos: todos los candidatos se conservan
-  rules/            motor puro y determinista + 8 reglas + maestros (CSV/Excel)
-  store/            PouchDB JS local: datos, adjuntos, caché, eventos y configuración
-  api/              FastAPI: comparte types, store y motor con el pipeline
-  server.py         escalador y servicio VLM remoto dedicado (sin sincronización)
-master/             datos maestros y thresholds de reglas (versionados)
-frontend/           Vue 3 + Vite (TS, pnpm): Dashboard (cola de revisión),
-                    Invoices (facturas + carpeta) y Logs (buscador de entradas,
-                    filtrables por factura desde cada fila)
-```
-
-TypeSafe (`jev-latest`, escalón 5) evalúa el texto disponible de la página con
-preguntas `noul`, `score` y `choice`. Conserva respuestas, modelo y uso como
-`typed_evidence`: no genera OCR, no convierte probabilidades en campos de factura,
-no autoriza pagos y nunca detiene el respaldo de Firecrawl. Sin clave o sin texto
-previo se omite explícitamente; una imagen en base64 no equivale a píxeles leídos
-por este servicio. Los indicios OCR son locales a cada página, incluso si su
-confianza es baja. El endpoint y modelo explícitos de `rungs.typesafe_jev` priman
-sobre los defaults globales. La llamada real debe verificarse con credenciales;
-esta descripción no afirma una ejecución en vivo exitosa.
-La caché identifica página, motor y configuración; si cambia el OCR previo de una
-misma página sin cambiar la configuración, el juicio cacheado puede quedar obsoleto.
 
 ## Uso
 
@@ -68,11 +38,11 @@ uv run filemaid-desktop --headless   # misma UI y API sin ventana (sin display)
 
 Tres superficies, un solo motor:
 
-| Superficie | Comando | Qué es |
-|---|---|---|
-| Web UI | `uv run filemaid serve` | API + `frontend/dist` en `127.0.0.1:8000` (`FILEMAID_PORT`) |
-| Desktop | `uv run filemaid-desktop` · `--headless` | ventana nativa (pywebview) sobre el mismo FastAPI, puerto loopback del SO; `--headless` sirve el mismo servicio sin ventana y sin dependencia de pywebview ni display, con `FILEMAID_PORT` o `--port` |
-| Servidor VLM | `uv run filemaid server` | servidor VLM local dedicado, puerto 8001 |
+| Superficie   | Comando                                  | Qué es                                                                                                                                                                                                |
+| ------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web UI       | `uv run filemaid serve`                  | API + `frontend/dist` en `127.0.0.1:8000` (`FILEMAID_PORT`)                                                                                                                                           |
+| Desktop      | `uv run filemaid-desktop` · `--headless` | ventana nativa (pywebview) sobre el mismo FastAPI, puerto loopback del SO; `--headless` sirve el mismo servicio sin ventana y sin dependencia de pywebview ni display, con `FILEMAID_PORT` o `--port` |
+| Servidor VLM | `uv run filemaid server`                 | servidor VLM local dedicado, puerto 8001                                                                                                                                                              |
 
 ### Lanzador (`python start.py`)
 
@@ -154,6 +124,7 @@ La sincronización entre dispositivos se realiza mediante replicación nativa Po
 El cliente no requiere instalar CouchDB localmente: PouchDB (LevelDB) gestiona la persistencia local y replica bidireccionalmente contra CouchDB.
 
 Para autenticación con CouchDB:
+
 - Variables de entorno de credenciales básicas: `FILEMAID_COUCHDB_USER` y `FILEMAID_COUCHDB_PASSWORD`.
 - O alternativamente token Bearer: `FILEMAID_SYNC_TOKEN`.
 
@@ -171,6 +142,7 @@ loopback). El endpoint VLM es independiente de CouchDB (nunca se deduce de
 `sync_url`). El cliente usa `FILEMAID_VLM_KEY` solo para su VLM remoto.
 
 Estado y aprovisionamiento (API local):
+
 - `GET /api/vlm/status`: `downloaded` (ficheros verificados) vs `running`/`ready`
   (sidecar sano sirviendo el modelo esperado). `ready` no se declara hasta que el
   modelo está en ejecución.
