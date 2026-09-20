@@ -278,3 +278,88 @@ Solapamiento lote1 ∩ lote2: **0**. Incidencias totales: **0**.
 - **Confianza en la rúbrica: ALTA** — todos los criterios con evidencia medida; único riesgo no nulo: el conteo de 8 ADRs vs 2-5 (mitigado dentro del propio PDF).
 - **Bloqueantes de entrega: 2 P0 operacionales** (push a GitHub + teamId). Sin acción del equipo antes del domingo 11:00, la entrega no puede ser validada por la organización aunque los ficheros son perfectos.
 - **Estado del repo de solución: LIMPIO en cuanto a entregables**; la ola de trabajo en curso (watcher/UI/benchmarks/vídeo) refuerza los criterios de calidad/escalabilidad sin tocar los ficheros de entrega.
+
+## 9. Re-auditoría 2026-09-20 (cuarta pasada, sobre `2159e0b` — ReauditorRequisitos)
+
+**Alcance:** revalidación con medidas propias sobre el estado ACTUAL del repo tras aterrizar la ola de trabajo reportada como «en curso» en §8 (commits `a35bf3d` watcher E2E, `c295bed` tests, `c3d51cf` vídeo re-render, `188e6ef` benchmarks VLM local, `2159e0b` UI menos clics). Todas las medidas de esta sección son propias, ejecutadas en esta sesión con `uv run python`. La web https://hackathon.maisa.ai/ fue recargada íntegra (395 líneas): rúbrica sin cambios — 100 pts + 10 bonus (35/20/25/10/10), desempates escalabilidad → resiliencia → bonus, lote 2 sábado 18:00, cierre domingo 11:00, defensa 10 min (2+2+4+2), contrato JSONL `{"file_id":"...","result":"..."}` con `file_id` = nombre exacto del PDF.
+
+### 9.1 Estado del árbol [medido]
+
+- `git log -1` → `2159e0b` «UI: menos clics en el flujo frecuente…» (2026-09-20 04:54:45 +0000), rama `feat/remotion-polish`. `git status --short` → **vacío: working tree limpio**, sin cambios sin commitear (a diferencia de §8.1, la ola está completamente aterrizada).
+- `git diff --stat 6bc93ac..HEAD` → 19 ficheros, +604/−82: watcher (`src/filemaid/desktop/watcher.py`, `tests/test_desktop_watcher.py`), benchmarks (`docs/benchmark_local_vs_remoto.md` nuevo, `docs/capacidad_y_coste.md`, `scripts/bench_vlm_local.py`, 2 JSON en `data/`), vídeo (`video/out/filemaid.mp4`, `video/README.md`, `video/src/`), UI (`frontend/src/App.vue`, `InvoiceDrawer.vue`, `nav.ts`, `api.ts`) y este doc. **Ningún cambio toca los 3 entregables de la raíz** (siguen en `.gitignore:33-41` por diseño; viven en el delivery-repo).
+- Tests: **40 ficheros en `tests/`, 295 funciones `def test`** [medido con grep, sin cambios vs §8.1].
+- Comprobación de zona ajena: la sección `outcomes.*` de `master/rules.yaml` (frontera NO_PAGAR/ESCALAR, ADR) no aparece en el diff `6bc93ac..HEAD` — intacta.
+
+### 9.2 Validación de los 2 JSONL de la raíz (parseo programático propio) [medido]
+
+Script `uv run python` (json.loads línea a línea + `os.listdir` de los PDFs en disco del repo de solución):
+
+| Check | `outcomes.jsonl` | `outcomes_lote2.jsonl` |
+|---|---|---|
+| Líneas / JSON válido | 500/500 | 40/40 |
+| Claves exactamente `{file_id, result}` (0 extra) | 500/500 | 40/40 |
+| `file_id` basename exacto (sin `/` ni `\`) | 500/500 | 40/40 |
+| `result ∈ {PAGAR, NO_PAGAR, ESCALAR}` | 500/500 | 40/40 |
+| Únicos / duplicados | 500 / 0 | 40 / 0 |
+| Cobertura vs PDFs en disco (missing/extra) | 0/0 (500 PDFs en `caja-de-alberto/facturas/`) | 0/0 (40 PDFs en `caja-de-alberto/facturas_primin/`) |
+| Distribución | **PAGAR 433 / NO_PAGAR 22 / ESCALAR 45** | **PAGAR 26 / NO_PAGAR 11 / ESCALAR 3** |
+
+Solapamiento lote1 ∩ lote2: **0**. Incidencias totales: **0**. Idéntico al resultado de las tres pasadas previas.
+
+### 9.3 Entregables y hashes [medido]
+
+```
+$ sha256sum outcomes.jsonl outcomes_lote2.jsonl albertitos_plan.pdf          # raíz repo de solución
+67a1acea40b48813c60753d1da6d7adeb9492acda3c2132491a095b1403a0eb7  outcomes.jsonl
+34d55cb41c8bcece40e4e7c5e2fb75bf5c16b844d9ac766c215783e775d0fc4b  outcomes_lote2.jsonl
+c64db1be58ea0d5d1939a325dcc3ee826712f7db4c7b7257a5d58b50d3466cc6  albertitos_plan.pdf
+```
+
+- Los 3 hashes son **idénticos** en la copia de entrega `/home/deploy/delivery-repo` [sha256sum en ambas copias, esta sesión]. `albertitos_plan.pdf` → 149 321 B, byte-idéntico a `docs/report/albertitos_plan.pdf` (mtimes 01:57:46 / 01:57:22, sin cambios desde §8).
+- Delivery-repo: `ls -A` → raíz con **EXACTAMENTE** `albertitos_plan.pdf`, `outcomes.jsonl`, `outcomes_lote2.jsonl` + `.git/`; 4 commits (último `4fbb881`), working tree limpio; `git remote` → **0 líneas** (**P0 sigue abierto**, §9.7).
+
+### 9.4 albertitos_plan.pdf — contenido [medido con pypdf]
+
+- **15 páginas** [pypdf]. «Escalabilidad y coste» en págs. 2 y 6; **«Escalabilidad y coste» + «Resiliencia» juntas en la pág. 6**; menciones de ADR-01 en págs. 9, 13 y 15; **ADR-08 en pág. 14**; **mitigación del conteo de ADRs en la pág. 15**.
+- **8 ADRs declarados** [grep -c '#adr(' docs/report/albertitos_plan.typ → 8], **0 placeholders** `PENDIENTE-MEDICIÓN` [grep → 0]. **Sigue PARCIAL por conteo** (web: «de 2 a 5 decisiones relevantes»), con la mitigación dentro del propio PDF.
+
+### 9.5 Vídeo — CAMBIO confirmado y ahora commiteado [medido]
+
+- `video/out/filemaid.mp4`: **8 603 731 bytes**, sha256 `1c8fcf371d7dfc579e6b489638722704865bbefce6683ac7c00e09c9a873e4d3` [stat + sha256sum]; átomo `mvhd` v0, timescale 1000, duration **180 000 → 180,000 s exactos** [parseo propio del átomo con `uv run python`, ffprobe no disponible en esta máquina].
+- Contraste con `video/README.md` (commitado en `c3d51cf`): declara «180,000000 s exactos (5400 frames)», «**8 603 731 bytes (~8,2 MB)**» y «sha256 `1c8fcf371d7dfc57…`» — **los 3 valores coinciden exactamente con lo medido en disco**. README y binario están sincronizados.
+- Estado git: el MP4 está **trackeado** (`git ls-files video/out` → solo `filemaid.mp4`), `git status --short video/` → vacío, y `git show c3d51cf --stat -- video/out` confirma el blob commiteado (Bin 8597508 → 8603731). Es decir: lo que §8.5 reportó como «re-render sin commitear (8 549 736 B)» fue sustituido por un re-render posterior (8 603 731 B) que **ya está commitado y limpio**. El tamaño de `video/out` en disco incluye aún stills de verificación sin trackear (ignorados por `9dc7f07`); no afecta.
+- Drills [video/data_drills.json, medido]: 4/4 PASS (`rung5-provider-caido`, `backoff-429`, `crash-reanudacion`, `ledger-corrupto`).
+
+### 9.6 Rúbrica — veredicto por criterio (evidencia de HOY)
+
+| Criterio | Veredicto | Evidencia clave (esta sección) |
+|---|---|---|
+| Producto, arquitectura y ADRs (35) | ✅ CUMPLE con ⚠️ riesgo de conteo | §9.4: 15 págs, escalabilidad+resiliencia pág. 6, 8 ADRs mitigados en pág. 15 |
+| Trazabilidad y observabilidad (20) | ✅ CUMPLE | §9.2: 8 reglas v3, señales `/api/salud\|jobs\|trazas\|reprocesar`; provenance lote 1 documentada (`video/data_outcomes_lote1_NOTA.md`) |
+| Escalabilidad y coste (25) | ✅ CUMPLE (reforzado) | PDF pág. 6 + `docs/capacidad_y_coste.md` + **`docs/benchmark_local_vs_remoto.md` (170 líneas, commiteado en `188e6ef`) con medición limpia del VLM local en reposo (p50 3,9 s) y comparativa local vs remoto** — ahora el criterio tiene medición local propia, no solo cloud |
+| Resiliencia y recuperación (10) | ✅ CUMPLE | Drills 4/4 PASS [§9.5]; retry `_MAX_ATTEMPTS=3` + Retry-After en `cloud_vlm.py` (sin commits que lo toquen desde `65f3ce4`) |
+| Calidad de ejecución (10) | ✅ CUMPLE (reforzado) | 40 ficheros / 295 tests [§9.1]; **`uv run pytest tests/test_desktop_watcher.py` → 19 passed (11,43 s) [ejecutado por mí esta sesión]**: vigilancia E2E con hilo real + estado de sondeo (`poll_interval`, `last_scan`) |
+| Bonus mejora adicional (+10) | ✅ CUMPLE | Watcher + notificación ESCALAR, implementada y mostrada en el vídeo commiteado de 180,000 s [§9.5]; **UI pulida en `2159e0b`: CTA a Revisión con badge de pendientes, atajo R, Enter/Esc en el drawer** — la mejora es más fácil de demostrar en la defensa |
+| Contrato JSONL y cobertura | ✅ CUMPLE | 540/540 filas válidas, 0 incidencias, cobertura exacta 500+40, 0 solapes [§9.2] |
+| Repo de entrega público + teamId | ❌ NO_CUMPLE | `git remote` → 0 líneas; teamId no verificable [§9.3] |
+
+### 9.7 Hallazgos de esta pasada
+
+1. **P0 (abierto) — Repo de entrega sin publicar**: `git remote` en `/home/deploy/delivery-repo` sigue devolviendo 0 líneas [medido]. Cierre domingo 11:00. Acción: crear repo público, push, teamId en la descripción.
+2. **P0 (abierto) — teamId no verificable**: pendiente manual junto con el push.
+3. **PARCIAL (sin cambios) — 8 ADRs vs 2-5**: mitigado dentro del PDF (pág. 15).
+4. **MENOR (sin cambios) — Códigos históricos** en ADR-05 / evidencia lote 1 (`video/data_outcomes_lote1_NOTA.md`).
+5. **MENOR (sin cambios) — Costura ERP sin cliente HTTP** en `src/filemaid/` (CSV del lote 2 en disco; no re-confirmado fichero a fichero en esta pasada).
+6. **RESUELTO (era INFO en §8.7.6) — Vídeo sin commitear**: `c3d51cf` commita el re-render definitivo (8 603 731 B) con README verificado; los 3 valores del README (duración, bytes, sha256) coinciden con lo medido en disco [§9.5]. Working tree limpio.
+7. **RESUELTO (era INFO en §8.7.8) — Ola de trabajo sin commitear**: los 5 commits de la ola (`a35bf3d`, `c295bed`, `c3d51cf`, `188e6ef`, `2159e0b`) están aterrizados y el árbol está limpio [§9.1]. Ninguno tocó los 3 entregables de la raíz.
+8. **INFO (sin cambios) — gitignore de entregables** (§8.3): evitar `git add` de los entregables en el repo de solución; sincronizar al delivery-repo por copia.
+9. **INFO — ffprobe ausente en esta sesión**: la duración del MP4 se midió por parseo propio del átomo `mvhd` (equivalente: duration/timescale = 180,000 s); la verificación ffprobe original consta en el mensaje de `c3d51cf`.
+
+### 9.8 Estado de confianza (veredicto global)
+
+**Los 3 entregables siguen en perfecto estado y la ola commiteada refuerza la rúbrica sin tocarlos.** Cuarta verificación independiente con resultado idéntico: 540/540 filas JSONL válidas bajo el contrato exacto, cobertura 1:1 contra los 540 PDFs, 0 solapes, 0 duplicados, y hashes estables entre repo de solución y delivery-repo (`67a1acea…`, `34d55cb4…`, `c64db1be…` en ambas copias). Los refuerzos nuevos de esta pasada son evidencia medida, no promesas: benchmarks locales vs remoto commiteados (p50 3,9 s en reposo), suite E2E del watcher ejecutada por el auditor (19 passed), vídeo commiteado con README verificado contra sha256 y bytes reales, y UI con badge de revisión que acorta la demo.
+
+- **Confianza en los entregables (JSONL + PDF): ALTA** — cuádruple verificación independiente (base, §7, §8, esta §9) con resultados idénticos y hashes estables.
+- **Confianza en la rúbrica: ALTA** — todos los criterios con evidencia medida; único riesgo no nulo: el conteo de 8 ADRs vs 2-5 (mitigado dentro del propio PDF, pág. 15).
+- **Bloqueantes de entrega: los mismos 2 P0 operacionales** (push a GitHub + teamId). Ningún veredicto de rúbrica cambia respecto a §8, por lo que **la checklist de §6 sigue válida tal cual**: sus 2 primeros ítems (repo público + teamId) siguen siendo los únicos bloqueantes, y el ítem P2 («pág. 7» → «pág. 6») sigue aplicando para materiales de apoyo.
+- **Estado del repo de solución: LIMPIO** — `git status --short` vacío sobre `2159e0b`; no queda trabajo en curso que re-auditar.
