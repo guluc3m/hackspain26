@@ -4,6 +4,9 @@ Sistema de decisión para las facturas de Alberto: lee PDFs, extrae campos y dec
 si cada factura se puede pagar — `PAGAR`, `NO_PAGAR` o `ESCALAR` — con evidencia
 y trazabilidad en cada paso.
 
+> **HIGHLY RECOMMENDED:** Using the desktop client is strongly recommended.
+> Run: `./run.sh desktop`
+
 ```
 PDF ──▶ EXTRACCIÓN ──▶ FEATURES ──▶ PARSER ──▶ CAMPOS ──▶ MOTOR DE REGLAS ──▶ RESULTADO
                                                                │
