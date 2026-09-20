@@ -238,3 +238,12 @@ Re-auditoría independiente sobre el commit `961d308` (HEAD de `feat/remotion-po
 7. [ ] **P3 — (Opcional)** conector xlsx o, como mínimo, la explicación de la costura Excel→CSV y del cliente ERP ausente (no hay cliente HTTP del ERP en `src/filemaid/` — decidir cómo se cuenta en la defensa).
 
 **Lectura del addendum:** los tres entregables están validados 1:1 con comandos propios y sin una sola incidencia de formato o cobertura; el re-render del vídeo y el borrador de la regla v4 cerraron desde la última auditoría. La única pieza binaria que queda es **publicar el repo de entrega** (P0, manual); el resto es ensayo de defensa.
+
+## Addendum — Render final verificado (2026-09-20, commit `5ef8fa3`)
+
+El **re-render definitivo** tras el fix de frame local (`961d308`) está **verificado y documentado** en `video/README.md` (commiteado en `5ef8fa3`). Medidas con el ffprobe de `node_modules/@remotion/compositor-linux-x64-gnu/` [medido, esta sesión]:
+
+- `video/out/filemaid.mp4` = **8 554 641 bytes (~8,2 MB)**, sha256 `e661d1896b2fb337ee039f8f770e2666869213d40afa921297f3831eb7c7712c`, **1920×1080 @ 30 fps, 180,000000 s exactos** (5400 frames). Sustituye al render de 7 525 680 bytes citado en A.1.
+- **Verificación visual de las 8 escenas CERRADA** sobre ESTE render: stills `out/verify-escena{1..8}.png` (frames 60/420/1110/1710/2610/3660/4260/4860, + `verify-escena5b.png` al frame 2700 para los 8 rule codes asentados). Cierra el ítem 5 de A.3 y el P2 de §6.
+
+Impacto en los pendientes: A.3 queda reducido a los ítems **1–3 (repo público de entrega, manual del equipo)**, **4 (activación de la regla v4 en el lote del sábado)** y **6 (ensayo de la demo de 10 min)**.
