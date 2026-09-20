@@ -20,6 +20,43 @@ npx remotion still src/index.tsx filemaid out/still-escalera.png --frame=2000
 
 (El compositor se llama `filemaid` y el punto de entrada `src/index.tsx`.)
 
+## Verificación del render
+
+Fecha: 2026-09-19.
+
+Comando exacto (desde `video/`):
+
+```sh
+npx remotion render src/index.tsx filemaid out/filemaid-verify.mp4
+```
+
+Medidas (leídas del átomo `mvhd` del MP4, sin ffmpeg en el sistema):
+
+- Duración: **180,00 s** exactos (timescale 1000, duration 180000; dentro de 180 ± 0,5 s).
+- Tamaño: 6 630 257 bytes (6,32 MB, > 5 MB).
+- sha256: `6d1947041ab43503a01d715400e75263784d95926588c5932d9e8a0dfea77dfd`.
+
+Stills de verificación en `out/`, uno por escena. Dos tandas: `-inicio` en el
+primer frame de cada escena (0, 360, 1050, 1650, 2550, 3600, 4200, 4800) y
+`-fade20` 20 frames después, ya que cada escena entra con un fade-in de
+opacidad 0→1 en sus primeros 14 frames (los `-inicio` son PNG totalmente
+transparentes: comportamiento esperado, no un defecto):
+
+| Escena | `-inicio` (frame) | `-fade20` (frame) |
+|---|---|---|
+| portada | 0 | 20 |
+| problema | 360 | 380 |
+| producto | 1050 | 1070 |
+| escalera | 1650 | 1670 |
+| traza | 2550 | 2570 |
+| adrs | 3600 | 3620 |
+| resiliencia | 4200 | 4220 |
+| escala | 4800 | 4820 |
+
+Verificación visual (portada, traza, escala): texto legible sin cortes ni
+overflow, paleta papel crema con tinta oscura y acentos, sin gradientes ni
+elementos rotos.
+
 ## Datos que usa
 
 Todo lo que aparece en pantalla sale de ficheros medidos del repo; nada está inventado:

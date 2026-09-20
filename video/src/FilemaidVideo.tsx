@@ -151,10 +151,11 @@ const CAPTURAS = [
 
 const Producto: React.FC = () => {
   const f = useCurrentFrame();
+  const lf = f - SCENES.slice(0, 2).reduce((a, s) => a + s.frames, 0); // frame local de la escena
   // Rotación de capturas: ~6,5 s cada una dentro de los 600 frames de la escena.
-  const idx = Math.min(Math.floor(f / 200), CAPTURAS.length - 1);
+  const idx = Math.min(Math.floor(lf / 200), CAPTURAS.length - 1);
   const cap = CAPTURAS[idx];
-  const capIn = fade(f - idx * 200, 0, 14);
+  const capIn = fade(lf - idx * 200, 0, 14);
   const pasos = [
     { icon: '📁', t: 'Watcher de carpeta', s: 'suelta PDFs → se ingesta sola' },
     { icon: '🌙', t: 'Lote 24/7', s: 'sin prompts: nadie duerme con el proceso' },
@@ -344,7 +345,8 @@ const Adrs: React.FC = () => {
 
 // ── 7 · Resiliencia ──────────────────────────────────────────────────────────
 const Resiliencia: React.FC = () => {
-  const f = useCurrentFrame();
+  // Frame local a la escena: los delays de rise() son relativos al inicio.
+  const f = useCurrentFrame() - SCENES.slice(0, 6).reduce((a, s) => a + s.frames, 0);
   return (
     <Escena idx={6}>
       <Frame>
@@ -370,7 +372,8 @@ const Resiliencia: React.FC = () => {
 
 // ── 8 · Escala y coste ───────────────────────────────────────────────────────
 const Escala: React.FC = () => {
-  const f = useCurrentFrame();
+  // Frame local a la escena: los delays de rise() son relativos al inicio.
+  const f = useCurrentFrame() - SCENES.slice(0, 7).reduce((a, s) => a + s.frames, 0);
   const filas: [string, string, string][] = [
     ['Corrida real · lote 1 (500 PDFs)', `${METRICS.latenciaTotalS} s  ≈  ${METRICS.filesPerS} archivos/s`, 'medido'],
     ['Coste cloud del lote', `${METRICS.costeCloudEur.toFixed(2)} €  (0 lecturas facturables)`, 'medido'],
