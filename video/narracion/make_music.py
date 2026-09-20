@@ -60,8 +60,8 @@ def build_sample(rng: random.Random) -> list[float]:
 
     for ci in range(n_chords):
         t0 = ci * period
-        seg_start = max(0, int(round((t0 - XFADE) * SR)))
-        seg_end = min(n_total, int(round((t0 + CHORD_LEN + XFADE) * SR)))
+        seg_start = max(0, round((t0 - XFADE) * SR))
+        seg_end = min(n_total, round((t0 + CHORD_LEN + XFADE) * SR))
         if seg_start >= seg_end:
             continue
         chord = PROGRESSION[ci % len(PROGRESSION)]
@@ -83,7 +83,6 @@ def build_sample(rng: random.Random) -> list[float]:
             fade_n = XFADE * SR  # attack y release dentro del crossfade
             span = seg_end - seg_start
             for k in range(span):
-                s = k / SR
                 # Envolvente del acorde: attack/release coseno elevado.
                 # Vale exactamente 0 en ambos extremos del segmento.
                 if k < fade_n:
@@ -122,7 +121,7 @@ def main() -> None:
     # Clamp de seguridad + cuantización a 16-bit.
     frames = struct.pack(
         f"<{n}h",
-        *(max(-32768, min(32767, int(round(s * 32767.0)))) for s in samples)
+        *(max(-32768, min(32767, round(s * 32767.0))) for s in samples)
     )
 
     with wave.open(OUT, "wb") as wf:
