@@ -44,12 +44,22 @@ from filemaid.types import Candidate, ExtractionField
 SUPPORTED_FIELDS = frozenset(name for name, _, _ in all_extractors())
 
 
+def _corrections(raw: dict | None) -> dict:
+    """Normalised ``corrected`` map; a ``None`` value is the *discard* sentinel.
+
+    ``None`` round-trips verbatim: it is what a reviewer commits to remove a
+    reading, so it is never coerced to a string and never dropped from the map
+    (the idempotency check compares intents exactly, nulls included).
+    """
+    return {str(k): v for k, v in sorted((raw or {}).items())}
+
+
 def _normalize_intent(body: dict) -> dict:
     return {
         "who": str(body.get("who", "")).strip(),
         "reason": str(body.get("reason", "")).strip(),
         "accepted": sorted({str(f) for f in (body.get("accepted") or [])}),
-        "corrected": {str(k): v for k, v in sorted((body.get("corrected") or {}).items())},
+        "corrected": _corrections(body.get("corrected")),
     }
 
 
@@ -58,7 +68,7 @@ def _intent_of(doc: dict) -> dict:
         "who": str(doc.get("who", "")).strip(),
         "reason": str(doc.get("reason", "")).strip(),
         "accepted": sorted({str(f) for f in (doc.get("accepted") or [])}),
-        "corrected": {str(k): v for k, v in sorted((doc.get("corrected") or {}).items())},
+        "corrected": _corrections(doc.get("corrected")),
     }
 
 
@@ -136,7 +146,14 @@ def _committed_result(store: PouchStore, commit: dict) -> dict:
 
 
 def resolve_review(store: PouchStore, cfg: AppConfig, key: str, body: dict) -> dict:
-    """Accept/correct readings, recompute deterministically and commit the release."""
+    """Accept/correct readings, recompute deterministically and commit the release.
+
+    ``corrected`` maps a field type to the value the reviewer declares; ``null``
+    means *discard* (the field must end up with no reading at all), which is
+    recorded with ``after: None`` and allowed even when the field has no chosen
+    candidate and no extracted value. ``accepted`` only confirms readings that
+    exist, so it stays validated against ``chosen``.
+    """
     intent = _normalize_intent(body)
     expected = str(body.get("expected_decision_id", "")).strip()
     if not expected.startswith("decision:"):
@@ -223,6 +240,9 @@ def resolve_review(store: PouchStore, cfg: AppConfig, key: str, body: dict) -> d
                 )
             )
         for field_type, value in intent["corrected"].items():
+            default_reason = (
+                "campo descartado en revisión" if value is None else "corrección en revisión"
+            )
             override_ids.append(
                 queries.write_override(
                     store,
@@ -234,7 +254,7 @@ def resolve_review(store: PouchStore, cfg: AppConfig, key: str, body: dict) -> d
                         "after": value,
                         "who": intent["who"],
                         "rung": "review-ui",
-                        "reason": intent["reason"] or "corrección en revisión",
+                        "reason": intent["reason"] or default_reason,
                     },
                     doc_id=f"event:override:{token}:{field_type}",
                 )

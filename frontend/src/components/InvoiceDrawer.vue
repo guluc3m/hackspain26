@@ -11,7 +11,13 @@ const error = ref('')
 const busy = ref(false)
 const cargando = ref(false) // detalle en vuelo: el drawer nunca se queda en blanco
 const motivo = ref('')
-const elegidos = ref<Record<string, number>>({}) // field_type -> índice del candidato elegido
+/** Selección del revisor por campo: candidato, descarte explícito o texto libre. */
+type Seleccion = { tipo: 'candidato'; indice: number } | { tipo: 'descartar' } | { tipo: 'texto' }
+
+const elegidos = ref<Record<string, Seleccion>>({}) // field_type -> selección del revisor
+const textos = ref<Record<string, string>>({}) // field_type -> valor tecleado en «otro valor…»
+const anadidos = ref<string[]>([]) // campos del catálogo sobrescritos fuera de `fields`
+const campoNuevo = ref('') // desplegable «añadir campo»
 
 /** Atajos del drawer: `Enter` resuelve (equivale al botón primario), `Esc` cierra.
     Solo actúan con el drawer abierto y sin modificadores que indiquen otra intención. */
@@ -30,6 +36,9 @@ watch(
     detail.value = null
     error.value = ''
     elegidos.value = {}
+    textos.value = {}
+    anadidos.value = []
+    campoNuevo.value = ''
     motivo.value = ''
     if (id) {
       // visible al instante: la carga del detalle puede tardar (PDF + decisión)
@@ -59,19 +68,90 @@ function candidatos(fieldType: string): Candidate[] {
   return detail.value?.fields[fieldType] ?? []
 }
 
-function elegido(fieldType: string): number {
-  return elegidos.value[fieldType] ?? liderIndex(candidatos(fieldType))
+/** Campos listados: los del detalle (aunque no tengan candidatos) más los añadidos. */
+const campos = computed<string[]>(() => {
+  const propios = Object.keys(detail.value?.fields ?? {})
+  return [...propios, ...anadidos.value.filter((f) => !propios.includes(f))]
+})
+
+/** Catálogo de campos que aún no están en pantalla (desplegable «añadir campo»). */
+const catalogo = computed(() =>
+  (detail.value?.supported_fields ?? []).filter((f) => !campos.value.includes(f))
+)
+
+function anadirCampo() {
+  const f = campoNuevo.value
+  campoNuevo.value = ''
+  if (!f || campos.value.includes(f)) return
+  anadidos.value = [...anadidos.value, f]
+  elegir(f, { tipo: 'texto' }) // el campo añadido nace listo para teclear su valor
 }
 
-const tieneCorreccion = computed(() => {
-  if (!detail.value) return false
-  return Object.keys(detail.value.fields).some((f) => elegido(f) !== liderIndex(candidatos(f)))
+/** Selección vigente: por defecto el candidato líder (sin candidatos no elige nada). */
+function seleccion(fieldType: string): Seleccion {
+  return elegidos.value[fieldType] ?? { tipo: 'candidato', indice: liderIndex(candidatos(fieldType)) }
+}
+
+function elegir(fieldType: string, s: Seleccion) {
+  elegidos.value = { ...elegidos.value, [fieldType]: s }
+}
+
+function elegido(fieldType: string): number {
+  const s = seleccion(fieldType)
+  return s.tipo === 'candidato' ? s.indice : -1
+}
+
+/** Texto libre tecleado para el campo (solo cuenta con «otro valor…» marcado). */
+function textoDe(fieldType: string): string {
+  return textos.value[fieldType] ?? ''
+}
+
+/** El backend ya dejó el campo sin valor (`after = null` en su último override). */
+function descartadoPorElBackend(fieldType: string): boolean {
+  return detail.value?.field_status?.[fieldType]?.discarded === true
+}
+
+/**
+ * Cambio que enviaría la resolución para el campo (`null` = no cambia nada).
+ * `accepted` sigue siendo «se mantiene el candidato líder»; cualquier otra
+ * cosa (descarte, texto libre, otro candidato o restaurar un descartado) es
+ * una corrección.
+ */
+function pendiente(fieldType: string): 'descartar' | 'texto' | 'valor' | null {
+  const s = elegidos.value[fieldType]
+  if (!s) return null
+  if (s.tipo === 'descartar') return 'descartar'
+  if (s.tipo === 'texto') return textoDe(fieldType).trim() ? 'texto' : null
+  const cs = candidatos(fieldType)
+  if (cs.length === 0) return null
+  if (s.indice === liderIndex(cs)) return descartadoPorElBackend(fieldType) ? 'valor' : null
+  return 'valor'
+}
+
+/** Estado honesto del campo: cambio pendiente o lo que ya hay en la base de datos. */
+function estadoDe(fieldType: string): 'descartado' | 'corregido' | 'sin-valor' | '' {
+  const p = pendiente(fieldType)
+  if (p === 'descartar') return 'descartado'
+  if (p !== null) return 'corregido'
+  if (descartadoPorElBackend(fieldType)) return 'descartado'
+  const st = detail.value?.field_status?.[fieldType]
+  return st && !st.has_value ? 'sin-valor' : ''
+}
+
+const estados = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {}
+  for (const f of campos.value) out[f] = estadoDe(f)
+  return out
 })
+
+const tieneCorreccion = computed(() => campos.value.some((f) => pendiente(f) !== null))
 
 /**
  * Resuelve la revisión: confirma los campos cuyo candidato líder se mantiene
- * (`accepted`) y corrige los que el revisor cambia (`corrected`). El backend
- * recalcula la decisión de forma determinista; nunca se fuerza el pago.
+ * (`accepted`) y corrige los que el revisor cambia (`corrected`): otro
+ * candidato, un texto libre o `null` para descartar el campo. Nunca se manda
+ * el mismo campo en las dos listas. El backend recalcula la decisión de forma
+ * determinista; nunca se fuerza el pago.
  */
 async function resolver() {
   if (!detail.value || busy.value) return
@@ -80,12 +160,18 @@ async function resolver() {
   const d = detail.value
   const accepted: string[] = []
   const corrected: Record<string, unknown> = {}
-  for (const fieldType of Object.keys(d.fields)) {
+  for (const fieldType of campos.value) {
     const cs = candidatos(fieldType)
-    if (cs.length === 0) continue
-    const i = elegido(fieldType)
-    if (i === liderIndex(cs)) accepted.push(fieldType)
-    else corrected[fieldType] = cs[i]?.value
+    const cambio = pendiente(fieldType)
+    if (cambio === 'descartar') {
+      corrected[fieldType] = null // descartado: el motor lo ve sin valor
+    } else if (cambio === 'texto') {
+      corrected[fieldType] = textoDe(fieldType) // tal cual lo tecleado; el backend lo interpreta
+    } else if (cambio === 'valor') {
+      corrected[fieldType] = cs[elegido(fieldType)]?.value
+    } else if (cs.length > 0 && !descartadoPorElBackend(fieldType)) {
+      accepted.push(fieldType) // se confirma la lectura actual (before = after)
+    }
   }
   try {
     await api.resolve(d.invoice.id, {
@@ -182,26 +268,81 @@ function safeParse(s: string): unknown {
         <section class="panel">
           <h3>Campos y candidatos</h3>
           <p class="muted">
-            Todos los candidatos se conservan. Confirma el candidato correcto por campo; el
-            backend registra la procedencia y recalcula la decisión con el mismo motor.
+            Todos los candidatos se conservan. Confirma el candidato correcto, descarta el campo
+            con «(sin valor)» o escribe un valor propio con «otro valor…»; el backend registra la
+            procedencia y recalcula la decisión con el mismo motor.
           </p>
-          <div v-for="(cs, fieldType) in detail.fields" :key="fieldType" class="campo">
+          <div v-for="fieldType in campos" :key="fieldType" class="campo">
             <div class="campo-head">
               <strong class="mono">{{ fieldType }}</strong>
-              <span v-if="elegido(String(fieldType)) !== liderIndex(cs)" class="badge ESCALAR">corregido</span>
+              <span
+                v-if="estados[fieldType] === 'descartado'"
+                class="badge disputa"
+                title="El campo queda sin valor: la regla que lo consume no puede autorizar el pago"
+              >
+                descartado
+              </span>
+              <span v-else-if="estados[fieldType] === 'corregido'" class="badge ESCALAR">corregido</span>
+              <span
+                v-else-if="estados[fieldType] === 'sin-valor'"
+                class="badge pendiente"
+                title="El campo no tiene valor registrado"
+              >
+                sin valor
+              </span>
+              <span v-if="candidatos(fieldType).length === 0" class="muted">sin candidatos</span>
             </div>
-            <label v-for="(c, i) in cs" :key="c.extractor + i" class="candidato">
+            <label v-for="(c, i) in candidatos(fieldType)" :key="c.extractor + i" class="candidato">
               <input
                 type="radio"
                 :name="`cand-${fieldType}`"
-                :checked="elegido(String(fieldType)) === i"
-                @change="elegidos[String(fieldType)] = i"
+                :checked="seleccion(fieldType).tipo === 'candidato' && elegido(fieldType) === i"
+                @change="elegir(fieldType, { tipo: 'candidato', indice: i })"
               />
               <span class="mono">{{ fmtValor(c.value) }}</span>
               <span class="muted">· {{ c.extractor }} · {{ Math.round(c.confidence * 100) }}%</span>
             </label>
+            <label class="candidato">
+              <input
+                type="radio"
+                :name="`cand-${fieldType}`"
+                :checked="seleccion(fieldType).tipo === 'descartar'"
+                @change="elegir(fieldType, { tipo: 'descartar' })"
+              />
+              <span class="muted">(sin valor) · descarta el campo</span>
+            </label>
+            <label class="candidato">
+              <input
+                type="radio"
+                :name="`cand-${fieldType}`"
+                :checked="seleccion(fieldType).tipo === 'texto'"
+                @change="elegir(fieldType, { tipo: 'texto' })"
+              />
+              <span class="muted">otro valor…</span>
+            </label>
+            <input
+              v-if="seleccion(fieldType).tipo === 'texto'"
+              v-model="textos[fieldType]"
+              class="valor-libre"
+              :aria-label="`Valor propio para ${fieldType}`"
+              :placeholder="`valor para ${fieldType}…`"
+            />
           </div>
-          <p v-if="Object.keys(detail.fields).length === 0" class="muted">sin campos extraídos</p>
+          <p v-if="campos.length === 0" class="muted">sin campos extraídos</p>
+          <div v-if="catalogo.length > 0" class="campo anadir">
+            <div class="campo-head">
+              <strong class="mono">añadir campo</strong>
+              <span class="muted">del catálogo del sistema</span>
+            </div>
+            <select
+              v-model="campoNuevo"
+              aria-label="Campo del catálogo a sobrescribir"
+              @change="anadirCampo"
+            >
+              <option value="">— elegir campo —</option>
+              <option v-for="f in catalogo" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </div>
           <div class="toolbar aplicar">
             <input v-model="motivo" aria-label="Motivo de la resolución" placeholder="motivo (opcional)" />
             <button type="button" class="primary" :disabled="busy" @click="resolver">
@@ -282,5 +423,8 @@ function safeParse(s: string): unknown {
 .campo { margin-bottom: 10px; }
 .campo-head { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
 .candidato { display: flex; gap: 8px; align-items: baseline; padding: 2px 0 2px 12px; }
+.valor-libre { margin: 4px 0 0 12px; width: min(320px, 100%); }
+.anadir { margin-top: 14px; }
+.anadir select { max-width: 320px; }
 .aplicar { margin-top: 10px; }
 </style>

@@ -62,6 +62,18 @@ export interface OverrideRow {
   timestamp: number
 }
 
+/**
+ * Estado de un campo según el backend: permite mostrar `descartado` y `sin
+ * valor` sin inferirlo de la lista de candidatos.
+ */
+export interface FieldStatus {
+  has_value: boolean
+  /** El override más reciente del campo lo dejó sin valor (`after = null`). */
+  discarded: boolean
+  candidates: number
+  last_override: Record<string, unknown> | null
+}
+
 export interface InvoiceDetail {
   invoice: {
     id: string
@@ -73,6 +85,10 @@ export interface InvoiceDetail {
     source_path: string
   }
   fields: Record<string, Candidate[]>
+  /** Catálogo ordenado de campos que el revisor puede sobrescribir. */
+  supported_fields?: string[]
+  /** Estado honesto por campo (ausente si el backend aún no lo expone). */
+  field_status?: Record<string, FieldStatus>
   decision: DecisionRecord | null // última decisión
   rule_evaluations: RuleEvaluationRow[] // las de la última decisión
   overrides: OverrideRow[]
@@ -152,7 +168,10 @@ export interface ResolveInput {
   reason: string
   /** Campos cuya lectura actual se confirma (before = after). */
   accepted: string[]
-  /** Campos corregidos a un valor nuevo (before = elegido, after = valor). */
+  /**
+   * Campos corregidos a un valor nuevo, a un texto libre, o `null` para
+   * descartar el campo (el motor lo ve sin valor).
+   */
   corrected: Record<string, unknown>
   /** Decisión cargada por la UI: un resolve obsoleto falla con 409. */
   expected_decision_id: string
@@ -172,6 +191,8 @@ export interface RuntimeConfig {
   vlm_url: string
   vlm_model: string
   local_vlm_fallback: boolean
+  /** Arrancar el VLM local automáticamente al abrir la app (modo autónomo). */
+  vlm_autostart: boolean
   /** Clave de API del servidor (solo modo servidor); nunca se muestra ni se registra. */
   server_api_key: string
   /**
@@ -203,6 +224,7 @@ export interface RuntimeConfigInput {
   vlm_url: string
   vlm_model: string
   local_vlm_fallback: boolean
+  vlm_autostart: boolean
   server_api_key: string
   firecrawl_api_key?: string
   cloud_vlm_api_key?: string
@@ -217,6 +239,8 @@ export interface VlmStatus {
   local_required: boolean
   local_fallback: boolean
   state: VlmState
+  /** `true` solo si hay una descarga/arranque realmente en marcha. */
+  in_flight: boolean
   downloaded: boolean
   running: boolean
   /** `true` solo con el modelo en ejecución y sano, no solo descargado. */

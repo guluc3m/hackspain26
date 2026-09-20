@@ -21,6 +21,7 @@ const currentConfig = ref<RuntimeConfig>({
   vlm_url: '',
   vlm_model: '',
   local_vlm_fallback: false,
+  vlm_autostart: true,
   server_api_key: '',
   firecrawl_api_key: '',
   cloud_vlm_api_key: '',

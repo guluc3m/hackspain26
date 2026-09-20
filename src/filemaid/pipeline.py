@@ -84,6 +84,14 @@ def apply_overrides(
     has confidence 1.0 and ``override`` ranks first, so it wins a score tie
     deterministically while still flowing through ``escoger`` (format tests,
     score threshold, rule ``min_confidence``) and the rule's ``chosen_candidates``.
+
+    A committed override whose ``after`` is ``None`` is the *discard* sentinel (a
+    human removed the reading): no candidate is injected and the field's values
+    are cleared, so ``escoger`` returns nothing for it and every rule that
+    consumes it degrades to UNKNOWN — never to a payable reading. The applied
+    entry keeps the provenance and is marked ``discarded``. A later override with
+    a real value replaces the discard (only the newest override per field is
+    applied), so discarding and re-declaring a value is reversible.
     """
     latest: dict[str, dict] = {}
     for doc in sorted(overrides, key=lambda d: (d.get("timestamp", 0), d["_id"])):
@@ -104,21 +112,26 @@ def apply_overrides(
             field = ExtractionField(type=field_type)
             fields.append(field)
             by_type[field_type] = field
-        field.values.insert(
-            0, Candidate(extractor=OVERRIDE_EXTRACTOR, value=value, confidence=1.0)
-        )
-        applied.append(
-            {
-                "field_type": field_type,
-                "value": value,
-                "before": payload.get("before"),
-                "who": payload.get("who", ""),
-                "rung": payload.get("rung", ""),
-                "reason": payload.get("reason", ""),
-                "override_id": doc["_id"],
-                "timestamp": doc.get("timestamp"),
-            }
-        )
+        if value is None:
+            # Discard: no candidate may survive, so the field collapses to nothing.
+            field.values.clear()
+        else:
+            field.values.insert(
+                0, Candidate(extractor=OVERRIDE_EXTRACTOR, value=value, confidence=1.0)
+            )
+        entry = {
+            "field_type": field_type,
+            "value": value,
+            "before": payload.get("before"),
+            "who": payload.get("who", ""),
+            "rung": payload.get("rung", ""),
+            "reason": payload.get("reason", ""),
+            "override_id": doc["_id"],
+            "timestamp": doc.get("timestamp"),
+        }
+        if value is None:
+            entry["discarded"] = True
+        applied.append(entry)
     return fields, applied
 
 

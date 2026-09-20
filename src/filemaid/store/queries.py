@@ -14,6 +14,8 @@ import time
 import uuid
 from pathlib import Path
 
+from filemaid.parse.extractors import all_extractors
+
 from .pouch import PouchStore
 
 
@@ -131,6 +133,39 @@ def withheld_count(store: PouchStore) -> int:
 
 # ---------------------------------------------------------------- invoice views
 
+# Field types a human can confirm, discard or override. Same source as
+# ``review.SUPPORTED_FIELDS`` (one catalogue, derived from the extractors).
+SUPPORTED_FIELDS: tuple[str, ...] = tuple(sorted({name for name, _, _ in all_extractors()}))
+
+
+def _field_status(candidates: list[dict], override: dict | None) -> dict:
+    """Per-field marker for the review UI: has a reading, discarded, or neither.
+
+    ``discarded`` is the newest committed override with ``after: null`` — the
+    human removed the reading. ``has_value`` is about candidates, so a field that
+    was never extracted and one that was discarded are told apart by the marker
+    while both stay override-able.
+    """
+    payload = (override or {}).get("payload") or {}
+    return {
+        "has_value": bool(candidates),
+        "discarded": override is not None and payload.get("after") is None,
+        "candidates": len(candidates),
+        "last_override": (
+            None
+            if override is None
+            else {
+                "id": override["_id"],
+                "field_type": payload.get("field_type"),
+                "before": payload.get("before"),
+                "after": payload.get("after"),
+                "who": payload.get("who", ""),
+                "reason": payload.get("reason", ""),
+                "timestamp": override.get("timestamp"),
+            }
+        ),
+    }
+
 
 def _invoice_row(file: dict, scans: list[dict], decisions: list[dict], state: str) -> dict:
     """One dashboard row; ``decisions`` are the file's hydrated decisions in order."""
@@ -229,13 +264,27 @@ def invoice_detail(store: PouchStore, key: str) -> dict | None:
     resolution = _covering_resolution(resolutions, latest["_id"]) if latest else None
     fields_raw = hydrated[fields_doc["_id"]]["fields"] if fields_doc else []
 
-    # Project to Record<string, Candidate[]> expected by UI
-    fields_map: dict[str, list[dict]] = {}
+    # Project to Record<string, Candidate[]> expected by UI. Every field the
+    # system can override is present, with an empty candidate list when it has no
+    # reading: a field can be discarded ("sin valor") or overridden by hand even
+    # when the extraction never produced a candidate.
+    fields_map: dict[str, list[dict]] = {f_type: [] for f_type in SUPPORTED_FIELDS}
     for f in fields_raw:
-        f_type = f.get("type", "")
-        fields_map[f_type] = f.get("values", [])
+        fields_map[f.get("type", "")] = f.get("values", [])
 
     overrides = [hydrated[d["_id"]] for d in overrides_raw]
+    latest_override: dict[str, dict] = {}
+    for d in sorted(overrides, key=_timeline):
+        field_type = (d.get("payload") or {}).get("field_type")
+        if field_type:
+            latest_override[field_type] = d
+
+    field_status = {
+        f_type: _field_status(
+            fields_map[f_type], latest_override.get(f_type)
+        )
+        for f_type in SUPPORTED_FIELDS
+    }
 
     first_seen = scans[0]["timestamp"] if scans and "timestamp" in scans[0] else None
     last_seen = (
@@ -267,6 +316,8 @@ def invoice_detail(store: PouchStore, key: str) -> dict | None:
         if latest
         else None,
         "fields": fields_map,
+        "supported_fields": list(SUPPORTED_FIELDS),
+        "field_status": field_status,
         "rule_evaluations": rule_evaluations,
         "overrides": [
             {

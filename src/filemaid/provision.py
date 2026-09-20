@@ -202,9 +202,20 @@ class VlmProvisioner:
     def status(self) -> dict[str, Any]:
         with self._lock:
             state, detail, error = self._state, self._detail, self._error
+            thread = self._thread
+        in_flight = thread is not None and thread.is_alive()
         downloaded = files_ready()
         running = self._sidecar_up()
-        if state in {"downloading", "starting", "error"}:
+        if state in {"downloading", "starting"}:
+            if in_flight:
+                ready = False
+            elif downloaded and running:
+                # La verdad observada manda: ya hay sidecar sano sirviendo el modelo.
+                state, detail, error, ready = "ready", "sidecar healthy", "", True
+            else:
+                # Un intento que ya no corre no puede leerse como "preparando".
+                state, detail, error, ready = "idle", "not running", "", False
+        elif state == "error":
             ready = False
         else:
             ready = downloaded and running
@@ -212,6 +223,7 @@ class VlmProvisioner:
         gguf, mmproj = model_paths()
         return {
             "state": state,
+            "in_flight": in_flight,
             "downloaded": downloaded,
             "running": running,
             "ready": ready,
@@ -256,6 +268,10 @@ class VlmProvisioner:
         with self._lock:
             proc, self._setup_proc = self._setup_proc, None
             thread = self._thread
+            if self._state in {"downloading", "starting"}:
+                # Un cierre aborta la descarga/arranque: el estado no puede quedar
+                # clavado en "preparando" cuando ya no hay nada en marcha.
+                self._state, self._detail, self._error = "idle", "not running", ""
         if proc is not None:
             terminate_tree(proc, timeout)
         if thread is not None and thread.is_alive():

@@ -23,6 +23,9 @@ _DEFAULT = {
     "vlm_model": "",
     "server_api_key": "",
     "local_vlm_fallback": False,
+    # El VLM local arranca solo al abrir la app en modo autónomo; el usuario puede
+    # desactivarlo en Ajustes y eso se guarda sin re-confirmar el modo.
+    "vlm_autostart": True,
     # Claves opcionales de los últimos peldaños de la escalera (Firecrawl, VLM
     # cloud, TypeSafe System One). A diferencia de los endpoints remotos sí son
     # significativas en ambos modos: standalone es justo donde se quiere un
@@ -86,6 +89,8 @@ class RuntimeSettings:
             "vlm_model": saved.get("vlm_model", ""),
             "server_api_key": saved.get("server_api_key", ""),
             "local_vlm_fallback": bool(saved.get("local_vlm_fallback", False)),
+            # Herencia: un documento sin el campo arranca solo (comportamiento nuevo).
+            "vlm_autostart": bool(saved.get("vlm_autostart", True)),
             **{key: str(saved.get(key, "") or "") for key in RUNG_KEYS},
             "configured": True,
         }
@@ -147,6 +152,8 @@ class RuntimeSettings:
         vlm_model = str(values.get("vlm_model", "")).strip()
         # Optional in both modes: an absent key means "rung skipped", never an error.
         rung_keys = {key: str(values.get(key, "") or "").strip() for key in RUNG_KEYS}
+        # Arrancar el VLM local solo: por defecto sí, y no exige confirmar el modo.
+        autostart = bool(values.get("vlm_autostart", True))
         if mode == "standalone":
             return {
                 "mode": "standalone",
@@ -155,6 +162,7 @@ class RuntimeSettings:
                 "vlm_model": "",
                 "server_api_key": "",
                 "local_vlm_fallback": False,
+                "vlm_autostart": autostart,
                 **rung_keys,
             }
         sync_url = str(values.get("sync_url", "")).strip()
@@ -174,6 +182,7 @@ class RuntimeSettings:
             "vlm_model": vlm_model,
             "server_api_key": server_api_key,
             "local_vlm_fallback": bool(values.get("local_vlm_fallback", False)),
+            "vlm_autostart": autostart,
             **rung_keys,
         }
 

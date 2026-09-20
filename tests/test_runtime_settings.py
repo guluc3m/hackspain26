@@ -29,6 +29,7 @@ def test_standalone_coerces_remote_endpoints_and_survives_restart(cfg):
         "vlm_model": "",
         "server_api_key": "",
         "local_vlm_fallback": False,
+        "vlm_autostart": True,
         "firecrawl_api_key": "",
         "cloud_vlm_api_key": "",
         "typesafe_api_key": "",

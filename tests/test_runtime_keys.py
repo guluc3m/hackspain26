@@ -14,7 +14,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from filemaid.api.app import create_app
+from filemaid.api.app import _vlm_status, create_app
 from filemaid.config import AppConfig
 from filemaid.extract.cache import FeatureCache
 from filemaid.extract.rungs import typesafe_jev
@@ -263,3 +263,80 @@ def test_config_never_reaches_evidence(cfg, tmp_path, monkeypatch):
         assert secret not in blob
     # La clave vive donde debe: en el documento local (nunca replicado).
     assert store.local_get("runtime-settings")["firecrawl_api_key"] == SECRETS["firecrawl_api_key"]
+
+
+class _StubProvisioner:
+    """Provisioner de prueba: cuenta arranques y devuelve el estado pedido."""
+
+    def __init__(self, probe: dict | None = None) -> None:
+        self.starts = 0
+        self._probe = probe or {
+            "state": "idle",
+            "in_flight": False,
+            "downloaded": False,
+            "running": False,
+            "ready": False,
+            "detail": "",
+            "error": "",
+        }
+
+    def ensure(self, wait: bool = False) -> dict:
+        self.starts += 1
+        return self._probe
+
+    def status(self) -> dict:
+        return dict(self._probe)
+
+
+def test_fresh_standalone_autostarts_local_vlm(cfg, monkeypatch):
+    """Install nuevo (sin confirmar modo): el VLM local arranca solo por defecto."""
+    stub = _StubProvisioner()
+    monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None: stub)
+    with TestClient(create_app(cfg)) as client:
+        assert client.get("/api/config").json()["vlm_autostart"] is True
+        assert stub.starts == 1
+
+
+def test_disabled_autostart_does_not_start_the_vlm(cfg, monkeypatch):
+    RuntimeSettings(cfg).save({"mode": "standalone", "vlm_autostart": False})
+    stub = _StubProvisioner()
+    monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None: stub)
+    with TestClient(create_app(cfg)) as client:
+        assert client.get("/api/config").json()["vlm_autostart"] is False
+    assert stub.starts == 0
+
+
+def test_standalone_save_flips_only_the_checkbox(cfg):
+    """Guardar el checkbox no exige re-confirmar el modo ni aportar URLs."""
+    RuntimeSettings(cfg).save({"mode": "standalone", **SECRETS})
+    client = TestClient(create_app(cfg))
+    assert client.put("/api/config", json={"mode": "standalone", "vlm_autostart": False}).status_code == 200
+    stored = RuntimeSettings(cfg).get()
+    assert stored["vlm_autostart"] is False
+    assert {key: stored[key] for key in SECRETS} == SECRETS
+    assert client.get("/api/config").json()["vlm_autostart"] is False
+    # Y se vuelve a activar con la misma facilidad.
+    assert client.put("/api/config", json={"mode": "standalone", "vlm_autostart": True}).status_code == 200
+    assert RuntimeSettings(cfg).get()["vlm_autostart"] is True
+
+
+def test_vlm_status_never_busy_without_a_real_start(cfg, monkeypatch):
+    RuntimeSettings(cfg).save({"mode": "standalone"})
+    settings = RuntimeSettings(cfg)
+    for probe_state in ("idle", "error", "ready"):
+        probe = {"state": probe_state, "in_flight": False, "ready": probe_state == "ready"}
+        monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None, p=probe: _StubProvisioner(p))
+        reported = _vlm_status(cfg, settings)
+        assert reported["state"] == probe_state
+        assert reported["state"] not in {"downloading", "starting"}
+
+    # Un "preparando" sin nada en marcha se degrada a la verdad observada.
+    stale = {"state": "downloading", "in_flight": False, "ready": False}
+    monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None: _StubProvisioner(stale))
+    assert _vlm_status(cfg, settings)["state"] == "idle"
+    stale["ready"] = True
+    assert _vlm_status(cfg, settings)["state"] == "ready"
+    # Un arranque real sí se informa como tal.
+    real = {"state": "starting", "in_flight": True, "ready": False}
+    monkeypatch.setattr("filemaid.api.app.get_provisioner", lambda cfg=None: _StubProvisioner(real))
+    assert _vlm_status(cfg, settings)["state"] == "starting"

@@ -22,6 +22,7 @@ import {
   SCENES,
 } from './scenes';
 import { useFonts } from './fonts';
+import { ClientServer } from './ClientServer';
 import shotDashboard from '../assets/shot-dashboard.png';
 import shotRevision from '../assets/shot-revision.png';
 import shotLogs from '../assets/shot-logs.png';
@@ -35,17 +36,21 @@ const MONO = "'DejaVu Sans Mono', 'Courier New', monospace";
 // escena) en el que entra la voz. La música cubre los 5400 frames a 0.12.
 const VOZ = [30, 30, 36, 60, 75, 45, 30, 30];
 
-// Reparto local de tiempos P→S→B/C por escena (≈25 % / 45 % / 30 %, alineado
-// con la voz): [inicio de SOLUCIÓN, inicio de BENEFICIO/CAVEAT].
+// Reparto local de tiempos P→S→B/C por escena: [inicio de SOLUCIÓN, inicio de
+// BENEFICIO/CAVEAT]. Derivado de las TOMAS NUEVAS (frases y duración medida de
+// video/narracion/guion_tts.md): cada frontera cae en la frase donde la voz
+// entra en ese tiempo, y el arranque del B/C se coloca para que el último
+// cambio visual de la escena caiga dentro de los ~2 s finales (sin cola
+// congelada después de la voz).
 const TIEMPOS: [number, number][] = [
-  [95, 240],   // 1 portada: hook 500 → qué hace → enseña la prueba
-  [172, 483],  // 2 problema: decidir parece fácil → alternativas tachadas → norma
-  [150, 420],  // 3 producto: ¿trabajo nocturno? → 5 pasos → notificación
-  [225, 630],  // 4 escalera: ¿quién lee una página difícil? → 7 escalones → 94 %
-  [262, 788],  // 5 traza: ¿por qué NO se paga? → 3 casos → auditable
-  [150, 420],  // 6 adrs: IA que decide distinto no es pagable → motor puro → ADR-06
-  [150, 420],  // 7 resiliencia: ¿y si algo cae? → drills → degradar
-  [120, 390],  // 8 escala: ¿cuánto cuesta? → fórmula → cierre
+  [ 95, 240],  // 1 portada: «500 facturas» → «esto es filemaid… las lee, las comprueba» → «enseñando siempre la prueba»
+  [145, 350],  // 2 problema: «decidir parece fácil» → «los LLM tardan / el OCR se tropieza» → «ante la duda… escalar antes que pagar»
+  [125, 440],  // 3 producto: «el producto es la app de escritorio» → «vigila la carpeta… el servidor no decide» → «y si algo huele raro, un humano revisa»
+  [105, 640],  // 4 escalera: «¿cómo lee cada página?» → los 7 escalones → «y solo al final la nube» + «cada escalón degrada con calma»
+  [140, 600],  // 5 traza: «¿por qué no se paga esta?» → los 3 casos reales → «cada decisión guarda su evidencia» (cierre: «todo se puede auditar»)
+  [135, 334],  // 6 adrs: «una IA que decide distinto no es pagable» → «el motor del cliente es puro» → «cuando encontramos un fallo… ocho ADRs»
+  [110, 220],  // 7 resiliencia: «¿y si un proveedor cae?» → los 4 drills → «se reanuda sin duplicados» + «si el servidor cae…» + «degradar»
+  [ 55, 240],  // 8 escala: «¿y el coste?» → «la fórmula es simple: el 94 % cuesta cero» → «quinientas facturas en dos minutos…»
 ];
 
 const sceneStart = (idx: number) => SCENES.slice(0, idx).reduce((a, s) => a + s.frames, 0);
@@ -226,7 +231,7 @@ const Problema: React.FC = () => {
                 <Tachada titulo="LLM" motivo="lento y a veces inventa" f={f} delay={tS + 45} />
                 <Tachada titulo="OCR clásico" motivo="se rinde con un escaneo malo" f={f} delay={tS + 85} />
               </div>
-              <div style={{ ...rise(f, tS + 130), marginTop: 34, fontSize: 32, color: C.brown, fontStyle: 'italic' }}>
+              <div style={{ ...rise(f, tS + 150), marginTop: 34, fontSize: 32, color: C.brown, fontStyle: 'italic' }}>
                 …y sin evidencia, nadie responde por la decisión.
               </div>
             </div>
@@ -237,11 +242,11 @@ const Problema: React.FC = () => {
                 «Ante duda razonable, escalar antes que pagar.»
               </div>
               <div style={{
-                ...rise(f, tB + 55), marginTop: 60, alignSelf: 'flex-start',
+                ...rise(f, tB + 130), marginTop: 60, alignSelf: 'flex-start',
                 border: `2px solid ${C.ink}`, background: C.panel, padding: '30px 44px',
               }}>
                 <div style={{ fontSize: 28, color: C.brown, marginBottom: 16 }}>Lo que Alberto necesita:</div>
-                <div style={{ fontFamily: DISPLAY, fontSize: 44 }}>
+                <div style={{ ...rise(f, tB + 272), fontFamily: DISPLAY, fontSize: 44 }}>
                   precisión · rapidez · prueba
                 </div>
               </div>
@@ -299,7 +304,7 @@ const Producto: React.FC = () => {
               <div style={{ flex: 1 }}>
                 {pasos.map((p, i) => (
                   <div key={p.t} style={{
-                    ...rise(f, tS + 15 + i * 14), display: 'flex', alignItems: 'baseline', gap: 16,
+                    ...rise(f, tS + 15 + i * 60), display: 'flex', alignItems: 'baseline', gap: 16,
                     background: C.panel, border: `2px solid ${C.ink}`, padding: '13px 20px',
                     marginBottom: 12,
                   }}>
@@ -329,7 +334,7 @@ const Producto: React.FC = () => {
                 Tú solo miras cuando algo huele raro.
               </div>
               <div style={{
-                ...rise(f, tB + 50), marginTop: 50, fontFamily: MONO, fontSize: 30,
+                ...rise(f, tB + 95), marginTop: 50, fontFamily: MONO, fontSize: 30,
                 background: C.warnBg, border: `2px solid ${C.orange}`, color: C.ink,
                 padding: '18px 34px',
               }}>
@@ -378,7 +383,7 @@ const Escalera: React.FC = () => {
               </div>
               {ESCALERA.map((e, i) => (
                 <div key={e.n} style={{
-                  ...rise(f, tS + 10 + i * 9), display: 'grid', gridTemplateColumns: '54px 1fr 180px',
+                  ...rise(f, tS + 10 + i * 78), display: 'grid', gridTemplateColumns: '54px 1fr 180px',
                   gap: 14, alignItems: 'center', background: i < 4 ? C.okBg : C.panel,
                   border: `2px solid ${C.ink}`, padding: '9px 18px', marginBottom: 7,
                 }}>
@@ -393,7 +398,7 @@ const Escalera: React.FC = () => {
                   <div style={{ textAlign: 'right', fontFamily: MONO, fontSize: 22, color: C.orange }}>{e.cost}</div>
                 </div>
               ))}
-              <div style={{ ...rise(f, tS + 10 + ESCALERA.length * 9), marginTop: 12, fontSize: 22, color: C.brown, fontFamily: MONO, textAlign: 'right' }}>
+              <div style={{ ...rise(f, tS + 480), marginTop: 12, fontSize: 22, color: C.brown, fontFamily: MONO, textAlign: 'right' }}>
                 El VLM local (~4 GB RAM) solo arranca si el servidor está offline.
               </div>
             </div>
@@ -409,7 +414,7 @@ const Escalera: React.FC = () => {
                 </div>
               </div>
               <div style={{
-                ...rise(f, tB + 60), marginTop: 60, alignSelf: 'flex-start',
+                ...rise(f, tB + 200), marginTop: 60, alignSelf: 'flex-start',
                 border: `2px solid ${C.orange}`, background: C.warnBg, padding: '22px 34px', fontSize: 32,
               }}>
                 <b>Caveat:</b> si un escalón falla, degrada con calma — <b>el lote nunca se para</b>.
@@ -476,11 +481,11 @@ const Traza: React.FC = () => {
           s={
             <div style={{ display: 'flex', gap: 28 }}>
               {casos.map((caso, i) => (
-                <div key={caso.file_id} style={{ flex: 1, ...rise(f, tS + 15 + i * 20) }}>
+                <div key={caso.file_id} style={{ flex: 1, ...rise(f, tS + 15 + i * 165) }}>
                   <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700 }}>{caso.file_id}</div>
                   <div style={{ margin: '12px 0 8px' }}><VerdictBadge result={caso.result} size={34} /></div>
                   <div style={{ border: `2px solid ${C.ink}`, background: C.panel }}>
-                    {estados(caso).map((r, j) => <Regla key={r.code} code={r.code} state={r.state} f={f} delay={tS + 40 + i * 8 + j * 4} />)}
+                    {estados(caso).map((r, j) => <Regla key={r.code} code={r.code} state={r.state} f={f} delay={tS + 25 + i * 165 + j * 7} />)}
                   </div>
                   <div style={{ marginTop: 10, fontSize: 22, color: C.brown }}>{caso.nota}</div>
                 </div>
@@ -492,12 +497,12 @@ const Traza: React.FC = () => {
               <div style={{ ...rise(f, tB), fontFamily: DISPLAY, fontSize: 72, textAlign: 'center' }}>
                 Nada se inventa. Todo se puede auditar.
               </div>
-              <div style={{ ...rise(f, tB + 55), marginTop: 50, display: 'flex', gap: 18 }}>
-                {['sha256', 'extractor', 'confianza', 'config', 'latencia'].map((e) => (
-                  <span key={e} style={{ fontFamily: MONO, fontSize: 26, background: C.sand, border: `1px solid ${C.ink}`, padding: '10px 20px' }}>{e}</span>
+              <div style={{ marginTop: 50, display: 'flex', gap: 18 }}>
+                {['sha256', 'extractor', 'confianza', 'config', 'latencia'].map((e, i) => (
+                  <span key={e} style={{ ...rise(f, tB + 100 + i * 50), fontFamily: MONO, fontSize: 26, background: C.sand, border: `1px solid ${C.ink}`, padding: '10px 20px' }}>{e}</span>
                 ))}
               </div>
-              <div style={{ ...rise(f, tB + 85), marginTop: 26, fontSize: 28, color: C.brown }}>
+              <div style={{ ...rise(f, tB + 390), marginTop: 26, fontSize: 28, color: C.brown }}>
                 La evidencia viaja con cada decisión.
               </div>
             </div>
@@ -554,11 +559,11 @@ const Adrs: React.FC = () => {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24, flex: 1 }}>
-                <div style={{ ...rise(f, tB + 35), border: `2px solid ${C.ink}`, background: C.panel, padding: '24px 30px' }}>
+                <div style={{ ...rise(f, tB + 106), border: `2px solid ${C.ink}`, background: C.panel, padding: '24px 30px' }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: 64, lineHeight: 1 }}>8</div>
                   <div style={{ fontSize: 27, color: C.brown }}>decisiones escritas (ADRs)</div>
                 </div>
-                <div style={{ ...rise(f, tB + 70), border: `2px solid ${C.orange}`, background: C.warnBg, padding: '20px 30px', fontSize: 25 }}>
+                <div style={{ ...rise(f, tB + 216), border: `2px solid ${C.orange}`, background: C.warnBg, padding: '20px 30px', fontSize: 25 }}>
                   <b>Caveat:</b> la política FAIL→NO_PAGAR/ESCALAR es dato, no código.
                 </div>
               </div>
@@ -613,13 +618,13 @@ const Resiliencia: React.FC = () => {
                 Reanudar <b>nunca duplica</b> ni <b>re-factura</b>
                 <span style={{ fontSize: 30, color: C.brown }}> — idempotencia por huella.</span>
               </div>
-              <div style={{ ...rise(f, tB + 30), marginTop: 22, fontSize: 28, color: C.brown }}>
-                La sincronización con el servidor corre en segundo plano.
+              {/* CLIENTE / SERVIDOR en bloque propio (1500×440): sustituye a las
+                  dos líneas de sync que iban apiladas. Su `f` local arranca
+                  cuando aparece, igual que el resto de entradas del beat. */}
+              <div style={{ ...rise(f, tB + 55), marginTop: 26, display: 'flex', justifyContent: 'center' }}>
+                <ClientServer f={f - tB - 55} />
               </div>
-              <div style={{ ...rise(f, tB + 42), marginTop: 6, fontSize: 28, color: C.brown }}>
-                Si está offline, la app <b style={{ color: C.ink }}>sigue decidiendo en local</b> y sincroniza al volver.
-              </div>
-              <div style={{ ...rise(f, tB + 75), marginTop: 48, fontFamily: DISPLAY, fontSize: 88, lineHeight: 1.15 }}>
+              <div style={{ ...rise(f, tB + 300), marginTop: 36, fontFamily: DISPLAY, fontSize: 88, lineHeight: 1.15 }}>
                 Caerse no es opción:<br /><span style={{ color: C.orange }}>degradar.</span>
               </div>
             </div>
@@ -640,8 +645,8 @@ const Escala: React.FC = () => {
   // `rise(...)` (que emite translateY) y acto seguido `transform: scale(...)`
   // pisaba ese translateY, así que el desplazamiento nunca se veía; aquí el
   // fade replica el timing de `rise` y la escala sigue siendo la entrada real.
-  const cierre = spring({ frame: Math.max(0, f - tB - 90), fps: 30, config: { damping: 13, mass: 0.7 } });
-  const cierreIn = interpolate(f, [tB + 90, tB + 110], [0, 1], {
+  const cierre = spring({ frame: Math.max(0, f - tB - 275), fps: 30, config: { damping: 13, mass: 0.7 } });
+  const cierreIn = interpolate(f, [tB + 275, tB + 295], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
   });
   const filas: [string, string, string][] = [
@@ -668,7 +673,7 @@ const Escala: React.FC = () => {
           s={
             <div style={{ border: `2px solid ${C.ink}`, background: C.panel, width: 1500 }}>
               {filas.map(([k, v, tag], i) => (
-                <div key={k} style={{ ...rise(f, tS + 12 + i * 14), display: 'grid', gridTemplateColumns: '520px 1fr 170px', alignItems: 'center', padding: '22px 30px', borderBottom: i < filas.length - 1 ? `1px solid ${C.borderSoft}` : 'none' }}>
+                <div key={k} style={{ ...rise(f, tS + 12 + i * 35), display: 'grid', gridTemplateColumns: '520px 1fr 170px', alignItems: 'center', padding: '22px 30px', borderBottom: i < filas.length - 1 ? `1px solid ${C.borderSoft}` : 'none' }}>
                   <span style={{ fontSize: 30 }}>{k}</span>
                   <span style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700 }}>{v}</span>
                   <span style={{ fontSize: 22, color: tag === 'medido' ? C.teal : C.orange, fontFamily: MONO, textAlign: 'right' }}>{tag}</span>
@@ -684,7 +689,7 @@ const Escala: React.FC = () => {
                 <span style={{ fontFamily: DISPLAY, fontSize: 88, color: C.teal }}>0,00 €</span>
                 <span style={{ fontSize: 40 }}>en la nube</span>
               </div>
-              <div style={{ ...rise(f, tB + 45), marginTop: 28, fontSize: 29, color: C.brown }}>
+              <div style={{ ...rise(f, tB + 110), marginTop: 28, fontSize: 29, color: C.brown }}>
                 Más volumen: concurrencia · nuevo formato: un extractor y nada más.
               </div>
               <div style={{

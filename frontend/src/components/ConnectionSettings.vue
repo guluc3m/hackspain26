@@ -24,6 +24,7 @@ const syncUrl = ref('')
 const vlmUrl = ref('')
 const vlmModel = ref('')
 const localVlmFallback = ref(false)
+const vlmAutostart = ref(true)
 const serverApiKey = ref('')
 // Claves de los últimos peldaños: se escriben solo si el usuario teclea algo; el
 // campo vacío conserva la clave ya guardada (nunca se reenvía la máscara).
@@ -52,9 +53,11 @@ const canSync = computed(() => savedConfig.value?.mode === 'server'
   && mode.value === 'server' && syncUrl.value.trim() === savedConfig.value.sync_url)
 
 const vlmReady = computed(() => vlmStatus.value?.ready === true)
+// "Preparando" solo con un arranque/descarga realmente en marcha: el estado solo
+// no basta, un informe obsoleto no puede simular una preparación inexistente.
 const vlmBusy = computed(() => {
-  const s = vlmStatus.value?.state
-  return s === 'downloading' || s === 'starting'
+  const s = vlmStatus.value
+  return s?.in_flight === true && (s.state === 'downloading' || s.state === 'starting')
 })
 
 // Progreso de descarga medido por el backend (bytes en disco vs esperados).
@@ -70,7 +73,7 @@ const vlmBytesText = computed(() => {
 })
 
 const isBusyState = (s: VlmStatus | null) =>
-  s?.state === 'downloading' || s?.state === 'starting'
+  s?.in_flight === true && (s.state === 'downloading' || s.state === 'starting')
 // Autoridad: el modo guardado y confirmado, no el toggle sin guardar de la UI.
 const localRequested = computed(() => {
   const s = savedConfig.value
@@ -115,6 +118,7 @@ function aplicar(cfg: RuntimeConfig) {
   vlmUrl.value = cfg.vlm_url || ''
   vlmModel.value = cfg.vlm_model || ''
   localVlmFallback.value = cfg.local_vlm_fallback === true
+  vlmAutostart.value = cfg.vlm_autostart !== false
   serverApiKey.value = cfg.server_api_key || ''
   // Las claves nunca se rehidratan en claro (llegan enmascaradas): el campo
   // queda vacío y muestra la máscara guardada como placeholder.
@@ -183,6 +187,7 @@ async function guardar() {
         vlm_url: vlmUrl.value.trim(),
         vlm_model: vlmModel.value.trim(),
         local_vlm_fallback: localVlmFallback.value,
+        vlm_autostart: vlmAutostart.value,
         server_api_key: serverApiKey.value.trim(),
         ...clavesRemotas
       }
@@ -192,6 +197,7 @@ async function guardar() {
         vlm_url: '',
         vlm_model: '',
         local_vlm_fallback: false,
+        vlm_autostart: vlmAutostart.value,
         server_api_key: '',
         ...clavesRemotas
       }
@@ -317,6 +323,21 @@ async function provisionar() {
           Sin conexión remota: no se contacta ningún servidor. La única descarga es el
           modelo VLM local, la primera vez que se prepara.
         </p>
+        <label class="fallback-toggle">
+          <input
+            v-model="vlmAutostart"
+            type="checkbox"
+            :disabled="saving || syncing"
+          />
+          <span>
+            Arrancar el VLM local automáticamente
+            <span class="help-text muted">
+              Al abrir la aplicación se prepara y arranca el sidecar local; desmárquelo
+              para arrancarlo solo cuando pulse Start VLM. Se guarda solo en este
+              dispositivo; no se sincroniza.
+            </span>
+          </span>
+        </label>
       </fieldset>
 
       <!-- Servidor: CouchDB + VLM remoto + fallback local opcional -->
@@ -514,6 +535,7 @@ async function provisionar() {
           <span v-else-if="vlmReady">listo</span>
           <span v-else-if="vlmStatus?.state === 'error'">error</span>
           <span v-else-if="vlmStatus?.state === 'remote-only'">no requerido (VLM remoto)</span>
+          <span v-else-if="vlmStatus?.state === 'idle'">detenido</span>
           <span v-else>pendiente</span>
         </div>
         <p v-if="vlmUnavailable" class="help-text vlm-error-text">

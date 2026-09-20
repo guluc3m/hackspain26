@@ -68,6 +68,36 @@ def test_status_reports_download_progress(tmp_path, monkeypatch):
     assert status["file"] == "a.gguf"
 
 
+def test_status_never_reports_busy_without_an_attempt(monkeypatch):
+    """Sin descarga/arranque en marcha no se puede informar "preparando"."""
+    provisioner = VlmProvisioner(cfg=None)
+    monkeypatch.setattr("filemaid.provision.files_ready", lambda: False)
+    monkeypatch.setattr(VlmProvisioner, "_sidecar_up", lambda self: False)
+    provisioner._set("downloading", "downloading PaddleOCR-VL Q8 weights + llama.cpp")
+    status = provisioner.status()
+    assert status["in_flight"] is False
+    assert status["state"] == "idle"
+
+    # Un cierre aborta la descarga: el estado no queda clavado en "preparando".
+    provisioner.stop()
+    stopped = provisioner.status()
+    assert stopped["state"] == "idle"
+    assert stopped["in_flight"] is False
+    assert stopped["ready"] is False
+
+    # Si el sidecar ya está sano sirviendo el modelo, la verdad observada manda.
+    monkeypatch.setattr("filemaid.provision.files_ready", lambda: True)
+    monkeypatch.setattr(VlmProvisioner, "_sidecar_up", lambda self: True)
+    provisioner._set("starting")
+    assert provisioner.status()["state"] == "ready"
+
+    # Un fallo real sigue leyéndose como error, no como preparación.
+    provisioner._set("error", "", "boom")
+    failed = provisioner.status()
+    assert failed["state"] == "error"
+    assert failed["ready"] is False
+
+
 def test_model_files_keep_expected_sizes_and_digests():
     """Guard: MODEL_FILES entries are (name, size, sha256) triples."""
     for _name, size, sha in MODEL_FILES:

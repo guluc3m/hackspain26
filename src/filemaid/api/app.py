@@ -27,6 +27,9 @@ from filemaid.runtime import RuntimeSettings
 from filemaid.store import queries
 from filemaid.store.pouch import PouchStore
 
+# Estados que la UI lee como "preparando": solo valen con un intento en marcha.
+_BUSY_STATES = {"downloading", "starting"}
+
 
 class ResolveIn(BaseModel):
     """Cuerpo estricto de POST /api/revision/{file_key}/resolve."""
@@ -55,6 +58,9 @@ class ConnectionIn(BaseModel):
     Una clave ausente nunca es un error: el peldaño se omite (skipped:<motivo>).
     server_api_key mantiene su comportamiento actual (token del sync nativo,
     guardado tal cual).
+
+    `vlm_autostart` (por defecto True) decide si el VLM local arranca solo al
+    abrir la aplicación en modo autónomo; guardarlo no exige re-confirmar el modo.
     """
 
     mode: str
@@ -67,6 +73,18 @@ class ConnectionIn(BaseModel):
     cloud_vlm_api_key: str = Field(default="", max_length=4096)
     typesafe_api_key: str = Field(default="", max_length=4096)
     clear_keys: bool = False
+    vlm_autostart: bool = True
+
+
+def _local_vlm_wanted(current: dict) -> bool:
+    """Standalone arranca el VLM local salvo que el usuario lo desactive en Ajustes.
+
+    En modo servidor el VLM local solo se prepara como respaldo explícito
+    (`local_vlm_fallback`), como hasta ahora.
+    """
+    if current["mode"] == "standalone":
+        return bool(current["vlm_autostart"])
+    return bool(current["configured"] and current["local_vlm_fallback"])
 
 
 def _vlm_status(cfg: AppConfig, settings: RuntimeSettings) -> dict:
@@ -78,6 +96,9 @@ def _vlm_status(cfg: AppConfig, settings: RuntimeSettings) -> dict:
         state = "remote-only" if current["mode"] == "server" else "idle"
     else:
         state = probe["state"]
+        # Nunca se informa "preparando" sin un arranque/descarga realmente en marcha.
+        if state in _BUSY_STATES and not probe.get("in_flight"):
+            state = "ready" if probe.get("ready") else "idle"
     return {
         **probe,
         "mode": current["mode"],
@@ -188,9 +209,9 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app):
         current = await asyncio.to_thread(settings.get)
-        if current["configured"] and (
-            current["mode"] == "standalone" or current["local_vlm_fallback"]
-        ):
+        if _local_vlm_wanted(current):
+            # Un install autónomo arranca su sidecar sin tocar nada: no exige
+            # haber confirmado antes el modo.
             get_provisioner(cfg).ensure()
         await asyncio.to_thread(ingestion.resume)
         task = asyncio.create_task(sync_loop())
@@ -227,7 +248,7 @@ def create_app(cfg: AppConfig | None = None) -> FastAPI:
             raise HTTPException(422, str(exc)) from exc
         if saved["mode"] == "server":
             wake.set()
-        if saved["mode"] == "standalone" or saved["local_vlm_fallback"]:
+        if _local_vlm_wanted(saved):
             try:
                 get_provisioner(cfg).ensure()
             except Exception:

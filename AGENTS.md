@@ -84,6 +84,12 @@ Every rung records an `ExtractionFeature` with engine+version+latency+hash, and 
 **skippable**: if a dependency is missing, record `skipped:<reason>` and fall through. A missing
 rung must degrade quality, never halt the batch.
 
+**Keys of the last rungs** (5 TypeSafe, 6 Firecrawl, 7 cloud VLM) come from the settings screen —
+stored device-local in `_local/runtime-settings`, never replicated — and fall back to the env vars
+(`TYPESAFE_API_KEY`, `FIRECRAWL_API_KEY`, `FILEMAID_CLOUD_API_KEY`/`OPENAI_API_KEY`). A saved key
+wins, is meaningful in both modes, and never reaches `config_version`, the decision snapshot,
+evidence, logs or trace payloads.
+
 Rungs 2–7 each cache on `(page_sha256, extractor_version, config_version)` so a 24/7 re-run
 never re-bills a cloud call.
 
