@@ -201,6 +201,12 @@ export interface VlmStatus {
   ready: boolean
   detail: string
   error: string | null
+  /** 0..1 medido en disco (<fichero>.part vs tamaño esperado); null si nada es medible aún. */
+  progress?: number | null
+  bytes_done?: number
+  bytes_total?: number
+  /** Fichero de pesos en descarga ahora mismo, si lo hay. */
+  file?: string | null
   model: string | null
   mmproj: string | null
   binary: string | null

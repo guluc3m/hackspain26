@@ -54,21 +54,11 @@
 /// labeled row, e.g. `contexto: [...]`, `alternativas: [...]`.
 ///
 /// - title (content): Decision title
-/// - status (str): `ACEPTADA`, `PROPUESTA`, `RECHAZADA` or any custom status
 /// -> content
-#let adr(title, status: "ACEPTADA", ..fields) = {
+#let adr(title, ..fields) = {
   counter("adr").step()
   context {
     let n = counter("adr").get().first()
-    let fill = if upper(status).contains("ACEPT") {
-      gold
-    } else if upper(status).contains("PROPUESTA") {
-      slate
-    } else if upper(status).contains("RECHAZ") {
-      red
-    } else {
-      sand
-    }
     block(
       width: 100%,
       breakable: true,
@@ -80,17 +70,11 @@
           width: 100%,
           fill: ink,
           inset: (x: 11pt, y: 8pt),
-          grid(
-            columns: (1fr, auto),
-            gutter: 10pt,
-            align: (horizon + left, horizon + right),
-            text(font: display-font, size: 9.5pt, fill: paper, {
-              text(fill: gold)[ADR #if n < 10 { "0" + str(n) } else { str(n) }]
-              h(9pt)
-              title
-            }),
-            chip(status, fill: fill),
-          ),
+          text(font: display-font, size: 9.5pt, fill: paper, {
+            text(fill: gold)[ADR #if n < 10 { "0" + str(n) } else { str(n) }]
+            h(9pt)
+            title
+          }),
         )
         block(width: 100%, inset: (x: 11pt, y: 11pt), {
           for (name, body) in fields.named() {
@@ -210,7 +194,7 @@
 ///
 /// - event (content): Event label for the cover chip, e.g. `\[ MAISA · HACKSPAIN 2026 \]`
 /// - challenge (str): Challenge name, e.g. `"500 Sombras de Alberto"`
-/// - title (content): Report title, e.g. `[FILEMAID PLAN]`
+/// - title (content): Report title, e.g. `[ALBERTITOS PLAN]`
 /// - subtitle (content, none): Report subtitle
 /// - place (content): Place label for the cover chip
 /// - date (content, none): Date shown at the bottom of the cover
@@ -226,7 +210,7 @@
 #let conf(
   event: [MAISA · HACKSPAIN 2026],
   challenge: "500 Sombras de Alberto",
-  title: [FILEMAID PLAN],
+  title: [ALBERTITOS PLAN],
   subtitle: none,
   place: [ETSIT UPM · MADRID],
   date: [Entrega · dom 20 sep 2026 · 11:00],
@@ -240,7 +224,7 @@
   doc,
 ) = {
   set document(
-    title: "filemaid · " + challenge,
+    title: "albertitos_plan · " + challenge,
     author: authors.map(a => if type(a) == "string" { a } else { a.name }),
   )
 
@@ -256,7 +240,7 @@
       let heads = query(heading.where(level: 1)).filter(h => h.numbering != none)
       let page = here().page()
       let visible = heads.filter(h => h.location().page() <= page)
-      let section = if visible.len() > 0 { visible.last().body } else { [filemaid] }
+      let section = if visible.len() > 0 { visible.last().body } else []
       grid(
         columns: (auto, 1fr, auto),
         gutter: 10pt,
@@ -277,6 +261,7 @@
         align: (bottom, bottom),
         if team != none {
           text(size: 8.5pt, weight: 700, fill: brown, tracking: 0.05em, upper(team))
+          text(size: 8pt, fill: brown, tracking: 0.06em, weight: 700, [ -- #upper(title)])
         },
         box(
           fill: gold,
@@ -342,7 +327,7 @@
   show link: set text(fill: teal)
   show ref: set text(fill: teal)
 
-  show raw.where(block: false): it => box(fill: sand, outset: (x: 2.5pt, y: 2pt), it)
+  show raw.where(block: false): it => box(fill: sand, outset: (y: 2pt), it)
   show raw.where(block: true): it => block(
     width: 100%,
     breakable: true,

@@ -37,6 +37,8 @@
   "crash-reanudacion": "PASS",
   "ledger-corrupto": "PASS",
 )
+// — T13/T14: pendientes de corrida
+#let impactoReprocesado = ("{'desviacion_esperada': {'causa': 'factura_8801.pdf: el 87º falso POR IMPORTE es el duplicado FA-8801 — su ORDER_AMOUNT ", "medido")
 // — T18: impacto del fix (.sdd/metrics/impacto-fix-colapso.json)
 #let impactoFix = ("108 reprocesados · 86 NO_PAGAR→PAGAR · 0 regresiones · validación OK", "medido")
 // — T23: perfil de carga (.sdd/metrics/perfil-carga.json)

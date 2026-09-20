@@ -56,8 +56,8 @@ download() {
         log "[model] $name present and verified, skipping"
         return 0
     fi
-    log "[model] downloading $name ..."
-    curl -fL --retry 3 -C - -o "$dest.part" "$BASE_URL/$name"
+    log "[model] downloading $name (~$((expected_size / 1048576)) MB) ..."
+    curl -fL --retry 3 -C - -# -o "$dest.part" "$BASE_URL/$name"
     actual_size="$(wc -c < "$dest.part")"
     if [ "$actual_size" != "$expected_size" ]; then
         rm -f "$dest.part"
