@@ -1,13 +1,20 @@
 import PouchDB from 'pouchdb';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import readline from 'node:readline';
 
-// One finite operation. Python holds the cross-process lock through db.close().
-const chunks = [];
-for await (const chunk of process.stdin) chunks.push(chunk);
-const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-const db = new PouchDB(process.argv[2], { adapter: 'leveldb' });
+// Resident bridge: one request per stdin line, one response line per request.
+// Python holds the cross-process lock (pouchdb.lock) through each exchange, and
+// the LevelDB directory is opened for the exchange and closed before the
+// response line: LevelDB locks that directory exclusively for as long as a
+// process keeps it open, so a handle held between requests would starve the
+// second process (CLI vs UI) that the lock file exists to serialise. Staying
+// resident removes the ~200 ms node cold start from every operation; an
+// exchange costs ~6 ms.
+const root = process.argv[2];
 const fail = (message) => { throw new Error(message); };
+let db = null;
+let viewsReady = false;
 function checked(doc) {
   if (doc._conflicts?.length) fail(`Unresolved revision conflicts: ${doc._id}`);
   return doc;
@@ -56,6 +63,7 @@ async function immutable(doc) {
   }
 }
 async function views() {
+  if (viewsReady) return;
   await immutable({
     _id: '_design/trace-v1',
     views: {
@@ -63,6 +71,7 @@ async function views() {
       by_invoice: { map: 'function(doc) { if (doc.invoice_id && doc.kind) emit([doc.invoice_id, doc.kind, doc.timestamp || 0, doc._id], null); }' },
     },
   });
+  viewsReady = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,8 +413,14 @@ async function replicate(url, credentials) {
     await remote.close();
   }
 }
-let result;
-try {
+async function run(request) {
+  if (request.op === 'batch') {
+    const results = [];
+    for (const part of request.requests) results.push(await run(part));
+    return results;
+  }
+  if (request.op === 'ping') return { pid: process.pid };
+  let result;
   if (request.op === 'put') {
     result = await immutable(request.doc);
   } else if (request.op === 'blob') {
@@ -423,6 +438,13 @@ try {
   } else if (request.op === 'attachment') {
     checked(await db.get(request.id, { conflicts: true }));
     result = (await db.getAttachment(request.id, 'data')).toString('base64');
+  } else if (request.op === 'blobs') {
+    const data = [];
+    for (const id of request.ids) {
+      checked(await db.get(id, { conflicts: true }));
+      data.push((await db.getAttachment(id, 'data')).toString('base64'));
+    }
+    result = data;
   } else if (request.op === 'list') {
     const response = await db.allDocs({
       startkey: request.prefix, endkey: `${request.prefix}\uffff`,
@@ -488,10 +510,44 @@ try {
   } else {
     fail('Unknown operation');
   }
-  await db.close();
-  process.stdout.write(JSON.stringify({ ok: true, result }));
-} catch (error) {
-  await db.close().catch(() => {});
-  process.stdout.write(JSON.stringify({ ok: false, error: error.message }));
-  process.exitCode = 1;
+  return result;
+}
+
+// A `query` materialises its index in a sibling leveldb directory that PouchDB
+// keeps locked for the life of the process. Its own cleanup on close misses it:
+// the prefix it filters dependent stores by ("_pouch_" + db name) is not the one
+// those stores are registered under, so db.close() leaves the lock held. A
+// resident bridge would then starve a second process (CLI vs UI) on the same
+// root, which the lock file exists to serialise; close the views explicitly.
+async function releaseViews(db) {
+  for (const pending of Object.values(db._cachedViews || {})) {
+    try {
+      await (await pending).db.close();
+    } catch { /* a view that never opened holds nothing */ }
+  }
+}
+
+// One exchange: open, answer, close, one response line. stdin EOF ends the
+// process, so a dead Python parent never leaves a bridge behind. Nothing else
+// may write to stdout; diagnostics belong on stderr.
+const input = readline.createInterface({ input: process.stdin, terminal: false });
+for await (const line of input) {
+  if (!line.trim()) continue;
+  let response;
+  try {
+    const request = JSON.parse(line);
+    db = new PouchDB(root, { adapter: 'leveldb' });
+    viewsReady = false;
+    response = { ok: true, result: await run(request) };
+  } catch (error) {
+    response = { ok: false, error: error.message };
+  } finally {
+    const handle = db;
+    db = null;
+    if (handle) {
+      await releaseViews(handle);
+      await handle.close().catch(() => {});
+    }
+  }
+  process.stdout.write(JSON.stringify(response) + '\n');
 }

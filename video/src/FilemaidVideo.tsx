@@ -21,6 +21,7 @@ import {
   CASO_ESCALAR,
   SCENES,
 } from './scenes';
+import { useFonts } from './fonts';
 import shotDashboard from '../assets/shot-dashboard.png';
 import shotRevision from '../assets/shot-revision.png';
 import shotLogs from '../assets/shot-logs.png';
@@ -148,36 +149,42 @@ const Tachada: React.FC<{ titulo: string; motivo: string; f: number; delay: numb
 // P: «500 facturas al mes» · S: filemaid lee, comprueba y decide · B: siempre enseña la prueba.
 const Portada: React.FC = () => {
   const f = useFrameLocal(0);
-  const num = spring({ frame: f, fps: 30, config: { damping: 12, mass: 0.6 } });
+  const num = spring({ frame: f, fps: 30, config: { damping: 14, mass: 0.6 } });
+  // Slots verticales FIJOS: cada elemento ocupa una posición propia y aparece
+  // en sitio (fade/rise), sin insertar filas en el flujo — así nada se desplaza
+  // mientras el siguiente hace su entrada (sin offset en los cruces).
+  const slot = (top: number): React.CSSProperties => ({
+    position: 'absolute', left: 0, right: 0, top, textAlign: 'center',
+  });
   return (
     <Escena idx={0}>
       <Frame>
         <Voz idx={0} />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-          <div style={{ textAlign: 'center' }}>
+        <div style={{ position: 'relative', height: '100%' }}>
+          <div style={{ ...slot(20) }}>
             <div style={{ fontFamily: DISPLAY, fontSize: 240, lineHeight: 1, transform: `scale(${num})` }}>
               {METRICS.nArchivos}
             </div>
-            <div style={{ fontSize: 44, color: C.brown, opacity: fade(f, 20) }}>
+            <div style={{ fontSize: 44, color: C.brown, marginTop: 16, opacity: fade(f, 36) }}>
               facturas al mes, en PDF
             </div>
           </div>
-          <div style={{ width: 420, height: 10, background: C.gold, margin: '36px 0', opacity: fade(f, 60) }} />
-          <div style={{ fontFamily: DISPLAY, fontSize: 130, letterSpacing: 4, opacity: fade(f, 95) }}>
+          <div style={{ position: 'absolute', top: 370, left: '50%', width: 420, height: 10, marginLeft: -210, background: C.gold, opacity: fade(f, 60) }} />
+          <div style={{ ...slot(440), fontFamily: DISPLAY, fontSize: 130, letterSpacing: 4, opacity: fade(f, 95) }}>
             FILEMAID
           </div>
-          <div style={{ fontSize: 40, color: C.brown, marginTop: 14, opacity: fade(f, 120) }}>
+          <div style={{ ...slot(608), fontSize: 40, color: C.brown, opacity: fade(f, 120) }}>
             las lee · las comprueba · decide
           </div>
-          <div style={{ ...rise(f, 240), marginTop: 44, fontSize: 46, fontStyle: 'italic' }}>
+          <div style={{ ...slot(690), ...rise(f, 240), fontSize: 46, fontStyle: 'italic' }}>
             «y siempre enseña la prueba»
           </div>
-          <div style={{ marginTop: 40, opacity: fade(f, 265) }}>
+          <div style={{ ...slot(780), display: 'flex', justifyContent: 'center', opacity: fade(f, 265) }}>
             <Chip label="FACTURA" color={C.brown} bg={C.panel} />
             <Chip label="DECISIÓN" color={C.orange} bg={C.warnBg} />
             <Chip label="TRAZA" color={C.teal} bg={C.okBg} />
           </div>
-          <div style={{ position: 'absolute', bottom: 60, fontFamily: MONO, fontSize: 26, color: C.brown, opacity: fade(f, 290) }}>
+          <div style={{ position: 'absolute', bottom: 60, left: 0, right: 0, textAlign: 'center', fontFamily: MONO, fontSize: 26, color: C.brown, opacity: fade(f, 290) }}>
             Maisa · HackSpain 2026 · 500 Sombras de Alberto
           </div>
         </div>
@@ -268,7 +275,7 @@ const Producto: React.FC = () => {
     { t: 'Lote 24/7', s: 'sin prompts' },
     { t: 'Notificación al escritorio', s: 'solo cuando algo huele raro' },
     { t: 'Revisión humana', s: 'candidatos lado a lado' },
-    { t: 'Sync en la nube', s: 'disputas retenidas' },
+    { t: 'Sync con el servidor', s: 'sin depender de él: todo decide en local' },
   ];
   return (
     <Escena idx={2}>
@@ -307,7 +314,7 @@ const Producto: React.FC = () => {
                 ))}
               </div>
               <div style={{ width: 600, ...rise(f, tS + 40) }}>
-                <div style={{ border: `3px solid ${C.ink}`, background: '#fff', padding: 10 }}>
+                <div style={{ border: `3px solid ${C.ink}`, background: C.panel, padding: 10 }}>
                   <img src={cap.src} alt={cap.alt} style={{ width: '100%', display: 'block', opacity: fade(capF, 0, 14) }} />
                 </div>
                 <div style={{ marginTop: 10, fontSize: 22, fontFamily: MONO, color: C.brown, textAlign: 'center' }}>
@@ -386,6 +393,9 @@ const Escalera: React.FC = () => {
                   <div style={{ textAlign: 'right', fontFamily: MONO, fontSize: 22, color: C.orange }}>{e.cost}</div>
                 </div>
               ))}
+              <div style={{ ...rise(f, tS + 10 + ESCALERA.length * 9), marginTop: 12, fontSize: 22, color: C.brown, fontFamily: MONO, textAlign: 'right' }}>
+                El VLM local (~4 GB RAM) solo arranca si el servidor está offline.
+              </div>
             </div>
           }
           b={
@@ -603,7 +613,13 @@ const Resiliencia: React.FC = () => {
                 Reanudar <b>nunca duplica</b> ni <b>re-factura</b>
                 <span style={{ fontSize: 30, color: C.brown }}> — idempotencia por huella.</span>
               </div>
-              <div style={{ ...rise(f, tB + 55), marginTop: 60, fontFamily: DISPLAY, fontSize: 88, lineHeight: 1.15 }}>
+              <div style={{ ...rise(f, tB + 30), marginTop: 22, fontSize: 28, color: C.brown }}>
+                La sincronización con el servidor corre en segundo plano.
+              </div>
+              <div style={{ ...rise(f, tB + 42), marginTop: 6, fontSize: 28, color: C.brown }}>
+                Si está offline, la app <b style={{ color: C.ink }}>sigue decidiendo en local</b> y sincroniza al volver.
+              </div>
+              <div style={{ ...rise(f, tB + 75), marginTop: 48, fontFamily: DISPLAY, fontSize: 88, lineHeight: 1.15 }}>
                 Caerse no es opción:<br /><span style={{ color: C.orange }}>degradar.</span>
               </div>
             </div>
@@ -620,7 +636,14 @@ const Escala: React.FC = () => {
   const f = useFrameLocal(7);
   const [tS, tB] = TIEMPOS[7];
   const len = SCENES[7].frames;
+  // Cierre: una sola entrada, la escala con muelle + fade. Antes se extendía
+  // `rise(...)` (que emite translateY) y acto seguido `transform: scale(...)`
+  // pisaba ese translateY, así que el desplazamiento nunca se veía; aquí el
+  // fade replica el timing de `rise` y la escala sigue siendo la entrada real.
   const cierre = spring({ frame: Math.max(0, f - tB - 90), fps: 30, config: { damping: 13, mass: 0.7 } });
+  const cierreIn = interpolate(f, [tB + 90, tB + 110], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+  });
   const filas: [string, string, string][] = [
     ['94 % del corpus', '0,00 €', 'medido'],
     ['El resto: tu CPU', `${METRICS.latenciaTotalS.toFixed(0)} s para ${METRICS.nArchivos} PDFs`, 'medido'],
@@ -665,7 +688,7 @@ const Escala: React.FC = () => {
                 Más volumen: concurrencia · nuevo formato: un extractor y nada más.
               </div>
               <div style={{
-                ...rise(f, tB + 90, 60), marginTop: 64, fontFamily: DISPLAY, fontSize: 96,
+                opacity: cierreIn, marginTop: 64, fontFamily: DISPLAY, fontSize: 96,
                 transform: `scale(${cierre})`, transformOrigin: 'left center',
               }}>
                 Alberto duerme. <span style={{ color: C.teal }}>Y paga lo justo.</span>
@@ -678,17 +701,20 @@ const Escala: React.FC = () => {
   );
 };
 
-export const FilemaidVideo: React.FC = () => (
-  <>
-    {/* Música de fondo suave (Worker B), 180 s exactos ≈ 5400 frames, bajo la voz. */}
-    <Audio src={staticFile('music.wav')} volume={0.12} />
-    <Portada />
-    <Problema />
-    <Producto />
-    <Escalera />
-    <Traza />
-    <Adrs />
-    <Resiliencia />
-    <Escala />
-  </>
-);
+export const FilemaidVideo: React.FC = () => {
+  useFonts();
+  return (
+    <>
+      {/* Música de fondo suave (Worker B), 180 s exactos ≈ 5400 frames, bajo la voz. */}
+      <Audio src={staticFile('music.wav')} volume={0.12} />
+      <Portada />
+      <Problema />
+      <Producto />
+      <Escalera />
+      <Traza />
+      <Adrs />
+      <Resiliencia />
+      <Escala />
+    </>
+  );
+};

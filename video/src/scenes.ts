@@ -69,7 +69,7 @@ export const ESCALERA = [
   { n: 1, tech: 'Texto vectorial', sub: 'pypdf · filtro anti-mojibake', cost: '0 €', speed: '< 1 ms', pct: 94.2 },
   { n: 2, tech: 'Rasterizado + QR', sub: 'pypdfium2 + zxing · 300 DPI', cost: '0 €', speed: '~40 ms', pct: 5.8 },
   { n: 3, tech: 'Tesseract OCR', sub: 'doble puerta: word-conf + cobertura', cost: '0 €', speed: '~150 ms' },
-  { n: 4, tech: 'VLM local', sub: 'PaddleOCR-VL 1.6 Q8 · llama-server', cost: '0 €', speed: '~34 s' },
+  { n: 4, tech: 'VLM local', sub: 'PaddleOCR-VL 1.6 Q8 · llama-server · ~4 GB RAM · solo si el servidor está offline', cost: '0 €', speed: '~34 s' },
   { n: 5, tech: 'TypeSafe System One', sub: 'decisiones tipadas paralelas', cost: '~0,04 $/Mtok', speed: '~560 ms' },
   { n: 6, tech: 'Firecrawl parse', sub: 'rescate de tablas complejas', cost: '1 credit', speed: '~1,2 s' },
   { n: 7, tech: 'Cloud VLM >25B', sub: 'último recurso · candidato, nunca respuesta', cost: 'pago token', speed: '~3 s' },

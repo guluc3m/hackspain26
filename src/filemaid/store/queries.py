@@ -17,16 +17,35 @@ from pathlib import Path
 from .pouch import PouchStore
 
 
+def _timeline(doc: dict) -> tuple:
+    """Order shared by every scan and event projection: time, then document id."""
+    return (doc["timestamp"], doc["_id"])
+
+
+def _group_scans(scans: list[dict]) -> dict[str, list[dict]]:
+    """Scans grouped by file key, ordered like ``list(f"scan:{key}:")``."""
+    grouped: dict[str, list[dict]] = {}
+    for scan in scans:
+        grouped.setdefault(scan["_id"][len("scan:") :].split(":", 1)[0], []).append(scan)
+    for group in grouped.values():
+        group.sort(key=_timeline)
+    return grouped
+
+
 def scans_for(store: PouchStore, key: str) -> list[dict]:
-    return sorted(store.list(f"scan:{key}:"), key=lambda d: (d["timestamp"], d["_id"]))
+    return sorted(store.list(f"scan:{key}:"), key=_timeline)
+
+
+def _decisions_for_scans(store: PouchStore, scans: list[dict]) -> list[dict]:
+    """Hydrated decisions of ``scans``, in scan order; scans without one are skipped."""
+    ids = [f"decision:{s['scan_id']}" for s in scans]
+    return store.hydrate_many(
+        [d for d in store.batch([{"op": "get", "id": i} for i in ids]) if d is not None]
+    )
 
 
 def decisions_for(store: PouchStore, key: str) -> list[dict]:
-    return [
-        store.hydrate(d)
-        for s in scans_for(store, key)
-        if (d := store.get(f"decision:{s['scan_id']}"))
-    ]
+    return _decisions_for_scans(store, scans_for(store, key))
 
 
 def all_scans(store: PouchStore) -> list[dict]:
@@ -48,8 +67,7 @@ def fields_for_scan(store: PouchStore, scan_id: str) -> list[dict]:
 
 
 def features_for_scan(store: PouchStore, scan_id: str) -> list[dict]:
-    features = store.list(f"feature:{scan_id}:")
-    return [store.hydrate(feat) for feat in features]
+    return store.hydrate_many(store.list(f"feature:{scan_id}:"))
 
 
 # ---------------------------------------------------------------- review state
@@ -71,16 +89,21 @@ def review_state_for(store: PouchStore, key: str) -> str:
     return store.selection()["states"].get(key, "pending")
 
 
+def _covering_resolution(resolutions: list[dict], decision_id: str) -> dict | None:
+    """The newest resolution that covers ``decision_id``, if any."""
+    for r in reversed(resolutions):
+        if decision_id in {r.get("resolved_decision_id"), r.get("reviewed_decision_id")}:
+            return r
+    return None
+
+
 def resolution_for(store: PouchStore, key: str) -> dict | None:
     """The resolution that covers the invoice's latest decision, if any."""
     decisions = decisions_for(store, key)
     latest = decisions[-1] if decisions else None
     if latest is None:
         return None
-    for r in reversed(resolutions_for(store, key)):
-        if latest["_id"] in {r.get("resolved_decision_id"), r.get("reviewed_decision_id")}:
-            return r
-    return None
+    return _covering_resolution(resolutions_for(store, key), latest["_id"])
 
 
 def _resolution_view(resolution: dict | None) -> dict | None:
@@ -109,52 +132,102 @@ def withheld_count(store: PouchStore) -> int:
 # ---------------------------------------------------------------- invoice views
 
 
+def _invoice_row(file: dict, scans: list[dict], decisions: list[dict], state: str) -> dict:
+    """One dashboard row; ``decisions`` are the file's hydrated decisions in order."""
+    latest = decisions[-1] if decisions else None
+    source = scans[-1].get("source_path")
+    return {
+        "id": file["file_key"],
+        "file_id": file["file_id"],
+        "status": latest["decision"]["result"] if latest else "pendiente",
+        "source_path": source,
+        "folder": str(Path(source).parent) if source else None,
+        "result": latest["decision"]["result"] if latest else None,
+        "decision_id": latest["_id"] if latest else None,
+        "decided_at": latest["timestamp"] if latest else None,
+        "iterations": len(decisions),
+        "confidence": None,
+        "disputed": state == "pending",
+        "withheld_from_sync": state == "pending",
+        "review_state": state,
+    }
+
+
 def invoice_rows(store: PouchStore) -> list[dict]:
-    rows = []
-    states = store.selection()["states"]
-    for file in store.list("file:"):
-        key = file["file_key"]
-        scans = scans_for(store, key)
-        if not scans:
+    selection, files, scans, decisions = store.batch(
+        [
+            {"op": "selection"},
+            {"op": "list", "prefix": "file:"},
+            {"op": "list", "prefix": "scan:"},
+            {"op": "list", "prefix": "decision:"},
+        ]
+    )
+    states = selection["states"]
+    by_id = {d["_id"]: d for d in decisions}
+    grouped = _group_scans(scans)
+    invoices: list[tuple[dict, list[dict], list[dict]]] = []
+    for file in files:
+        file_scans = grouped.get(file["file_key"], [])
+        if not file_scans:
             continue
-        decisions = decisions_for(store, key)
-        latest = decisions[-1] if decisions else None
-        state = states.get(key, "pending")
-        source = scans[-1].get("source_path")
-        rows.append(
-            {
-                "id": key,
-                "file_id": file["file_id"],
-                "status": latest["decision"]["result"] if latest else "pendiente",
-                "source_path": source,
-                "folder": str(Path(source).parent) if source else None,
-                "result": latest["decision"]["result"] if latest else None,
-                "decision_id": latest["_id"] if latest else None,
-                "decided_at": latest["timestamp"] if latest else None,
-                "iterations": len(decisions),
-                "confidence": None,
-                "disputed": state == "pending",
-                "withheld_from_sync": state == "pending",
-                "review_state": state,
-            }
+        ids = [f"decision:{s['scan_id']}" for s in file_scans]
+        invoices.append((file, file_scans, [by_id[i] for i in ids if i in by_id]))
+    hydrated = {
+        d["_id"]: d
+        for d in store.hydrate_many(
+            [d for _, _, file_decisions in invoices for d in file_decisions]
         )
+    }
+    rows = [
+        _invoice_row(
+            file,
+            file_scans,
+            [hydrated[d["_id"]] for d in file_decisions],
+            states.get(file["file_key"], "pending"),
+        )
+        for file, file_scans, file_decisions in invoices
+    ]
     return sorted(rows, key=lambda r: (r["file_id"], r["id"]))
 
 
 def invoice_detail(store: PouchStore, key: str) -> dict | None:
-    file = store.get(f"file:{key}")
+    selection, file, scans, resolutions = store.batch(
+        [
+            {"op": "selection"},
+            {"op": "get", "id": f"file:{key}"},
+            {"op": "list", "prefix": f"scan:{key}:"},
+            {"op": "list", "prefix": f"resolution:{key}:"},
+        ]
+    )
     if file is None:
         return None
-    scans = scans_for(store, key)
+    scans = sorted(scans, key=_timeline)
     if not scans:
         return None
-    decisions = decisions_for(store, key)
+    resolutions = sorted(resolutions, key=lambda d: (d.get("timestamp", 0), d["_id"]))
+    # The fields document belongs to the scan of the latest decision, or to the
+    # last scan while the invoice has none; both are known from the raw scan ids,
+    # so the second round trip carries everything else.
+    fields_by_scan = {}
+    requests = [{"op": "query", "index": "by_file", "key": [file["file_id"], "event"]}]
+    requests += [{"op": "get", "id": f"decision:{s['scan_id']}"} for s in scans]
+    requests += [{"op": "get", "id": f"fields:{s['scan_id']}"} for s in scans]
+    events, *rest = store.batch(requests)
+    decisions_raw = [d for d in rest[: len(scans)] if d is not None]
+    for scan, fields in zip(scans, rest[len(scans) :], strict=True):
+        fields_by_scan[scan["scan_id"]] = fields
+    latest_scan_id = decisions_raw[-1]["scan_id"] if decisions_raw else None
+    scan = next((s for s in scans if s["scan_id"] == latest_scan_id), scans[-1])
+    fields_doc = fields_by_scan.get(scan["scan_id"])
+    overrides_raw = [d for d in events if d.get("file_key") == key and d.get("type") == "override"]
+
+    group = [*decisions_raw, *overrides_raw] + ([fields_doc] if fields_doc else [])
+    hydrated = {d["_id"]: d for d in store.hydrate_many(group)}
+    decisions = [hydrated[d["_id"]] for d in decisions_raw]
     latest = decisions[-1] if decisions else None
-    state = store.selection()["states"].get(key, "pending")
-    resolution = resolution_for(store, key)
-    scan = next((s for s in scans if latest and s["scan_id"] == latest["scan_id"]), scans[-1])
-    fields_doc = store.get(f"fields:{scan['scan_id']}")
-    fields_raw = store.hydrate(fields_doc)["fields"] if fields_doc else []
+    state = selection["states"].get(key, "pending")
+    resolution = _covering_resolution(resolutions, latest["_id"]) if latest else None
+    fields_raw = hydrated[fields_doc["_id"]]["fields"] if fields_doc else []
 
     # Project to Record<string, Candidate[]> expected by UI
     fields_map: dict[str, list[dict]] = {}
@@ -162,11 +235,7 @@ def invoice_detail(store: PouchStore, key: str) -> dict | None:
         f_type = f.get("type", "")
         fields_map[f_type] = f.get("values", [])
 
-    overrides = [
-        store.hydrate(d)
-        for d in store.for_file(file["file_id"], "event")
-        if d.get("file_key") == key and d.get("type") == "override"
-    ]
+    overrides = [hydrated[d["_id"]] for d in overrides_raw]
 
     first_seen = scans[0]["timestamp"] if scans and "timestamp" in scans[0] else None
     last_seen = (
@@ -260,9 +329,7 @@ def logs(
     offset: int = 0,
 ) -> dict:
     docs = store.for_file(invoice, "event") if invoice else store.list("event:")
-    docs = sorted(
-        (store.hydrate(d) for d in docs), key=lambda d: (d["timestamp"], d["_id"]), reverse=True
-    )
+    docs = sorted(store.hydrate_many(docs), key=_timeline, reverse=True)
     types = sorted({d["type"] for d in docs})
     items = []
     for d in docs:

@@ -11,16 +11,22 @@ const filtro = ref<'abiertas' | 'resueltas'>('abiertas')
 const drawerId = ref<string | null>(null)
 const busyId = ref<string | null>(null)
 const actualizado = ref<Date | null>(null)
+const cargando = ref(false) // hay una carga en vuelo (primera o de refresco)
+const cargado = ref(false) // la primera carga ya resolvió: hay algo que mostrar
 
 let timer: ReturnType<typeof setInterval> | undefined
 
 async function load() {
+  cargando.value = true
   try {
     facturas.value = await api.facturas()
     error.value = ''
     actualizado.value = new Date()
   } catch (e) {
     error.value = String(e)
+  } finally {
+    cargando.value = false
+    cargado.value = true
   }
 }
 
@@ -96,20 +102,33 @@ async function procesar(row: FacturaRow) {
   <div class="cards">
     <section class="panel pending">
       <h3>Facturas pendientes</h3>
-      <p class="big">{{ abiertas.length }}</p>
+      <template v-if="cargado">
+        <p class="big">{{ abiertas.length }}</p>
+        <!-- el total agrupa dos estados distintos: sin decisión y escaladas -->
+        <p class="muted desglose">
+          {{ porResultado.pendiente }} en revisión (sin decisión) ·
+          {{ porResultado.ESCALAR }} escaladas
+        </p>
+      </template>
+      <p v-else class="cargando" aria-live="polite">
+        <span class="spinner mini"></span> Cargando…
+      </p>
       <ul>
         <li v-for="[ext, n] in porTipo" :key="ext">{{ n }} {{ ext }}</li>
         <li v-if="porTipo.length === 0" class="muted">—</li>
       </ul>
       <p class="muted tick">
         actualizado {{ actualizado?.toLocaleTimeString('es-ES') ?? '—' }}
+        <span v-if="cargando && cargado" class="refresco">
+          <span class="spinner mini"></span> actualizando…
+        </span>
       </p>
     </section>
 
     <!-- resumen por resultado (derivado de las facturas cargadas) -->
     <section class="panel resumen">
       <h3>Resumen</h3>
-      <div class="resumen-grid">
+      <div class="resumen-grid" :class="{ 'sin-datos': !cargado }" :aria-busy="!cargado">
         <div><span class="badge PAGAR">PAGAR</span><strong>{{ porResultado.PAGAR }}</strong></div>
         <div><span class="badge NO_PAGAR">NO_PAGAR</span><strong>{{ porResultado.NO_PAGAR }}</strong></div>
         <div><span class="badge ESCALAR">ESCALAR</span><strong>{{ porResultado.ESCALAR }}</strong></div>
@@ -133,7 +152,20 @@ async function procesar(row: FacturaRow) {
   <p v-if="error" class="error">{{ error }}</p>
 
   <div class="panel table-panel">
+    <!-- primera carga: esqueleto con la geometría de la tabla; el refresco de
+         10 s nunca la vacía (solo el aviso sutil de `.refresco`) -->
+    <div v-if="!cargado" class="esqueleto-tabla" aria-live="polite">
+      <p class="cargando"><span class="spinner"></span> Cargando facturas…</p>
+      <div v-for="n in 4" :key="`fila-${n}`" class="esqueleto-fila" aria-hidden="true">
+        <span class="esqueleto esq-nombre"></span>
+        <span class="esqueleto esq-ext"></span>
+        <span class="esqueleto esq-num"></span>
+        <span class="esqueleto esq-num"></span>
+        <span class="esqueleto esq-num"></span>
+      </div>
+    </div>
     <InvoiceTable
+      v-else
       :rows="visibles"
       show-gate
       :busy-id="busyId"
@@ -163,12 +195,27 @@ async function procesar(row: FacturaRow) {
   color: var(--ink);
 }
 .pending ul { margin: 0; padding-left: 18px; }
+.desglose { margin: 0 0 6px; font-size: 12px; }
 .tick { margin: 8px 0 0; font-size: 12px; }
+.tick .refresco { margin-left: 8px; }
 .resumen-grid { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.sin-datos { opacity: 0.45; }
 .resumen-grid div { display: flex; align-items: center; gap: 8px; }
 .resumen-grid strong { font-family: var(--display); font-size: 20px; font-weight: 400; }
 .table-panel { padding: 4px 8px; }
 .toolbar { margin-bottom: 10px; }
+
+/* Esqueleto de la primera carga: misma rejilla que la tabla, sin salto visual. */
+.esqueleto-tabla .cargando { padding: 12px; margin: 0; }
+.esqueleto-fila {
+  display: grid;
+  grid-template-columns: 2fr 0.8fr 0.8fr 0.8fr 1.2fr;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.esq-nombre { width: 80%; }
+.esq-ext { width: 52px; }
+.esq-num { width: 48px; }
 
 @media (max-width: 720px) {
   .cards { grid-template-columns: 1fr; }

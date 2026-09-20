@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const totalColumnas = computed(
-  () => 4 + (props.showFolder ? 1 : 0) + (props.showGate ? 1 : 0) + 1 // + logs
+  () => 4 + (props.showFolder ? 1 : 0) + (props.showGate ? 1 : 0) + 1 // + acciones (Ver / Logs)
 )
 </script>
 
@@ -33,7 +33,7 @@ const totalColumnas = computed(
         <th title="Peor campo: mejor candidato de lectura por campo, mínimo entre campos">Confianza</th>
         <th v-if="showFolder">Carpeta</th>
         <th v-if="showGate">Decisión</th>
-        <th>Logs</th>
+        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -56,6 +56,12 @@ const totalColumnas = computed(
             retenida
           </span>
           <template v-if="row.result === 'ESCALAR'">
+            <span
+              class="badge ESCALAR"
+              title="Escalada: no autoriza el pago, la revisión confirma o corrige la lectura"
+            >
+              ESCALAR
+            </span>
             <button
               class="primary"
               :disabled="busyId === row.id"
@@ -73,24 +79,44 @@ const totalColumnas = computed(
               Corregir
             </button>
           </template>
-          <button
-            v-else-if="row.result === null"
-            class="secondary"
-            :disabled="busyId === row.id"
-            title="Procesar ahora el PDF pendiente"
-            @click="emit('process', row)"
-          >
-            Procesar
-          </button>
+          <template v-else-if="row.result === null">
+            <span
+              class="badge pendiente"
+              :title="
+                row.iterations > 0
+                  ? `Sin decisión registrada tras ${row.iterations} iteraciones: en revisión`
+                  : 'Sin decisión del motor todavía: en revisión'
+              "
+            >
+              en revisión
+            </span>
+            <button
+              class="secondary"
+              :disabled="busyId === row.id"
+              title="Procesar ahora el PDF pendiente"
+              @click="emit('process', row)"
+            >
+              Procesar
+            </button>
+          </template>
           <template v-else><ResultBadge :result="row.result" /></template>
         </td>
-        <td>
+        <td class="acciones">
           <button
+            type="button"
+            class="secondary"
+            title="Ver el detalle de la factura (campos, reglas y overrides)"
+            @click="emit('open', row)"
+          >
+            Ver
+          </button>
+          <button
+            type="button"
             class="link"
             title="Ver todos los logs de esta factura en el buscador"
             @click="emit('logs', row)"
           >
-            logs
+            Logs
           </button>
         </td>
       </tr>
@@ -103,5 +129,7 @@ const totalColumnas = computed(
 
 <style scoped>
 td .primary, td .danger, td .secondary { margin-right: 6px; }
+td .badge { margin-right: 6px; }
+td.acciones { white-space: nowrap; }
 .warn { color: var(--warn-fg); }
 </style>

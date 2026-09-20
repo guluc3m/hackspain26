@@ -39,9 +39,11 @@ async function load(reset = false) {
   }
 }
 
-/** Recarga con debounce al teclear: menos clics sin martillear la API. */
+/** Recarga con debounce al teclear: menos clics sin martillear la API.
+    El indicador se enciende ya al teclear (feedback inmediato), no al disparar. */
 let temporizador: ReturnType<typeof setTimeout> | undefined
 function cargarEnVivo() {
+  cargando.value = true
   if (temporizador !== undefined) clearTimeout(temporizador)
   temporizador = setTimeout(() => load(true), 250)
 }
@@ -142,7 +144,23 @@ const hasta = () => Math.min(offset.value + (data.value?.items.length ?? 0), tot
     </span>
   </div>
 
-  <ul class="panel lista">
+  <ul
+    v-if="data || cargando"
+    class="panel lista"
+    :class="{ recargando: cargando && !!data }"
+    :aria-busy="cargando"
+  >
+    <li v-if="cargando" class="cargando-fila" aria-live="polite">
+      <span class="spinner mini"></span>
+      <span class="muted">Cargando logs…</span>
+    </li>
+    <template v-if="cargando && !data">
+      <li v-for="n in 3" :key="`esqueleto-${n}`" class="esqueleto-fila" aria-hidden="true">
+        <span class="esqueleto esq-ts"></span>
+        <span class="esqueleto esq-tipo"></span>
+        <span class="esqueleto esq-texto"></span>
+      </li>
+    </template>
     <li v-for="e in data?.items ?? []" :key="clave(e)" class="log-item">
       <div class="log-main">
         <time class="log-ts mono">{{ fmtHora(e.ts) }}</time>
@@ -194,6 +212,30 @@ const hasta = () => Math.min(offset.value + (data.value?.items.length ?? 0), tot
 }
 .log-item { border-bottom: 1px solid var(--border-soft); }
 .log-item:last-child { border-bottom: none; }
+
+/* Recarga en segundo plano (refresco o filtro en vivo): la lista no se
+   colapsa, solo se atenúa bajo el indicador. */
+.lista.recargando .log-item { opacity: 0.5; }
+
+.cargando-fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* Primera carga: filas de esqueleto con la geometría real de la lista. */
+.esqueleto-fila {
+  display: grid;
+  grid-template-columns: 132px 108px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.esq-ts { width: 90px; }
+.esq-tipo { width: 70px; }
+.esq-texto { width: 100%; max-width: 520px; }
 
 .log-main {
   display: grid;

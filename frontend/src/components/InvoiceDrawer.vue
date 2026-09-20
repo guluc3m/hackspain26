@@ -9,6 +9,7 @@ const emit = defineEmits<{ close: []; updated: [] }>()
 const detail = ref<InvoiceDetail | null>(null)
 const error = ref('')
 const busy = ref(false)
+const cargando = ref(false) // detalle en vuelo: el drawer nunca se queda en blanco
 const motivo = ref('')
 const elegidos = ref<Record<string, number>>({}) // field_type -> índice del candidato elegido
 
@@ -30,7 +31,15 @@ watch(
     error.value = ''
     elegidos.value = {}
     motivo.value = ''
-    if (id) await load(id)
+    if (id) {
+      // visible al instante: la carga del detalle puede tardar (PDF + decisión)
+      cargando.value = true
+      try {
+        await load(id)
+      } finally {
+        cargando.value = false
+      }
+    }
   },
   { immediate: true }
 )
@@ -119,6 +128,11 @@ function safeParse(s: string): unknown {
       <div class="head">
         <h2 class="mono">{{ invoiceId }}</h2>
         <button type="button" @click="emit('close')">Cerrar</button>
+      </div>
+
+      <div v-if="cargando && !error" class="panel cargando" aria-live="polite">
+        <span class="spinner"></span>
+        <span>Cargando factura <span class="mono">{{ invoiceId }}</span>…</span>
       </div>
 
       <p v-if="error" class="error" role="alert">{{ error }}</p>

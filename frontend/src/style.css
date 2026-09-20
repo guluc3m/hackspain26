@@ -289,3 +289,46 @@ tbody tr:hover { background: #f0e6cd; }
   max-height: 340px;
   overflow: auto;
 }
+
+/* Carga: spinner y esqueleto (solo CSS, sin dependencias) */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--sand);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+  vertical-align: -3px;
+}
+.spinner.mini { width: 12px; height: 12px; }
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* Bloque de carga: spinner + «Cargando…», visible desde el primer tick */
+.cargando {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  color: var(--muted);
+}
+
+.esqueleto {
+  display: inline-block;
+  height: 13px;
+  background: var(--sand);
+  animation: pulso 1.2s ease-in-out infinite;
+}
+@keyframes pulso {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Indicador sutil de refresco en segundo plano (no repinta la tabla) */
+.refresco {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}

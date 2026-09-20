@@ -78,14 +78,13 @@ presentation/render.log
 
 /.cache/
 /.remotion/
-/video/out/
+# stills de revisión del vídeo (se regeneran); el MP4 final sí se entrega
+/video/out/*
+!/video/out/filemaid.mp4
 
-# narración y audio del vídeo: binarios pesados regenerables con piper /
-# make_music.py; los TEXTOS (SPEC.md, guion_tts.md, make_music.py) sí se
-# commitan como contrato entre agentes
-/video/narracion/*.wav
-/video/narracion/*.mp3
-/video/public/
+# narración y audio del vídeo: entregables versionados (voz piper + música
+# make_music.py); los TEXTOS (SPEC.md, guion_tts.md, make_music.py) son el
+# contrato entre agentes.
 
 # smoke E2E local (evidencia en disco, no en git)
 /.local-informes/
